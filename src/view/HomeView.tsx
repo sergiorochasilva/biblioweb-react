@@ -1,4 +1,3 @@
-import React from "react";
 import { useRef } from "react";
 import { useCarousel } from "./CarrouselController";
 import logo from "../assets/logo.png";

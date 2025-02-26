@@ -7,7 +7,7 @@ import book_icon from "../assets/book_icon.png";
 
 export default function HomeView() {
     const { handleScroll } = useCarousel();
-    const firstCarouselRef = useRef<HTMLDivElement>(null);
+    // const firstCarouselRef = useRef<HTMLDivElement>(null);
     const secondCarouselRef = useRef<HTMLDivElement>(null);
 
     const [recentPublications, setRecentPublications] = useState<Book[]>([]);

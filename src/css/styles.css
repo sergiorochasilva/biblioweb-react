@@ -69,10 +69,22 @@ body {
 }
 
 .book-cover {
-  width: 100%;
+  display: flex;
+  align-items: center;
+  /* Centraliza verticalmente */
+  justify-content: center;
+  /* Centraliza horizontalmente */
+  width: 120px;
+  /* Defina um tamanho fixo */
   height: 150px;
-  background-color: #ddd;
-  margin-bottom: 10px;
+  background-color: #FFFFFF;
+}
+
+.book-icon {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  /* Faz a imagem se ajustar sem distorcer */
 }
 
 .book-title {

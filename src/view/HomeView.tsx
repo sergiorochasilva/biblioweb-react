@@ -1,12 +1,29 @@
-import { useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useCarousel } from "./CarrouselController";
+import { fetchRecentPublications } from "../controller/BookController";
+import { Book } from "../model/Book";
 import logo from "../assets/logo.png";
+import book_icon from "../assets/book_icon.png";
 
 export default function HomeView() {
     const { handleScroll } = useCarousel();
-
     const firstCarouselRef = useRef<HTMLDivElement>(null);
     const secondCarouselRef = useRef<HTMLDivElement>(null);
+
+    const [recentPublications, setRecentPublications] = useState<Book[]>([]);
+
+    useEffect(() => {
+        async function loadRecentPublications() {
+            try {
+                const books = await fetchRecentPublications();
+                setRecentPublications(books);
+            } catch (error) {
+                console.error("Failed to load recent publications", error);
+            }
+        }
+
+        loadRecentPublications();
+    }, []);
 
     return (
         <div className="library-home">
@@ -27,7 +44,7 @@ export default function HomeView() {
 
             {/* Book Sections */}
             <main className="main-content">
-                {/* Livros Texto */}
+                {/* Livros Texto
                 <section className="book-section">
                     <h2 className="section-title">Livros texto</h2>
                     <div className="book-carousel-container">
@@ -54,11 +71,11 @@ export default function HomeView() {
                             &#8250;
                         </button>
                     </div>
-                </section>
+                </section> */}
 
-                {/* Suas Recomendações */}
+                {/* Publicações recentes */}
                 <section className="book-section">
-                    <h2 className="section-title">Suas recomendações</h2>
+                    <h2 className="section-title">Publicações recentes</h2>
                     <div className="book-carousel-container">
                         <button
                             className="carousel-button left"
@@ -67,12 +84,15 @@ export default function HomeView() {
                             &#8249;
                         </button>
                         <div className="book-carousel" ref={secondCarouselRef}>
-                            {[...Array(15)].map((_, index) => (
-                                <div key={index} className="book-item">
-                                    <div className="book-cover"></div>
-                                    <div className="book-title">Título do livro</div>
-                                    <div className="book-author">Autor: Nome do autor</div>
-                                    <div className="book-publisher">Editora: Nome da editora</div>
+                            {recentPublications.map((book) => (
+                                <div key={book.id} className="book-item">
+                                    {/* <div className="book-cover" style={{ backgroundImage: `url(${book.coverUrl})` }}></div> */}
+                                    <div className="book-cover">
+                                        <img src={book_icon} alt="Book Icon" className="book-icon" />
+                                    </div>
+                                    <div className="book-title">{book.title}</div>
+                                    <div className="book-author">Autor: {book.author}</div>
+                                    <div className="book-publisher">Editora: {book.publisher}</div>
                                 </div>
                             ))}
                         </div>

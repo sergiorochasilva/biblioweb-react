@@ -13,3 +13,21 @@ export async function fetchRecentPublications(): Promise<Book[]> {
     const data = await response.json();
     return data.result as Book[];
 }
+
+
+/**
+ * Busca detalhes de um livro por ID
+ */
+export async function fetchBookDetails(id: string): Promise<Book | null> {
+    // Se sua API tem um endpoint específico para buscar um livro por ID, use:
+    // const response = await fetch(`https://biblioweb.online:8080/books/${id}`);
+    // if (response.ok) {
+    //     const data = await response.json();
+    //     return data as Book;
+    // }
+
+    // Se NÃO tiver, busque todos e filtre (menos eficiente, mas funciona para protótipo):
+    const allBooks = await fetchRecentPublications();
+    const book = allBooks.find(b => String(b.id) === String(id));
+    return book || null;
+}

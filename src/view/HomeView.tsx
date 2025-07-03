@@ -1,12 +1,15 @@
+import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
-import { useCarousel } from "./CarrouselController";
-import { fetchRecentPublications } from "../controller/BookController";
+import { useCarousel } from "../controller/CarrouselController";
+import { fetchRecentPublications } from "../service/BookService";
 import { Book } from "../model/Book";
-import logo from "../assets/logo.png";
+import HeaderView from "../view/HeaderView";
 import book_icon from "../assets/book_icon.png";
+import "../styles/HomeView.css";
 
 export default function HomeView() {
     const { handleScroll } = useCarousel();
+    const navigate = useNavigate();
     // const firstCarouselRef = useRef<HTMLDivElement>(null);
     const secondCarouselRef = useRef<HTMLDivElement>(null);
 
@@ -27,20 +30,7 @@ export default function HomeView() {
 
     return (
         <div className="library-home">
-            {/* Header */}
-            <header className="header">
-                <img src={logo} alt="BiblioWeb Logo" className="logo-image" />
-                <button className="menu-button">☰</button>
-            </header>
-
-            {/* Search Bar */}
-            <div className="search-bar">
-                <input
-                    type="text"
-                    placeholder="Procure por: título, autor ou descrição de um livro"
-                    className="search-input"
-                />
-            </div>
+            <HeaderView />
 
             {/* Book Sections */}
             <main className="main-content">
@@ -85,7 +75,7 @@ export default function HomeView() {
                         </button>
                         <div className="book-carousel" ref={secondCarouselRef}>
                             {recentPublications.map((book) => (
-                                <div key={book.id} className="book-item">
+                                <div key={book.id} className="book-item" onClick={() => navigate(`/book/${book.id}`)}>
                                     {/* <div className="book-cover" style={{ backgroundImage: `url(${book.coverUrl})` }}></div> */}
                                     <div className="book-cover">
                                         <img src={book_icon} alt="Book Icon" className="book-icon" />

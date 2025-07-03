@@ -1,11 +1,14 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import "./css/styles.css";
+// src/main.tsx
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import "./styles/global.css";
+import App from "./App";
 
-import HomeView from "./view/HomeView.tsx";
-
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HomeView />
-  </StrictMode>,
-)
+    <BrowserRouter basename="/biblioweb-react">
+      <App />
+    </BrowserRouter>
+  </StrictMode>
+);

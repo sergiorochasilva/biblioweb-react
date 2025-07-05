@@ -1,8 +1,5 @@
-body,
-html {
-    margin: 0;
-    padding: 0;
-    background: #fff;
+body {
+    background-color: #ffffff;
 }
 
 .library-home {
@@ -11,15 +8,10 @@ html {
     padding: 0;
 }
 
-.page-container {
+.main-content {
+    padding: 10px 20px;
     max-width: 1000px;
     margin: 0 auto;
-    padding: 0 20px;
-    box-sizing: border-box;
-}
-
-.main-content {
-    padding: 10px 0;
 }
 
 .book-section {
@@ -74,41 +66,24 @@ html {
     color: #555;
 }
 
-.book-carousel-container {
-    position: relative;
+.book-results-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
     margin: 0 auto;
-    overflow: hidden;
 }
 
-.book-carousel {
-    display: flex;
-    gap: 10px;
-    transition: transform 0.3s ease-in-out;
-    will-change: transform;
+@media (max-width: 900px) {
+    .book-results-grid {
+        grid-template-columns: repeat(2, 1fr);
+        /* 2 por linha em telas menores */
+    }
 }
 
-.carousel-button {
-    position: absolute;
-    top: 35%;
-    transform: translateY(-50%);
-    background: rgba(0, 0, 0, 0.2);
-    color: white;
-    border: none;
-    padding: 10px;
-    cursor: pointer;
-    z-index: 2;
-    font-size: 18px;
-    border-radius: 30%;
-}
-
-.carousel-button.left {
-    left: 0;
-}
-
-.carousel-button.right {
-    right: 0;
-}
-
-.carousel-button:hover {
-    background: rgba(0, 0, 0, 0.7);
+@media (max-width: 600px) {
+    .book-results-grid {
+        grid-template-columns: 1fr;
+        /* 1 por linha em telas pequenas */
+    }
 }

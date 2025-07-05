@@ -1,6 +1,10 @@
+import { useState } from "react";
 import book_icon from "../assets/book_icon.png";
+import { lendBook } from "../service/BookService";
 import "../styles/BookDetailsView.css";
+
 interface BookDetailsViewProps {
+    id: string;
     title: string;
     author: string;
     edition: string;
@@ -14,6 +18,7 @@ interface BookDetailsViewProps {
 }
 
 export default function BookDetailsView({
+    id,
     title,
     author,
     edition,
@@ -25,6 +30,8 @@ export default function BookDetailsView({
     review,
     coverUrl
 }: BookDetailsViewProps) {
+    const [loadingLendBook, setLoadingLendBook] = useState(false);
+
     return (
         <div className="library-home">
             <main className="main-content">
@@ -44,13 +51,23 @@ export default function BookDetailsView({
                             <p>Idioma: {language}</p>
                         </div>
 
-                        <div className="book-cover" style={{ width: '180px', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }}>
+                        <div className="book-cover" style={{ width: '180px', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', flexDirection: 'column' }}>
                             <img
                                 src={coverUrl || book_icon}
                                 alt="Capa do livro"
                                 className="book-icon"
                                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                             />
+                            <button
+                                onClick={async () => {
+                                    setLoadingLendBook(true);
+                                    await lendBook(id);
+                                    setLoadingLendBook(false);
+                                }}
+                            >
+                                Ler agora
+                            </button>
+                            {loadingLendBook && <p>Carregando...</p>}
                         </div>
                     </div>
 
@@ -58,6 +75,6 @@ export default function BookDetailsView({
                     <p style={{ textAlign: 'justify' }}>{review}</p>
                 </section>
             </main>
-        </div>
+        </div >
     );
 }

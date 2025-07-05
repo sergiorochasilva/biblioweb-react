@@ -23,6 +23,7 @@ export default function BookDetailsWrapper() {
 
     // repassa todas as props do livro para o BookDetailsView
     return <BookDetailsView
+        id={book.id}
         title={book.title}
         author={book.author}
         edition=''

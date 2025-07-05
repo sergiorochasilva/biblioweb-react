@@ -30,11 +30,12 @@ export default function HomeView() {
 
     return (
         <div className="library-home">
-            <HeaderView />
+            <div className="page-container">
+                <HeaderView />
 
-            {/* Book Sections */}
-            <main className="main-content">
-                {/* Livros Texto
+                {/* Book Sections */}
+                <main className="main-content">
+                    {/* Livros Texto
                 <section className="book-section">
                     <h2 className="section-title">Livros texto</h2>
                     <div className="book-carousel-container">
@@ -63,38 +64,39 @@ export default function HomeView() {
                     </div>
                 </section> */}
 
-                {/* Publicações recentes */}
-                <section className="book-section">
-                    <h2 className="section-title">Publicações recentes</h2>
-                    <div className="book-carousel-container">
-                        <button
-                            className="carousel-button left"
-                            onClick={() => handleScroll(secondCarouselRef, "left", "second")}
-                        >
-                            &#8249;
-                        </button>
-                        <div className="book-carousel" ref={secondCarouselRef}>
-                            {recentPublications.map((book) => (
-                                <div key={book.id} className="book-item" onClick={() => navigate(`/book/${book.id}`)}>
-                                    {/* <div className="book-cover" style={{ backgroundImage: `url(${book.coverUrl})` }}></div> */}
-                                    <div className="book-cover">
-                                        <img src={book_icon} alt="Book Icon" className="book-icon" />
+                    {/* Publicações recentes */}
+                    <section className="book-section">
+                        <h2 className="section-title">Publicações recentes</h2>
+                        <div className="book-carousel-container">
+                            <button
+                                className="carousel-button left"
+                                onClick={() => handleScroll(secondCarouselRef, "left", "second")}
+                            >
+                                &#8249;
+                            </button>
+                            <div className="book-carousel" ref={secondCarouselRef}>
+                                {recentPublications.map((book) => (
+                                    <div key={book.id} className="book-item" onClick={() => navigate(`/book/${book.id}`)}>
+                                        {/* <div className="book-cover" style={{ backgroundImage: `url(${book.coverUrl})` }}></div> */}
+                                        <div className="book-cover">
+                                            <img src={book_icon} alt="Book Icon" className="book-icon" />
+                                        </div>
+                                        <div className="book-title">{book.title}</div>
+                                        <div className="book-author">Autor: {book.author}</div>
+                                        <div className="book-publisher">Editora: {book.publisher}</div>
                                     </div>
-                                    <div className="book-title">{book.title}</div>
-                                    <div className="book-author">Autor: {book.author}</div>
-                                    <div className="book-publisher">Editora: {book.publisher}</div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
+                            <button
+                                className="carousel-button right"
+                                onClick={() => handleScroll(secondCarouselRef, "right", "second")}
+                            >
+                                &#8250;
+                            </button>
                         </div>
-                        <button
-                            className="carousel-button right"
-                            onClick={() => handleScroll(secondCarouselRef, "right", "second")}
-                        >
-                            &#8250;
-                        </button>
-                    </div>
-                </section>
-            </main>
+                    </section>
+                </main>
+            </div>
         </div>
     );
 }

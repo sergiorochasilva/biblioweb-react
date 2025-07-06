@@ -63,12 +63,14 @@ export async function lendBook(id: string): Promise<void> {
 
     // Tratando o retorno como um download
     const disposition = response.headers.get('Content-Disposition');
-    const filename = disposition?.split(';')[1].trim().split('=')[1];
+    let filename = disposition?.split(';')[1].trim().split('=')[1];
+    filename = filename ? filename : 'book.lcpl';
+    filename = filename.replace(/^"+|"+$/g, '');
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename ? filename : 'book.pdf';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();

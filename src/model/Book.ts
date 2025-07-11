@@ -3,5 +3,5 @@ export interface Book {
     title: string;
     author: string;
     publisher: string;
-    coverUrl: string;
+    image_url: string;
 }

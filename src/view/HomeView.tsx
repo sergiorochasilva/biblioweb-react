@@ -77,9 +77,9 @@ export default function HomeView() {
                             <div className="book-carousel" ref={secondCarouselRef}>
                                 {recentPublications.map((book) => (
                                     <div key={book.id} className="book-item" onClick={() => navigate(`/book/${book.id}`)}>
-                                        {/* <div className="book-cover" style={{ backgroundImage: `url(${book.coverUrl})` }}></div> */}
+                                        {/* <div className="book-cover" style={{ backgroundImage: `url(${book.image_url})` }}></div> */}
                                         <div className="book-cover">
-                                            <img src={book_icon} alt="Book Icon" className="book-icon" />
+                                            <img src={book.image_url ? book.image_url : book_icon} alt="Book Icon" className="book-icon" />
                                         </div>
                                         <div className="book-title">{book.title}</div>
                                         <div className="book-author">Autor: {book.author}</div>

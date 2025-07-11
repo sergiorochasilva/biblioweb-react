@@ -33,6 +33,6 @@ export default function BookDetailsWrapper() {
         pages=''
         language=''
         review=''
-        coverUrl={book.coverUrl}
+        image_url={book.image_url}
     />;
 }

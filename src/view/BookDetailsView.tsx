@@ -14,7 +14,7 @@ interface BookDetailsViewProps {
     pages: string;
     language: string;
     review: string;
-    coverUrl?: string;
+    image_url?: string;
 }
 
 export default function BookDetailsView({
@@ -28,7 +28,7 @@ export default function BookDetailsView({
     pages,
     language,
     review,
-    coverUrl
+    image_url
 }: BookDetailsViewProps) {
     const [loadingLendBook, setLoadingLendBook] = useState(false);
 
@@ -53,7 +53,7 @@ export default function BookDetailsView({
 
                         <div className="book-cover" style={{ width: '180px', height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', flexDirection: 'column' }}>
                             <img
-                                src={coverUrl || book_icon}
+                                src={image_url || book_icon}
                                 alt="Capa do livro"
                                 className="book-icon"
                                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}

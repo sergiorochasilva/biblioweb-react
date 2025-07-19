@@ -81,8 +81,8 @@ export default function BookDetailsView({
                         }}
                         className="book-details-ler"
                     >
-                        {loadingLendBook && <>Carregando...</>}
                         {!loadingLendBook && <>Ler agora</>}
+                        {loadingLendBook && <>Carregando...</>}
                     </button>
 
                     <h3 className="section-details-title" style={{ marginTop: '20px' }}>Resenha</h3>

@@ -47,6 +47,8 @@ body {
     align-items: center;
     justify-content: center;
     background-color: #ffffff;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .book-icon {
@@ -58,7 +60,10 @@ body {
 .book-title {
     font-weight: bold;
     font-size: 14px;
+    color: #111;
+    margin-bottom: 10px;
 }
+
 
 .book-author,
 .book-publisher {

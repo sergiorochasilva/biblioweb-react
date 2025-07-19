@@ -8,7 +8,9 @@ import App from "./App";
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename="/biblioweb-react">
-      <App />
+      <div className="page-container">
+        <App />
+      </div>
     </BrowserRouter>
   </StrictMode>
 );

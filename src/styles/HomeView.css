@@ -55,6 +55,8 @@ html {
     align-items: center;
     justify-content: center;
     background-color: #ffffff;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .book-icon {

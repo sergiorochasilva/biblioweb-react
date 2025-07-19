@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { fetchBookDetails } from "../service/BookService"; // ou "../controller/BookDetailsController"
+import { fetchBookDetails } from "../service/BookService";
 import BookDetailsView from "./BookDetailsView";
 import { Book } from "../model/Book";
 

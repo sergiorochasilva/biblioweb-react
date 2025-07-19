@@ -15,12 +15,12 @@
 }
 
 /* Seção de detalhes do livro */
-.book-section {
+.book-details-section {
     margin-bottom: 30px;
 }
 
 /* Títulos das seções */
-.section-title {
+.section-details-title {
     font-size: 22px;
     font-weight: bold;
     margin-bottom: 10px;
@@ -28,7 +28,7 @@
 }
 
 /* Título principal do livro */
-.book-title {
+.book-details-title {
     font-size: 20px;
     font-weight: bold;
     color: #111;
@@ -43,19 +43,20 @@
     margin-top: 20px;
 }
 
+
 /* Informações do livro */
-.book-info {
+.book-details-info {
     flex: 1;
     font-size: 14px;
     line-height: 1.6;
 }
 
-.book-info p {
+.book-details-info p {
     margin: 4px 0;
 }
 
 /* Capa do livro */
-.book-cover {
+.book-details-cover {
     width: 180px;
     height: 240px;
     display: flex;
@@ -66,18 +67,70 @@
     border-radius: 4px;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    flex-direction: column;
 }
 
 /* Imagem da capa do livro */
-.book-icon {
+.book-details-cover-img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
 }
 
 /* Resenha do livro */
-.book-section p {
+.book-details-section p {
     text-align: justify;
     line-height: 1.8;
     font-size: 14px;
+}
+
+.book-details-ler {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    max-width: 200px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+
+/* Header */
+.details-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 20px;
+}
+
+.back-button {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    margin-left: 5px;
+    color: #333;
+    padding: 5px 10px;
+}
+
+.back-button:hover {
+    color: #007bff;
+    /* azulzinho ao passar o mouse */
+}
+
+.details-title {
+    flex: 1;
+    text-align: center;
+    margin: 0;
+    font-size: 20px;
+    font-weight: bold;
 }

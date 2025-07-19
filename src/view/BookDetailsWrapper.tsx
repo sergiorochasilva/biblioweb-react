@@ -26,13 +26,13 @@ export default function BookDetailsWrapper() {
         id={book.id}
         title={book.title}
         author={book.author}
-        edition=''
+        edition={book.edition}
         publisher={book.publisher}
-        year=''
-        isbn=''
-        pages=''
-        language=''
-        review=''
+        year={book.year}
+        isbn={book.isbn}
+        pages={book.pages}
+        language={book.language}
+        review={book.review}
         image_url={book.image_url}
     />;
 }

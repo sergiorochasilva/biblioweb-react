@@ -18,7 +18,7 @@ export default function HeaderView() {
     return (
         <>
             <header className="header">
-                <img src={logo} alt="BiblioWeb Logo" className="logo-image" />
+                <img src={logo} alt="BiblioWeb Logo" className="logo-image" onClick={() => navigate("/")} />
                 <button className="menu-button">☰</button>
             </header>
 

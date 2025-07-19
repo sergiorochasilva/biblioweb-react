@@ -70,7 +70,7 @@ export default function BookDetailsView({
                                 alt="Capa do livro"
                                 className="book-details-cover-img"
                             />
-                            {loadingLendBook && <p>Carregando...</p>}
+
                         </div>
                     </div>
                     <button
@@ -81,7 +81,8 @@ export default function BookDetailsView({
                         }}
                         className="book-details-ler"
                     >
-                        Ler agora
+                        {loadingLendBook && <>Carregando...</>}
+                        {!loadingLendBook && <>Ler agora</>}
                     </button>
 
                     <h3 className="section-details-title" style={{ marginTop: '20px' }}>Resenha</h3>

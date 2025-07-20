@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import logo from "../assets/logo.png";
 import "../styles/HeaderView.css";
@@ -5,34 +6,51 @@ import "../styles/HeaderView.css";
 export default function HeaderView() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const query = searchParams.get("query") || ""; // "" se não existir
+    const query = searchParams.get("query") || "";
+    const [input, setInput] = useState(query);
 
-    const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
-            // Redireciona para a tela de busca com o termo digitado
-            setSearchParams({ query: e.currentTarget.value });
-            navigate(`/search?query=${e.currentTarget.value}`);
-        }
+    /** dispara a navegação para /search?query=... */
+    const doSearch = (term: string) => {
+        setSearchParams({ query: term });          // ← aqui sim mudamos a URL
+        navigate(`/search?query=${term}`);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") doSearch(input);
     };
 
     return (
         <>
             <header className="header">
-                <img src={logo} alt="BiblioWeb Logo" className="logo-image" onClick={() => navigate("/")} />
+                <img
+                    src={logo}
+                    alt="BiblioWeb Logo"
+                    className="logo-image"
+                    onClick={() => navigate("/")}
+                />
                 <button className="menu-button">☰</button>
             </header>
 
+            {/* barra de busca */}
             <div className="search-bar">
                 <input
                     type="text"
                     placeholder="Procure por: título, autor ou descrição de um livro"
                     className="search-input"
-                    value={query}
-                    onChange={(e) => setSearchParams({ query: e.currentTarget.value })}
-                    onKeyDown={handleSearch}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
                 />
+
+                {/* botão de lupa */}
+                <button
+                    className="search-button"
+                    aria-label="Pesquisar"
+                    onClick={() => doSearch(input)}
+                >
+                    🔍
+                </button>
             </div>
         </>
     );
 }
-

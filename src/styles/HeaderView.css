@@ -25,14 +25,34 @@
 }
 
 .search-bar {
+    position: relative;
     padding: 10px 20px;
     width: 100%;
 }
 
 .search-input {
     width: 100%;
-    padding: 10px;
+    padding: 10px 40px 10px 10px;
     font-size: 16px;
     border: 1px solid #ccc;
     border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* botão de lupa */
+.search-button {
+    position: absolute;
+    top: 50%;
+    right: 30px;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+}
+
+.search-button:hover {
+    opacity: 0.7;
 }

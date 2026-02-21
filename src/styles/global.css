@@ -1,6 +1,191 @@
-.centered-page {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 0 20px;
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Sora:wght@400;500;600;700&display=swap");
+
+:root {
+    --glass-bg: rgba(255, 255, 255, 0.18);
+    --glass-border: rgba(255, 255, 255, 0.4);
+    --glass-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    --glass-input-bg: rgba(255, 255, 255, 0.48);
+    --surface-strong: rgba(255, 255, 255, 0.72);
+    --text-strong: #0f172a;
+    --text-muted: rgba(15, 23, 42, 0.7);
+    --accent: #1b78d6;
+}
+
+* {
     box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Manrope", "Segoe UI", sans-serif;
+    color: var(--text-strong);
+    background:
+        radial-gradient(circle at top left, rgba(27, 120, 214, 0.25), transparent 45%),
+        radial-gradient(circle at 15% 80%, rgba(83, 167, 255, 0.2), transparent 50%),
+        linear-gradient(135deg, #e8f2ff, #f7fbff 55%, #eef7ff 100%);
+}
+
+#root {
+    min-height: 100vh;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.page-shell {
+    min-height: 100vh;
+    background: transparent;
+}
+
+.page-content {
+    width: min(1200px, 92vw);
+    margin: 0 auto;
+    padding: 24px 0 72px;
+}
+
+.page-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.section-title {
+    margin: 0;
+    font-family: "Sora", "Manrope", sans-serif;
+    color: var(--text-strong);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(14px);
+}
+
+.glass-card {
+    background: var(--glass-bg) !important;
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(16px);
+}
+
+.glass-card .ant-card-body {
+    padding: 20px;
+}
+
+.ant-layout,
+.ant-layout-header,
+.ant-layout-content {
+    background: transparent;
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-textarea,
+.ant-input-password,
+.ant-select-selector {
+    background: var(--glass-input-bg) !important;
+    border-color: var(--glass-border) !important;
+    color: var(--text-strong) !important;
+    box-shadow: none !important;
+}
+
+.ant-input::placeholder,
+.ant-input-textarea::placeholder {
+    color: rgba(15, 23, 42, 0.5);
+}
+
+.ant-btn-primary {
+    border: none;
+    background: linear-gradient(135deg, #1b78d6, #53a7ff);
+    box-shadow: 0 10px 22px rgba(27, 120, 214, 0.28);
+}
+
+.ant-btn-primary:not(:disabled):hover {
+    background: linear-gradient(135deg, #1766ba, #3f98f0);
+}
+
+.ant-btn-default,
+.ant-btn-text {
+    color: var(--text-strong);
+}
+
+.ant-card-hoverable:hover {
+    transform: translateY(-3px);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+}
+
+.state-card .ant-card-body {
+    padding: 28px;
+}
+
+.book-card {
+    border-radius: 18px;
+    overflow: hidden;
+    min-width: 190px;
+    cursor: pointer;
+}
+
+.book-card .ant-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.book-card-cover {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(255, 255, 255, 0.45);
+    min-height: 190px;
+}
+
+.book-card-cover img {
+    width: 120px;
+    height: 160px;
+    object-fit: contain;
+}
+
+.book-card-title {
+    margin: 0;
+    color: var(--text-strong);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.book-card-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: block;
+}
+
+@media (max-width: 720px) {
+    .page-content {
+        width: min(100%, 92vw);
+        padding: 16px 0 48px;
+    }
+
+    .glass-card .ant-card-body {
+        padding: 16px;
+    }
 }

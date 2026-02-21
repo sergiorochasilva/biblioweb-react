@@ -3,6 +3,8 @@ export interface Book {
     title: string;
     author: string;
     publisher: string;
+    subject?: string;
+    file_name?: string;
     edition: string;
     year: string;
     isbn: string;

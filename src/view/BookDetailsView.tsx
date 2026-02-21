@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { ArrowLeftOutlined } from "@ant-design/icons";
+import { Button, Card, Descriptions, Divider, Image, Layout, Row, Col, Typography } from "antd";
 import book_icon from "../assets/book_icon.png";
 import { lendBook } from "../service/BookService";
 import "../styles/BookDetailsView.css";
@@ -33,62 +35,79 @@ export default function BookDetailsView({
 }: BookDetailsViewProps) {
     const navigate = useNavigate();
     const [loadingLendBook, setLoadingLendBook] = useState(false);
+    const { Content } = Layout;
 
     return (
-        <div className="library-home">
-            <header className="details-header">
-                <button
+        <Layout className="page-shell">
+            <div className="details-hero glass-panel">
+                <Button
                     className="back-button"
+                    type="text"
+                    icon={<ArrowLeftOutlined />}
                     onClick={() => navigate(-1)}
                     aria-label="Voltar"
-                >
-                    &#8592;
-                </button>
-                <h2 className="details-title">Detalhes do livro</h2>
-            </header>
-
-            <main className="main-content">
-                <section className="book-details-section">
-                    <h2 className="section-details-title">Sobre o livro</h2>
-
-                    <h3 className="book-details-title">{title}</h3>
-
-                    <div className="book-details-grid">
-                        <div className="book-details-info">
-                            <p>Autor: {author}</p>
-                            <p>Edição: {edition}</p>
-                            <p>Editora: {publisher}</p>
-                            <p>Ano: {year}</p>
-                            <p>ISBN: {isbn}</p>
-                            <p>Páginas: {pages}</p>
-                            <p>Idioma: {language}</p>
-                        </div>
-
-                        <div className="book-details-cover">
-                            <img
-                                src={image_url || book_icon}
-                                alt="Capa do livro"
-                                className="book-details-cover-img"
-                            />
-
-                        </div>
-                    </div>
-                    <button
-                        onClick={async () => {
-                            setLoadingLendBook(true);
-                            await lendBook(id);
-                            setLoadingLendBook(false);
-                        }}
-                        className="book-details-ler"
-                    >
-                        {!loadingLendBook && <>Ler agora</>}
-                        {loadingLendBook && <>Carregando...</>}
-                    </button>
-
-                    <h3 className="section-details-title" style={{ marginTop: '20px' }}>Resenha</h3>
-                    <p style={{ textAlign: 'justify' }}>{review}</p>
-                </section>
-            </main>
-        </div >
+                />
+                <Typography.Title level={4} className="details-title">
+                    Detalhes do livro
+                </Typography.Title>
+            </div>
+            <Content className="page-content">
+                <Card className="glass-card details-card">
+                    <Typography.Title level={4} className="section-details-title">
+                        Sobre o livro
+                    </Typography.Title>
+                    <Row gutter={[24, 24]} className="book-details-grid">
+                        <Col xs={24} lg={16}>
+                            <Typography.Title level={3} className="book-details-title">
+                                {title}
+                            </Typography.Title>
+                            <Descriptions
+                                column={1}
+                                size="small"
+                                className="book-details-info"
+                                labelStyle={{ fontWeight: 600 }}
+                            >
+                                <Descriptions.Item label="Autor">{author}</Descriptions.Item>
+                                <Descriptions.Item label="Edição">{edition}</Descriptions.Item>
+                                <Descriptions.Item label="Editora">{publisher}</Descriptions.Item>
+                                <Descriptions.Item label="Ano">{year}</Descriptions.Item>
+                                <Descriptions.Item label="ISBN">{isbn}</Descriptions.Item>
+                                <Descriptions.Item label="Páginas">{pages}</Descriptions.Item>
+                                <Descriptions.Item label="Idioma">{language}</Descriptions.Item>
+                            </Descriptions>
+                            <Button
+                                type="primary"
+                                size="large"
+                                className="book-details-ler"
+                                loading={loadingLendBook}
+                                onClick={async () => {
+                                    setLoadingLendBook(true);
+                                    await lendBook(id);
+                                    setLoadingLendBook(false);
+                                }}
+                            >
+                                Ler agora
+                            </Button>
+                        </Col>
+                        <Col xs={24} lg={8}>
+                            <div className="book-details-cover glass-panel">
+                                <Image
+                                    src={image_url || book_icon}
+                                    alt="Capa do livro"
+                                    preview={false}
+                                />
+                            </div>
+                        </Col>
+                    </Row>
+                    <Divider />
+                    <Typography.Title level={4} className="section-details-title">
+                        Resenha
+                    </Typography.Title>
+                    <Typography.Paragraph className="details-review">
+                        {review}
+                    </Typography.Paragraph>
+                </Card>
+            </Content>
+        </Layout>
     );
 }

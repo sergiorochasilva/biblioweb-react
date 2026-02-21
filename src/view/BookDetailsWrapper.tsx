@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button, Card, Layout, Result, Spin, Typography } from "antd";
 import { fetchBookDetails } from "../service/BookService";
 import BookDetailsView from "./BookDetailsView";
 import { Book } from "../model/Book";
 
 export default function BookDetailsWrapper() {
+    const navigate = useNavigate();
     const { id } = useParams();
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
+    const { Content } = Layout;
 
     useEffect(() => {
         if (id) {
@@ -18,8 +21,39 @@ export default function BookDetailsWrapper() {
         }
     }, [id]);
 
-    if (loading) return <div style={{ padding: 24 }}>Carregando detalhes...</div>;
-    if (!book) return <div style={{ padding: 24, color: "red" }}>Livro não encontrado.</div>;
+    if (loading) {
+        return (
+            <Layout className="page-shell">
+                <Content className="page-content">
+                    <Card className="glass-card state-card">
+                        <div className="loading-state">
+                            <Spin size="large" />
+                            <Typography.Text>Carregando detalhes...</Typography.Text>
+                        </div>
+                    </Card>
+                </Content>
+            </Layout>
+        );
+    }
+
+    if (!book) {
+        return (
+            <Layout className="page-shell">
+                <Content className="page-content">
+                    <Card className="glass-card state-card">
+                        <Result
+                            status="404"
+                            title="Livro não encontrado"
+                            subTitle="Verifique se o link está correto."
+                            extra={(
+                                <Button type="primary" onClick={() => navigate("/")}>Voltar para a home</Button>
+                            )}
+                        />
+                    </Card>
+                </Content>
+            </Layout>
+        );
+    }
 
     // repassa todas as props do livro para o BookDetailsView
     return <BookDetailsView

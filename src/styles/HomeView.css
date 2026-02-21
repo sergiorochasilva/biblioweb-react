@@ -1,116 +1,63 @@
-body,
-html {
-    margin: 0;
-    padding: 0;
-    background: #fff;
-}
-
-.library-home {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-}
-
-.page-container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 0 20px;
-    box-sizing: border-box;
-}
-
-.main-content {
-    padding: 10px 0;
-}
-
-.book-section {
-    margin-bottom: 20px;
-}
-
-.section-title {
-    font-size: 20px;
-    margin-bottom: 10px;
-}
-
-.book-item {
-    width: 100%;
-    box-sizing: border-box;
-    text-align: center;
-    cursor: pointer;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    padding: 16px 0 12px 0;
-    transition: box-shadow 0.2s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-.book-item:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.11);
-}
-
-.book-cover {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: #ffffff;
-    border: none !important;
-    box-shadow: none !important;
-}
-
-.book-icon {
-    width: 120px;
-    height: 150px;
-    object-fit: contain;
-}
-
-.book-title {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.book-author,
-.book-publisher {
-    font-size: 12px;
-    color: #555;
-}
-
-.book-carousel-container {
+.carousel-shell {
     position: relative;
-    margin: 0 auto;
+    padding: 24px 52px;
+    border-radius: 26px;
     overflow: hidden;
 }
 
 .book-carousel {
     display: flex;
-    gap: 10px;
+    gap: 16px;
     transition: transform 0.3s ease-in-out;
     will-change: transform;
 }
 
 .carousel-button {
     position: absolute;
-    top: 35%;
+    top: 50%;
     transform: translateY(-50%);
-    background: rgba(0, 0, 0, 0.2);
-    color: white;
-    border: none;
-    padding: 10px;
-    cursor: pointer;
-    z-index: 2;
-    font-size: 18px;
-    border-radius: 30%;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
+    backdrop-filter: blur(10px);
 }
 
 .carousel-button.left {
-    left: 0;
+    left: 16px;
 }
 
 .carousel-button.right {
-    right: 0;
+    right: 16px;
 }
 
-.carousel-button:hover {
-    background: rgba(0, 0, 0, 0.7);
+.carousel-empty {
+    width: 100%;
+    padding: 40px 0;
+    display: flex;
+    justify-content: center;
+}
+
+@media (max-width: 720px) {
+    .carousel-shell {
+        padding: 24px 20px;
+    }
+
+    .carousel-button {
+        display: none;
+    }
+
+    .book-carousel {
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 8px;
+    }
+
+    .book-card {
+        scroll-snap-align: start;
+    }
 }

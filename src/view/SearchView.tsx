@@ -1,9 +1,10 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { Empty, Layout, Row, Col, Typography } from "antd";
 import { fetchSearchResults } from "../service/BookService";
 import { Book } from "../model/Book";
 import HeaderView from "./HeaderView";
-import book_icon from "../assets/book_icon.png";
+import BookCard from "../components/BookCard";
 import "../styles/SearchView.css";
 
 export default function SearchView() {
@@ -24,26 +25,34 @@ export default function SearchView() {
         loadSearchResults();
     }, [query]);
 
+    const { Content } = Layout;
+
     return (
-        <div className="library-home">
+        <Layout className="page-shell">
             <HeaderView />
-            <main className="main-content">
-                <section className="book-section">
-                    <h2 className="section-title">Resultado da pesquisa</h2>
-                    <div className="book-results-grid">
-                        {searchResults.map((book) => (
-                            <div key={book.id} className="book-item" onClick={() => navigate(`/book/${book.id}`)}>
-                                <div className="book-cover">
-                                    <img src={book.image_url ? book.image_url : book_icon} alt="Book Icon" className="book-icon" />
-                                </div>
-                                <div className="book-title">{book.title}</div>
-                                <div className="book-author">Autor: {book.author}</div>
-                                <div className="book-publisher">Editora: {book.publisher}</div>
-                            </div>
-                        ))}
-                    </div>
+            <Content className="page-content">
+                <section className="page-section">
+                    <Typography.Title level={3} className="section-title">
+                        Resultado da pesquisa
+                    </Typography.Title>
+                    {searchResults.length === 0 ? (
+                        <div className="grid-empty glass-panel">
+                            <Empty description="Nenhum resultado encontrado." />
+                        </div>
+                    ) : (
+                        <Row gutter={[20, 20]} className="book-results-grid">
+                            {searchResults.map((book) => (
+                                <Col key={book.id} xs={24} sm={12} md={8} lg={6}>
+                                    <BookCard
+                                        book={book}
+                                        onClick={() => navigate(`/book/${book.id}`)}
+                                    />
+                                </Col>
+                            ))}
+                        </Row>
+                    )}
                 </section>
-            </main>
-        </div>
+            </Content>
+        </Layout>
     );
 }

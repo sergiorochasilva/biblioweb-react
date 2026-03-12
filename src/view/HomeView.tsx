@@ -3,23 +3,26 @@ import { useEffect, useState, useRef } from "react";
 import { Button, Empty, Layout, Typography } from "antd";
 import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { useCarousel } from "../controller/CarrouselController";
-import { fetchRecentPublications } from "../service/BookService";
+import { DEFAULT_PUBLIC_LIBRARY_ID, fetchRecentPublications } from "../service/BookService";
 import { Book } from "../model/Book";
 import HeaderView from "../view/HeaderView";
 import BookCard from "../components/BookCard";
 import "../styles/HomeView.css";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function HomeView() {
     const { handleScroll } = useCarousel();
     const navigate = useNavigate();
     const secondCarouselRef = useRef<HTMLDivElement>(null);
+    const { token, library } = useAuth();
 
     const [recentPublications, setRecentPublications] = useState<Book[]>([]);
 
     useEffect(() => {
         async function loadRecentPublications() {
             try {
-                const books = await fetchRecentPublications();
+                const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+                const books = await fetchRecentPublications(libraryId, token || undefined);
                 setRecentPublications(books);
             } catch (error) {
                 console.error("Failed to load recent publications", error);
@@ -27,7 +30,7 @@ export default function HomeView() {
         }
 
         loadRecentPublications();
-    }, []);
+    }, [token, library]);
 
     const { Content } = Layout;
 

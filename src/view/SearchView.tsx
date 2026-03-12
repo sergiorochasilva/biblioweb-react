@@ -1,29 +1,32 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Empty, Layout, Row, Col, Typography } from "antd";
-import { fetchSearchResults } from "../service/BookService";
+import { DEFAULT_PUBLIC_LIBRARY_ID, fetchSearchResults } from "../service/BookService";
 import { Book } from "../model/Book";
 import HeaderView from "./HeaderView";
 import BookCard from "../components/BookCard";
 import "../styles/SearchView.css";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function SearchView() {
     const navigate = useNavigate();
     const [searchResults, setSearchResults] = useState<Book[]>([]);
     const [searchParams] = useSearchParams();
     const query = searchParams.get("query") || ""; // "" se não existir
+    const { token, library } = useAuth();
 
     useEffect(() => {
         async function loadSearchResults() {
             try {
-                const books = await fetchSearchResults(query);
+                const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+                const books = await fetchSearchResults(query, libraryId, token || undefined);
                 setSearchResults(books);
             } catch (error) {
                 console.error("Failed to load search results", error);
             }
         }
         loadSearchResults();
-    }, [query]);
+    }, [query, token, library]);
 
     const { Content } = Layout;
 

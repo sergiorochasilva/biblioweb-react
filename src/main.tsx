@@ -2,10 +2,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { ConfigProvider, theme } from "antd";
+import { App as AntdApp, ConfigProvider, theme } from "antd";
 import "antd/dist/reset.css";
 import "./styles/global.css";
 import App from "./App";
+import { AuthProvider } from "./contexts/AuthContext";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -19,9 +20,13 @@ createRoot(document.getElementById("root")!).render(
         },
       }}
     >
-      <BrowserRouter basename="/biblioweb-react">
-        <App />
-      </BrowserRouter>
+      <AntdApp>
+        <AuthProvider>
+          <BrowserRouter basename="/biblioweb-react">
+            <App />
+          </BrowserRouter>
+        </AuthProvider>
+      </AntdApp>
     </ConfigProvider>
   </StrictMode>
 );

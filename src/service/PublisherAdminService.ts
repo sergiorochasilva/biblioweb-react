@@ -1,6 +1,5 @@
 import { Book } from "../model/Book";
-
-export const DEFAULT_API_BASE_URL = "https://biblioweb.online:8080";
+import { api } from "./api";
 
 export type UpdateBookPayload = {
     title: string;
@@ -35,16 +34,12 @@ export type PurchaseLinkResponse = {
     purchase_link: string;
 };
 
-export function buildHeaders(accessToken: string) {
-    const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-    };
-    if (accessToken.trim() !== "") {
-        headers["Authorization"] = `Bearer ${accessToken.trim()}`;
-    }
-    return headers;
-}
-
+/**
+ * Normaliza respostas da API de livros para uma lista simples.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista de livros.
+ */
 export function normalizeBooksResponse(data: any): Book[] {
     if (Array.isArray(data)) {
         return data as Book[];
@@ -55,6 +50,12 @@ export function normalizeBooksResponse(data: any): Book[] {
     return [];
 }
 
+/**
+ * Separa nome base e extensão de um arquivo.
+ *
+ * @param file Arquivo selecionado no input.
+ * @returns Objeto com ``fileName`` e ``fileExtension``.
+ */
 export function getFileParts(file: File) {
     const nameParts = file.name.split(".");
     if (nameParts.length === 1) {
@@ -65,6 +66,12 @@ export function getFileParts(file: File) {
     return { fileName, fileExtension };
 }
 
+/**
+ * Lê um arquivo e retorna seu conteúdo em base64.
+ *
+ * @param file Arquivo a ser convertido.
+ * @returns Promise com string base64 sem prefixo data URL.
+ */
 export function readFileAsBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -82,6 +89,12 @@ export function readFileAsBase64(file: File): Promise<string> {
     });
 }
 
+/**
+ * Calcula hash SHA-256 em formato hexadecimal.
+ *
+ * @param text Texto de entrada para hash.
+ * @returns Hash hexadecimal.
+ */
 export async function sha256Hex(text: string): Promise<string> {
     const data = new TextEncoder().encode(text);
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
@@ -89,60 +102,57 @@ export async function sha256Hex(text: string): Promise<string> {
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function fetchBooks(apiBaseUrl: string, accessToken: string): Promise<Book[]> {
-    const response = await fetch(`${apiBaseUrl}/books`, {
-        headers: buildHeaders(accessToken),
-    });
-    if (!response.ok) {
-        throw new Error(`Erro ao buscar livros (${response.status}).`);
-    }
-    const data = await response.json();
+/**
+ * Busca livros administrativos da editora.
+ *
+ * @param token Token JWT do usuário autenticado.
+ * @returns Lista de livros.
+ */
+export async function fetchBooks(token: string): Promise<Book[]> {
+    const data = await api.get<any>("/books", token);
     return normalizeBooksResponse(data);
 }
 
+/**
+ * Atualiza metadados de um livro existente.
+ *
+ * @param token Token JWT do usuário autenticado.
+ * @param id Identificador do livro.
+ * @param payload Campos a serem atualizados.
+ * @returns Promise<void>
+ */
 export async function updateBook(
-    apiBaseUrl: string,
-    accessToken: string,
+    token: string,
     id: string,
     payload: UpdateBookPayload
 ): Promise<void> {
-    const response = await fetch(`${apiBaseUrl}/books/${id}`, {
-        method: "PUT",
-        headers: buildHeaders(accessToken),
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        throw new Error(`Erro ao atualizar livro (${response.status}).`);
-    }
+    await api.put(`/books/${id}`, payload, token);
 }
 
+/**
+ * Cria novo livro com metadados e conteúdo.
+ *
+ * @param token Token JWT do usuário autenticado.
+ * @param payload Dados completos do livro para cadastro.
+ * @returns Promise<void>
+ */
 export async function createBook(
-    apiBaseUrl: string,
-    accessToken: string,
+    token: string,
     payload: CreateBookPayload
 ): Promise<void> {
-    const response = await fetch(`${apiBaseUrl}/books`, {
-        method: "POST",
-        headers: buildHeaders(accessToken),
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        throw new Error(`Erro ao cadastrar livro (${response.status}).`);
-    }
+    await api.post("/books", payload, token);
 }
 
+/**
+ * Gera link assinado para compra/download licenciado.
+ *
+ * @param token Token JWT do usuário autenticado.
+ * @param payload Dados necessários para geração do link.
+ * @returns Resposta contendo ``purchase_link``.
+ */
 export async function generatePurchaseLink(
-    apiBaseUrl: string,
-    accessToken: string,
+    token: string,
     payload: PurchaseLinkPayload
 ): Promise<PurchaseLinkResponse> {
-    const response = await fetch(`${apiBaseUrl}/books-purchase-links`, {
-        method: "POST",
-        headers: buildHeaders(accessToken),
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        throw new Error(`Erro ao gerar link (${response.status}).`);
-    }
-    return response.json();
+    return api.post<PurchaseLinkResponse>("/books-purchase-links", payload, token);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Book } from "../model/Book";
+import { useAuth } from "../contexts/AuthContext";
 import {
-    DEFAULT_API_BASE_URL,
     createBook,
     fetchBooks,
     generatePurchaseLink,
@@ -51,6 +51,13 @@ const emptyBookForm: BookFormState = {
     library: "",
 };
 
+/**
+ * Extrai mensagem legível de erro desconhecido.
+ *
+ * @param error Erro capturado.
+ * @param fallback Mensagem usada quando erro não possui texto.
+ * @returns Mensagem final para exibição na UI.
+ */
 function normalizeErrorMessage(error: unknown, fallback: string) {
     if (error instanceof Error && error.message) {
         return error.message;
@@ -58,9 +65,13 @@ function normalizeErrorMessage(error: unknown, fallback: string) {
     return fallback;
 }
 
+/**
+ * Hook/controller da tela administrativa da editora.
+ *
+ * @returns Objeto com estado da tela e ações para CRUD de livros e geração de links.
+ */
 export function usePublisherAdminController() {
-    const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
-    const [accessToken, setAccessToken] = useState("");
+    const { token, publisher, library } = useAuth();
     const [books, setBooks] = useState<Book[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
@@ -78,8 +89,10 @@ export function usePublisherAdminController() {
     const bookOptions = useMemo(() => books.filter((book) => book.id), [books]);
 
     useEffect(() => {
-        loadBooks();
-    }, []);
+        if (token) {
+            loadBooks();
+        }
+    }, [token]);
 
     useEffect(() => {
         if (!selectedBook) {
@@ -105,11 +118,33 @@ export function usePublisherAdminController() {
         setPurchaseBookId(selectedBook.id);
     }, [selectedBook]);
 
-    async function loadBooks() {
+    useEffect(() => {
+        if (publisher && !publisherId) {
+            setPublisherId(publisher.id);
+        }
+    }, [publisher, publisherId]);
+
+    useEffect(() => {
+        if (library && !createForm.library) {
+            setCreateForm((prev) => ({ ...prev, library: library.id.toString() }));
+        }
+    }, [library, createForm.library]);
+
+    /**
+     * Carrega a lista de livros administrativos.
+     *
+     * @returns Promise<void>
+     */
+    async function loadBooks(): Promise<void> {
+        if (!token) {
+            setError("Sessão expirada. Faça login novamente.");
+            return;
+        }
+
         setIsLoading(true);
         setError("");
         try {
-            const result = await fetchBooks(apiBaseUrl, accessToken);
+            const result = await fetchBooks(token);
             setBooks(result);
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao buscar livros."));
@@ -118,10 +153,20 @@ export function usePublisherAdminController() {
         }
     }
 
-    async function handleUpdateBook(event: FormEvent<HTMLFormElement>) {
+    /**
+     * Submete atualização dos dados de um livro já existente.
+     *
+     * @param event Evento de submit do formulário.
+     * @returns Promise<void>
+     */
+    async function handleUpdateBook(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
         if (!editForm.id) {
             setError("Selecione um livro para editar.");
+            return;
+        }
+        if (!token) {
+            setError("Sessão expirada. Faça login novamente.");
             return;
         }
 
@@ -142,17 +187,27 @@ export function usePublisherAdminController() {
                 review: editForm.review,
             };
 
-            await updateBook(apiBaseUrl, accessToken, editForm.id, payload);
+            await updateBook(token, editForm.id, payload);
             await loadBooks();
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao atualizar livro."));
         }
     }
 
-    async function handleCreateBook(event: FormEvent<HTMLFormElement>) {
+    /**
+     * Submete cadastro de novo livro com upload de arquivo.
+     *
+     * @param event Evento de submit do formulário.
+     * @returns Promise<void>
+     */
+    async function handleCreateBook(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
         if (!bookFile) {
             setError("Selecione o arquivo do livro.");
+            return;
+        }
+        if (!token) {
+            setError("Sessão expirada. Faça login novamente.");
             return;
         }
 
@@ -160,6 +215,9 @@ export function usePublisherAdminController() {
         try {
             const base64Content = await readFileAsBase64(bookFile);
             const { fileName, fileExtension } = getFileParts(bookFile);
+            const resolvedLibraryId = createForm.library
+                ? Number(createForm.library)
+                : library?.id;
 
             const payload = {
                 title: createForm.title,
@@ -174,12 +232,12 @@ export function usePublisherAdminController() {
                 language: createForm.language,
                 review: createForm.review,
                 image_url: createForm.image_url,
-                library: createForm.library ? Number(createForm.library) : undefined,
+                library: resolvedLibraryId,
                 base64_content: base64Content,
                 file_extension: fileExtension,
             };
 
-            await createBook(apiBaseUrl, accessToken, payload);
+            await createBook(token, payload);
             setCreateForm(emptyBookForm);
             setBookFile(null);
             await loadBooks();
@@ -188,11 +246,25 @@ export function usePublisherAdminController() {
         }
     }
 
-    async function handleGeneratePurchaseLink(event: FormEvent<HTMLFormElement>) {
+    /**
+     * Gera um link assinado de compra/empréstimo licenciado.
+     *
+     * @param event Evento de submit do formulário.
+     * @returns Promise<void>
+     */
+    async function handleGeneratePurchaseLink(
+        event: FormEvent<HTMLFormElement>
+    ): Promise<void> {
         event.preventDefault();
 
-        if (!publisherId || !purchaseBookId || !purchaseEmail || !purchasePassword || !purchaseHint) {
+        const resolvedPublisherId = publisherId || publisher?.id || "";
+
+        if (!resolvedPublisherId || !purchaseBookId || !purchaseEmail || !purchasePassword || !purchaseHint) {
             setError("Preencha todos os campos do link de compra.");
+            return;
+        }
+        if (!token) {
+            setError("Sessão expirada. Faça login novamente.");
             return;
         }
 
@@ -200,14 +272,14 @@ export function usePublisherAdminController() {
         try {
             const passHash = await sha256Hex(purchasePassword);
             const payload = {
-                publisher: publisherId,
+                publisher: resolvedPublisherId,
                 book_id: purchaseBookId,
                 user_email: purchaseEmail,
                 pass_hint: purchaseHint,
                 pass_hash: passHash,
             };
 
-            const data = await generatePurchaseLink(apiBaseUrl, accessToken, payload);
+            const data = await generatePurchaseLink(token, payload);
             if (!data.purchase_link) {
                 throw new Error("Resposta inválida ao gerar link.");
             }
@@ -226,7 +298,13 @@ export function usePublisherAdminController() {
         }
     }
 
-    async function handleCopyLink(link: string) {
+    /**
+     * Copia um link gerado para a área de transferência.
+     *
+     * @param link URL a ser copiada.
+     * @returns Promise<void>
+     */
+    async function handleCopyLink(link: string): Promise<void> {
         try {
             await navigator.clipboard.writeText(link);
         } catch {
@@ -236,8 +314,6 @@ export function usePublisherAdminController() {
 
     return {
         state: {
-            apiBaseUrl,
-            accessToken,
             books,
             isLoading,
             error,
@@ -254,8 +330,6 @@ export function usePublisherAdminController() {
             bookOptions,
         },
         actions: {
-            setApiBaseUrl,
-            setAccessToken,
             setSelectedBook,
             setEditForm,
             setCreateForm,
@@ -273,4 +347,3 @@ export function usePublisherAdminController() {
         },
     };
 }
-

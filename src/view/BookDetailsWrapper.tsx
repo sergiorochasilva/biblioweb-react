@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button, Card, Layout, Result, Spin, Typography } from "antd";
-import { fetchBookDetails } from "../service/BookService";
+import { DEFAULT_PUBLIC_LIBRARY_ID, fetchBookDetails } from "../service/BookService";
 import BookDetailsView from "./BookDetailsView";
 import { Book } from "../model/Book";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function BookDetailsWrapper() {
     const navigate = useNavigate();
@@ -11,15 +12,17 @@ export default function BookDetailsWrapper() {
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
     const { Content } = Layout;
+    const { token, library } = useAuth();
 
     useEffect(() => {
         if (id) {
             setLoading(true);
-            fetchBookDetails(id)
+            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+            fetchBookDetails(id, libraryId, token || undefined)
                 .then((b) => setBook(b))
                 .finally(() => setLoading(false));
         }
-    }, [id]);
+    }, [id, token, library]);
 
     if (loading) {
         return (

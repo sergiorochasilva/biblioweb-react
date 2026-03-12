@@ -1,10 +1,12 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Card, Descriptions, Divider, Image, Layout, Row, Col, Typography } from "antd";
+import { App as AntdApp, Button, Card, Descriptions, Divider, Image, Layout, Row, Col, Typography } from "antd";
 import book_icon from "../assets/book_icon.png";
-import { lendBook } from "../service/BookService";
+import { DEFAULT_PUBLIC_LIBRARY_ID, lendBook } from "../service/BookService";
 import "../styles/BookDetailsView.css";
+import { useAuth } from "../contexts/AuthContext";
+import { savePendingLendAction } from "../service/postLoginAction";
 
 interface BookDetailsViewProps {
     id: string;
@@ -34,8 +36,11 @@ export default function BookDetailsView({
     image_url
 }: BookDetailsViewProps) {
     const navigate = useNavigate();
+    const location = useLocation();
     const [loadingLendBook, setLoadingLendBook] = useState(false);
     const { Content } = Layout;
+    const { token, library } = useAuth();
+    const { message } = AntdApp.useApp();
 
     return (
         <Layout className="page-shell">
@@ -81,9 +86,26 @@ export default function BookDetailsView({
                                 className="book-details-ler"
                                 loading={loadingLendBook}
                                 onClick={async () => {
+                                    const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+                                    if (!token) {
+                                        const returnTo = `${location.pathname}${location.search}`;
+                                        savePendingLendAction({
+                                            type: "lend",
+                                            bookId: id,
+                                            libraryId,
+                                            returnTo,
+                                        });
+                                        navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                                        return;
+                                    }
                                     setLoadingLendBook(true);
-                                    await lendBook(id);
-                                    setLoadingLendBook(false);
+                                    try {
+                                        await lendBook(id, libraryId, token);
+                                    } catch (error: any) {
+                                        message.error(error?.message || "Erro ao solicitar empréstimo.");
+                                    } finally {
+                                        setLoadingLendBook(false);
+                                    }
                                 }}
                             >
                                 Ler agora

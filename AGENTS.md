@@ -84,3 +84,25 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
 - [ ] Lint executado (quando aplicavel) ou justificativa registrada.
 - [ ] Documentacao relevante atualizada (`README`/notas tecnicas).
 - [ ] Quando houve descoberta de lacuna de processo, `AGENTS.md`/`skills` foram atualizados.
+
+## Memoria operacional do agente
+Use `agent-learnings.md` como base de memoria incremental do repositorio.
+
+Registrar quando houver:
+- decisao tecnica nova recorrente;
+- divergencia relevante entre documentacao e implementacao;
+- descoberta de padrao/caminho que reduza retrabalho;
+- preferencia explicita do usuario que deve virar padrao.
+
+Formato minimo por entrada em `agent-learnings.md`:
+- Data (`YYYY-MM-DD`)
+- Contexto (task/feature)
+- Descoberta
+- Evidencias (arquivos/caminhos)
+- Acao aplicada
+- Impacto esperado
+
+## Regra de consolidacao de recorrencia
+Quando a mesma orientacao se repetir em tarefas similares:
+- promover para `AGENTS.md` quando for regra geral do repositorio;
+- criar/atualizar skill em `skills/` quando for fluxo especializado.

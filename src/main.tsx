@@ -22,7 +22,7 @@ createRoot(document.getElementById("root")!).render(
     >
       <AntdApp>
         <AuthProvider>
-          <BrowserRouter basename="/biblioweb-react">
+          <BrowserRouter basename={import.meta.env.BASE_URL}>
             <App />
           </BrowserRouter>
         </AuthProvider>

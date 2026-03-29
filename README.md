@@ -1,18 +1,15 @@
-# CiclioWeb - React
+# Biblioweb - React
 
-## Deploy no GitHub Pages
+## Deploy em producao
 
-Após as alterações prontas:
+O deploy de producao é feito via `biblioweb-infra` (Ansible).
+O servidor faz `git clone` deste repositorio usando uma deploy key.
+Consulte `biblioweb-infra/README.md` para o setup completo.
 
-1. Rode o build:
-> npm run build
+Fluxo esperado:
 
-2. Suba as alterações
-> git add .
-> git commit -am "Descrição commit"
-> git push origin main
-
-3. Aguarde o git actions
+1. Suba as alterações no `main`.
+2. Execute o deploy no `biblioweb-infra`.
 
 ## React + TypeScript + Vite
 

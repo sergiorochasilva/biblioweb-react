@@ -84,6 +84,7 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
 - [ ] Lint executado (quando aplicavel) ou justificativa registrada.
 - [ ] Documentacao relevante atualizada (`README`/notas tecnicas).
 - [ ] Quando houve descoberta de lacuna de processo, `AGENTS.md`/`skills` foram atualizados.
+- [ ] Varrida final em `agent-learnings.md` executada; entradas nao consolidadas com mais de 14 dias foram expurgadas, e as ainda uteis foram consolidadas.
 
 ## Memoria operacional do agente
 Use `agent-learnings.md` como base de memoria incremental do repositorio.
@@ -102,7 +103,12 @@ Formato minimo por entrada em `agent-learnings.md`:
 - Acao aplicada
 - Impacto esperado
 
-## Regra de consolidacao de recorrencia
+## Regra de consolidacao e higiene de recorrencia
 Quando a mesma orientacao se repetir em tarefas similares:
 - promover para `AGENTS.md` quando for regra geral do repositorio;
 - criar/atualizar skill em `skills/` quando for fluxo especializado.
+
+Ao final de todo processo/tarefa, executar uma varrida completa em `agent-learnings.md`:
+- remover entradas que nao sao mais necessarias;
+- expurgar entradas com mais de 14 dias que ainda nao foram consolidadas em `AGENTS.md` ou em alguma skill;
+- quando uma entrada antiga ainda for util, consolidar antes (em `AGENTS.md`/skill) e depois reduzir/remover do registro operacional.

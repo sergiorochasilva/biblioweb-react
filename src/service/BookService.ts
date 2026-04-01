@@ -2,6 +2,7 @@ import { Book } from "../model/Book";
 import { api, API_BASE_URL, buildAuthHeaders } from "./api";
 
 export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
+const DEFAULT_BOOK_FIELDS = "review,type,external_url,file_name";
 
 /**
  * Normaliza respostas da API que podem vir como lista direta
@@ -31,7 +32,7 @@ export async function fetchRecentPublications(
     libraryId: number,
     token?: string
 ): Promise<Book[]> {
-    const endpoint = `/libraries_books?library=${libraryId}&fields=review`;
+    const endpoint = `/libraries_books?library=${libraryId}&fields=${DEFAULT_BOOK_FIELDS}`;
     const data = await api.get<any>(endpoint, token);
     return normalizeBooksResponse(data);
 }
@@ -67,7 +68,7 @@ export async function fetchSearchResults(
     libraryId: number,
     token?: string
 ): Promise<Book[]> {
-    const endpoint = `/libraries_books?library=${libraryId}&search=${encodeURIComponent(query)}&fields=review`;
+    const endpoint = `/libraries_books?library=${libraryId}&search=${encodeURIComponent(query)}&fields=${DEFAULT_BOOK_FIELDS}`;
     const data = await api.get<any>(endpoint, token);
     return normalizeBooksResponse(data);
 }

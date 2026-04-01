@@ -24,6 +24,8 @@ type BookFormState = {
     publisher: string;
     author: string;
     subject: string;
+    type: string;
+    external_url: string;
     file_name: string;
     edition: string;
     year: string;
@@ -40,6 +42,8 @@ const emptyBookForm: BookFormState = {
     publisher: "",
     author: "",
     subject: "",
+    type: "",
+    external_url: "",
     file_name: "",
     edition: "",
     year: "",
@@ -105,6 +109,8 @@ export function usePublisherAdminController() {
             publisher: selectedBook.publisher || "",
             author: selectedBook.author || "",
             subject: selectedBook.subject || "",
+            type: selectedBook.type || "",
+            external_url: selectedBook.external_url || "",
             file_name: selectedBook.file_name || "",
             edition: selectedBook.edition || "",
             year: selectedBook.year || "",
@@ -178,6 +184,8 @@ export function usePublisherAdminController() {
                 publisher: editForm.publisher,
                 author: editForm.author,
                 subject: editForm.subject,
+                type: editForm.type,
+                external_url: editForm.external_url,
                 file_name: editForm.file_name,
                 image_url: editForm.image_url,
                 edition: editForm.edition,
@@ -226,6 +234,8 @@ export function usePublisherAdminController() {
                 publisher: createForm.publisher,
                 author: createForm.author,
                 subject: createForm.subject,
+                type: createForm.type,
+                external_url: createForm.external_url,
                 file_name: createForm.file_name || fileName,
                 edition: createForm.edition,
                 year: createForm.year,

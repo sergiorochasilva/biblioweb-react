@@ -6,6 +6,8 @@ export type UpdateBookPayload = {
     publisher: string;
     author: string;
     subject: string;
+    type?: string;
+    external_url?: string;
     file_name: string;
     image_url: string;
     edition: string;

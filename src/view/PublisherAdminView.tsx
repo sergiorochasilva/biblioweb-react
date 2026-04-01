@@ -174,6 +174,31 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
+                                        <label className="field-label">Tipo</label>
+                                        <Select
+                                            placeholder="Selecione"
+                                            options={[
+                                                { value: "protected", label: "Protegido" },
+                                                { value: "free", label: "Domínio Público" },
+                                                { value: "external", label: "Externo" },
+                                            ]}
+                                            value={state.editForm.type || undefined}
+                                            onChange={(value) =>
+                                                actions.setEditForm((prev) => ({ ...prev, type: value }))
+                                            }
+                                            allowClear
+                                        />
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="field-label">URL externa</label>
+                                        <Input
+                                            value={state.editForm.external_url}
+                                            onChange={(event) =>
+                                                actions.setEditForm((prev) => ({ ...prev, external_url: event.target.value }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="form-field">
                                         <label className="field-label">Nome do arquivo</label>
                                         <Input
                                             value={state.editForm.file_name}
@@ -298,6 +323,31 @@ export default function PublisherAdminView() {
                                             value={state.createForm.subject}
                                             onChange={(event) =>
                                                 actions.setCreateForm((prev) => ({ ...prev, subject: event.target.value }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="field-label">Tipo</label>
+                                        <Select
+                                            placeholder="Selecione"
+                                            options={[
+                                                { value: "protected", label: "Protegido" },
+                                                { value: "free", label: "Domínio Público" },
+                                                { value: "external", label: "Externo" },
+                                            ]}
+                                            value={state.createForm.type || undefined}
+                                            onChange={(value) =>
+                                                actions.setCreateForm((prev) => ({ ...prev, type: value }))
+                                            }
+                                            allowClear
+                                        />
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="field-label">URL externa</label>
+                                        <Input
+                                            value={state.createForm.external_url}
+                                            onChange={(event) =>
+                                                actions.setCreateForm((prev) => ({ ...prev, external_url: event.target.value }))
                                             }
                                         />
                                     </div>

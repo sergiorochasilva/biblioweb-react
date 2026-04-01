@@ -19,6 +19,9 @@ interface BookDetailsViewProps {
     pages: string;
     language: string;
     review: string;
+    type?: string;
+    external_url?: string;
+    file_name?: string;
     image_url?: string;
 }
 
@@ -33,7 +36,10 @@ export default function BookDetailsView({
     pages,
     language,
     review,
-    image_url
+    type: bookType,
+    external_url,
+    file_name,
+    image_url,
 }: BookDetailsViewProps) {
     const navigate = useNavigate();
     const location = useLocation();
@@ -41,6 +47,17 @@ export default function BookDetailsView({
     const { Content } = Layout;
     const { token, library, getAccessToken } = useAuth();
     const { message } = AntdApp.useApp();
+    const freeBooksBaseUrl = (import.meta.env.VITE_BOOKS_BASE_URL || "https://storage.googleapis.com/fronesis_bucket/").trim();
+    const normalizedFreeBooksBaseUrl = freeBooksBaseUrl.endsWith("/")
+        ? freeBooksBaseUrl
+        : `${freeBooksBaseUrl}/`;
+
+    function openInNewTab(url: string) {
+        const newWindow = window.open(url, "_blank", "noopener,noreferrer");
+        if (!newWindow) {
+            message.error("Não foi possível abrir a nova aba. Verifique o bloqueio de pop-ups.");
+        }
+    }
 
     return (
         <Layout className="page-shell">
@@ -86,6 +103,23 @@ export default function BookDetailsView({
                                 className="book-details-ler"
                                 loading={loadingLendBook}
                                 onClick={async () => {
+                                    const resolvedType = (bookType || "protected").toLowerCase();
+                                    if (resolvedType === "external") {
+                                        if (!external_url) {
+                                            message.error("URL externa não cadastrada para este livro.");
+                                            return;
+                                        }
+                                        openInNewTab(external_url);
+                                        return;
+                                    }
+                                    if (resolvedType === "free") {
+                                        if (!file_name) {
+                                            message.error("Arquivo não cadastrado para este livro.");
+                                            return;
+                                        }
+                                        openInNewTab(`${normalizedFreeBooksBaseUrl}${file_name}`);
+                                        return;
+                                    }
                                     const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
                                     if (!token) {
                                         const returnTo = `${location.pathname}${location.search}`;

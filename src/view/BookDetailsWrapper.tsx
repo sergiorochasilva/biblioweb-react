@@ -12,17 +12,37 @@ export default function BookDetailsWrapper() {
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
     const { Content } = Layout;
-    const { token, library } = useAuth();
+    const { getAccessToken, library } = useAuth();
 
     useEffect(() => {
+        let isActive = true;
+
         if (id) {
             setLoading(true);
             const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
-            fetchBookDetails(id, libraryId, token || undefined)
-                .then((b) => setBook(b))
-                .finally(() => setLoading(false));
+            (async () => {
+                try {
+                    const accessToken = await getAccessToken();
+                    const loadedBook = await fetchBookDetails(
+                        id,
+                        libraryId,
+                        accessToken || undefined
+                    );
+                    if (isActive) {
+                        setBook(loadedBook);
+                    }
+                } finally {
+                    if (isActive) {
+                        setLoading(false);
+                    }
+                }
+            })();
         }
-    }, [id, token, library]);
+
+        return () => {
+            isActive = false;
+        };
+    }, [id, getAccessToken, library]);
 
     if (loading) {
         return (

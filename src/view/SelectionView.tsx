@@ -18,7 +18,7 @@ export default function SelectionView() {
     const [form] = Form.useForm();
 
     const navigate = useNavigate();
-    const { token, setPublisher, setLibrary, setProfile } = useAuth();
+    const { getAccessToken, setPublisher, setLibrary, setProfile } = useAuth();
     const { message } = AntdApp.useApp();
 
     const hasPublishers = (profileData?.publishers?.length || 0) > 0;
@@ -46,22 +46,25 @@ export default function SelectionView() {
     );
 
     useEffect(() => {
-        if (!token) {
-            setIsLoading(false);
-            navigate("/login");
-        }
-    }, [token, navigate]);
+        let isActive = true;
 
-    useEffect(() => {
         /**
          * Carrega o profile do usuário autenticado e aplica regras de auto seleção.
          *
          * @returns Promise<void>
          */
         const fetchProfile = async (): Promise<void> => {
-            if (!token) return;
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                if (isActive) {
+                    setIsLoading(false);
+                    navigate("/login");
+                }
+                return;
+            }
             try {
-                const data = await api.get<ProfileData>("/profile", token);
+                const data = await api.get<ProfileData>("/profile", accessToken);
+                if (!isActive) return;
                 setProfileData(data);
                 setProfile(data);
 
@@ -88,16 +91,22 @@ export default function SelectionView() {
                     return;
                 }
             } catch (err: any) {
-                message.error(err.message || "Erro ao carregar perfil.");
+                if (isActive) {
+                    message.error(err.message || "Erro ao carregar perfil.");
+                }
             } finally {
-                setIsLoading(false);
+                if (isActive) {
+                    setIsLoading(false);
+                }
             }
         };
 
-        if (token) {
-            fetchProfile();
-        }
-    }, [token, navigate, setPublisher, setLibrary, setProfile, form, message]);
+        fetchProfile();
+
+        return () => {
+            isActive = false;
+        };
+    }, [getAccessToken, navigate, setPublisher, setLibrary, setProfile, form, message]);
 
     /**
      * Persiste a seleção de ambiente no contexto e segue para a home.

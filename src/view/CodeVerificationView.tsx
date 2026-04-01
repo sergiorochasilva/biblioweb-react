@@ -19,7 +19,7 @@ export default function CodeVerificationView() {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { setToken } = useAuth();
+    const { setSessionFromResponse } = useAuth();
     const { message } = AntdApp.useApp();
     const email = sessionStorage.getItem("login_email");
     const nextPath = searchParams.get("next");
@@ -39,10 +39,12 @@ export default function CodeVerificationView() {
     const handleSubmit = async (values: { code: string }): Promise<void> => {
         setIsLoading(true);
         try {
-            const response: any = await api.post("/login", { email, code: values.code });
-            const accessToken = response?.access_token;
+            const response: any = await api.post("/token", {
+                type: "code",
+                code: values.code,
+            });
+            const accessToken = setSessionFromResponse(response);
             if (accessToken) {
-                setToken(accessToken);
                 const pendingLendAction = getPendingLendAction();
                 if (pendingLendAction) {
                     clearPendingLendAction();

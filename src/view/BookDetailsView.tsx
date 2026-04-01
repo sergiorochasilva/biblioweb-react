@@ -39,7 +39,7 @@ export default function BookDetailsView({
     const location = useLocation();
     const [loadingLendBook, setLoadingLendBook] = useState(false);
     const { Content } = Layout;
-    const { token, library } = useAuth();
+    const { token, library, getAccessToken } = useAuth();
     const { message } = AntdApp.useApp();
 
     return (
@@ -100,7 +100,19 @@ export default function BookDetailsView({
                                     }
                                     setLoadingLendBook(true);
                                     try {
-                                        await lendBook(id, libraryId, token);
+                                        const accessToken = await getAccessToken({ redirectOnFail: false });
+                                        if (!accessToken) {
+                                            const returnTo = `${location.pathname}${location.search}`;
+                                            savePendingLendAction({
+                                                type: "lend",
+                                                bookId: id,
+                                                libraryId,
+                                                returnTo,
+                                            });
+                                            navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                                            return;
+                                        }
+                                        await lendBook(id, libraryId, accessToken);
                                     } catch (error: any) {
                                         message.error(error?.message || "Erro ao solicitar empréstimo.");
                                     } finally {

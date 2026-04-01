@@ -13,20 +13,33 @@ export default function SearchView() {
     const [searchResults, setSearchResults] = useState<Book[]>([]);
     const [searchParams] = useSearchParams();
     const query = searchParams.get("query") || ""; // "" se não existir
-    const { token, library } = useAuth();
+    const { getAccessToken, library } = useAuth();
 
     useEffect(() => {
+        let isActive = true;
+
         async function loadSearchResults() {
             try {
                 const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
-                const books = await fetchSearchResults(query, libraryId, token || undefined);
-                setSearchResults(books);
+                const accessToken = await getAccessToken();
+                const books = await fetchSearchResults(
+                    query,
+                    libraryId,
+                    accessToken || undefined
+                );
+                if (isActive) {
+                    setSearchResults(books);
+                }
             } catch (error) {
                 console.error("Failed to load search results", error);
             }
         }
         loadSearchResults();
-    }, [query, token, library]);
+
+        return () => {
+            isActive = false;
+        };
+    }, [query, getAccessToken, library]);
 
     const { Content } = Layout;
 

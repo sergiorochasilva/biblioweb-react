@@ -71,7 +71,7 @@ function normalizeErrorMessage(error: unknown, fallback: string) {
  * @returns Objeto com estado da tela e ações para CRUD de livros e geração de links.
  */
 export function usePublisherAdminController() {
-    const { token, publisher, library } = useAuth();
+    const { getAccessToken, isAuthenticated, publisher, library } = useAuth();
     const [books, setBooks] = useState<Book[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
@@ -89,10 +89,10 @@ export function usePublisherAdminController() {
     const bookOptions = useMemo(() => books.filter((book) => book.id), [books]);
 
     useEffect(() => {
-        if (token) {
+        if (isAuthenticated) {
             loadBooks();
         }
-    }, [token]);
+    }, [isAuthenticated]);
 
     useEffect(() => {
         if (!selectedBook) {
@@ -136,15 +136,15 @@ export function usePublisherAdminController() {
      * @returns Promise<void>
      */
     async function loadBooks(): Promise<void> {
-        if (!token) {
-            setError("Sessão expirada. Faça login novamente.");
-            return;
-        }
-
         setIsLoading(true);
         setError("");
         try {
-            const result = await fetchBooks(token);
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+            const result = await fetchBooks(accessToken);
             setBooks(result);
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao buscar livros."));
@@ -165,13 +165,14 @@ export function usePublisherAdminController() {
             setError("Selecione um livro para editar.");
             return;
         }
-        if (!token) {
-            setError("Sessão expirada. Faça login novamente.");
-            return;
-        }
 
         setError("");
         try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
             const payload = {
                 title: editForm.title,
                 publisher: editForm.publisher,
@@ -187,7 +188,7 @@ export function usePublisherAdminController() {
                 review: editForm.review,
             };
 
-            await updateBook(token, editForm.id, payload);
+            await updateBook(accessToken, editForm.id, payload);
             await loadBooks();
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao atualizar livro."));
@@ -206,13 +207,14 @@ export function usePublisherAdminController() {
             setError("Selecione o arquivo do livro.");
             return;
         }
-        if (!token) {
-            setError("Sessão expirada. Faça login novamente.");
-            return;
-        }
 
         setError("");
         try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
             const base64Content = await readFileAsBase64(bookFile);
             const { fileName, fileExtension } = getFileParts(bookFile);
             const resolvedLibraryId = createForm.library
@@ -237,7 +239,7 @@ export function usePublisherAdminController() {
                 file_extension: fileExtension,
             };
 
-            await createBook(token, payload);
+            await createBook(accessToken, payload);
             setCreateForm(emptyBookForm);
             setBookFile(null);
             await loadBooks();
@@ -263,13 +265,13 @@ export function usePublisherAdminController() {
             setError("Preencha todos os campos do link de compra.");
             return;
         }
-        if (!token) {
-            setError("Sessão expirada. Faça login novamente.");
-            return;
-        }
-
         setError("");
         try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
             const passHash = await sha256Hex(purchasePassword);
             const payload = {
                 publisher: resolvedPublisherId,
@@ -279,7 +281,7 @@ export function usePublisherAdminController() {
                 pass_hash: passHash,
             };
 
-            const data = await generatePurchaseLink(token, payload);
+            const data = await generatePurchaseLink(accessToken, payload);
             if (!data.purchase_link) {
                 throw new Error("Resposta inválida ao gerar link.");
             }

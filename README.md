@@ -11,6 +11,27 @@ Fluxo esperado:
 1. Suba as alterações no `main`.
 2. Execute o deploy no `biblioweb-infra`.
 
+## Autenticacao e refresh (stateless)
+
+O front-end mantém `access_token`, `refresh_token` e expiração no `localStorage`.
+Quando faltam 30 segundos (ou menos) para o token expirar, o app chama `POST /token`
+com `{ "type": "token", "refresh_token": "<refresh_token>" }` para renovar a sessão.
+O backend retorna novos tokens e expirações. Os refresh tokens são JWTs assinados
+no servidor (stateless).
+
+O envio do código de login continua em `POST /login` (apenas `email`).
+A troca do código por tokens ocorre em `POST /token` com
+`{ "type": "code", "code": "<login_code>" }`.
+
+### Revogacao total
+
+Para invalidar todos os tokens de um usuário, atualize a coluna
+`user_account.revoke_tokens_before`:
+
+```sql
+update user_account set revoke_tokens_before = now() where id = <user_id>;
+```
+
 ## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

@@ -14,23 +14,35 @@ export default function HomeView() {
     const { handleScroll } = useCarousel();
     const navigate = useNavigate();
     const secondCarouselRef = useRef<HTMLDivElement>(null);
-    const { token, library } = useAuth();
+    const { getAccessToken, library } = useAuth();
 
     const [recentPublications, setRecentPublications] = useState<Book[]>([]);
 
     useEffect(() => {
+        let isActive = true;
+
         async function loadRecentPublications() {
             try {
                 const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
-                const books = await fetchRecentPublications(libraryId, token || undefined);
-                setRecentPublications(books);
+                const accessToken = await getAccessToken();
+                const books = await fetchRecentPublications(
+                    libraryId,
+                    accessToken || undefined
+                );
+                if (isActive) {
+                    setRecentPublications(books);
+                }
             } catch (error) {
                 console.error("Failed to load recent publications", error);
             }
         }
 
         loadRecentPublications();
-    }, [token, library]);
+
+        return () => {
+            isActive = false;
+        };
+    }, [getAccessToken, library]);
 
     const { Content } = Layout;
 

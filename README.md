@@ -32,6 +32,20 @@ Para invalidar todos os tokens de um usuário, atualize a coluna
 update user_account set revoke_tokens_before = now() where id = <user_id>;
 ```
 
+## Painel administrativo global
+
+Foi adicionada a rota protegida `"/admin"` para manutenção global do sistema:
+
+- Abas separadas de **Livros** e **Usuários** (um card principal por aba).
+- CRUD de livros em modal único (criar/editar no mesmo formulário).
+- Busca e filtros de livros por texto, **nome da editora** e biblioteca.
+- Paginação por `next` com botão **Carregar mais** na listagem.
+- CRUD de usuários em modal único.
+- Botão **Atualizar** contextual, respeitando a aba ativa.
+- Validação local com feedback imediato em modal (toaster + destaque visual de campo inválido).
+
+A rota `"/publisher-admin"` continua disponível para o fluxo legado da editora.
+
 ## React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

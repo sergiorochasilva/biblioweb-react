@@ -22,6 +22,19 @@ function normalizeBooksResponse(data: any): Book[] {
 }
 
 /**
+ * Normaliza respostas unitárias de livro.
+ *
+ * @param data Resposta crua da API.
+ * @returns Livro ou null quando payload inválido.
+ */
+function normalizeBookResponse(data: unknown): Book | null {
+    if (data && typeof data === "object" && !Array.isArray(data) && "id" in data) {
+        return data as Book;
+    }
+    return null;
+}
+
+/**
  * Busca publicações recentes de uma biblioteca.
  *
  * @param libraryId ID da biblioteca usada na consulta.
@@ -41,18 +54,22 @@ export async function fetchRecentPublications(
  * Busca detalhes de um livro por ID.
  *
  * @param id ID do livro.
- * @param libraryId ID da biblioteca usada na consulta.
+ * @param _libraryId Parâmetro mantido por compatibilidade com chamadas existentes.
  * @param token Token JWT opcional para cenários autenticados.
  * @returns Livro encontrado ou null quando não existir na resposta.
  */
 export async function fetchBookDetails(
     id: string,
-    libraryId: number,
+    _libraryId: number,
     token?: string
 ): Promise<Book | null> {
-    const allBooks = await fetchRecentPublications(libraryId, token);
-    const book = allBooks.find((b) => String(b.id) === String(id));
-    return book || null;
+    const endpoint = `/libraries_books/${id}?fields=${DEFAULT_BOOK_FIELDS}`;
+    try {
+        const data = await api.get<unknown>(endpoint, token);
+        return normalizeBookResponse(data);
+    } catch {
+        return null;
+    }
 }
 
 /**

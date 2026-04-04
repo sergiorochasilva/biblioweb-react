@@ -1,5 +1,5 @@
 import { Book } from "../model/Book";
-import { api } from "./api";
+import { api, buildAuthHeaders } from "./api";
 
 export type UpdateBookPayload = {
     title: string;
@@ -111,8 +111,32 @@ export async function sha256Hex(text: string): Promise<string> {
  * @returns Lista de livros.
  */
 export async function fetchBooks(token: string): Promise<Book[]> {
-    const data = await api.get<any>("/books", token);
-    return normalizeBooksResponse(data);
+    const allBooks: Book[] = [];
+
+    let data = await api.get<unknown>("/books?limit=200", token);
+    let books = normalizeBooksResponse(data);
+    allBooks.push(...books);
+
+    while (data && typeof data === "object" && "next" in data) {
+        const next = (data as { next?: unknown }).next;
+        if (typeof next !== "string" || !next) {
+            break;
+        }
+
+        const response = await fetch(next, {
+            method: "GET",
+            headers: buildAuthHeaders(token),
+        });
+        if (!response.ok) {
+            break;
+        }
+
+        data = (await response.json()) as unknown;
+        books = normalizeBooksResponse(data);
+        allBooks.push(...books);
+    }
+
+    return allBooks;
 }
 
 /**

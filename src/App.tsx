@@ -3,6 +3,7 @@ import HomeView from "./view/HomeView";
 import BookDetailsWrapper from "./view/BookDetailsWrapper";
 import SearchView from "./view/SearchView";
 import PublisherAdminView from "./view/PublisherAdminView";
+import AdminView from "./view/AdminView";
 import LoginView from "./view/LoginView";
 import CodeVerificationView from "./view/CodeVerificationView";
 import SelectionView from "./view/SelectionView";
@@ -20,6 +21,7 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
                 <Route path="/publisher-admin" element={<PublisherAdminView />} />
+                <Route path="/admin" element={<AdminView />} />
             </Route>
         </Routes>
     );

@@ -121,6 +121,22 @@ export const api = {
 
         return handleResponse<T>(response);
     },
+
+    /**
+     * Executa requisição DELETE.
+     *
+     * @param endpoint Caminho relativo da API.
+     * @param token Token JWT opcional.
+     * @returns Payload tipado da resposta.
+     */
+    delete: async <T>(endpoint: string, token?: string): Promise<T> => {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            method: "DELETE",
+            headers: buildHeaders(token),
+        });
+
+        return handleResponse<T>(response);
+    },
 };
 
 /**

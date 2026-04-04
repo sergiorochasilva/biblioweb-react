@@ -14,7 +14,7 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
   - Rotas: `src/App.tsx`
 
 ## 3) Regras obrigatorias de autenticacao e acesso
-- Apenas `"/publisher-admin"` deve ser rota protegida.
+- `"/publisher-admin"` e `"/admin"` devem ser rotas protegidas.
 - Home, busca e detalhes de livro devem funcionar sem login.
 - Fluxo de login:
   - `"/login"`: informar e-mail.
@@ -75,7 +75,7 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
 
 ## 7) Checklist final (obrigatorio)
 - [ ] Requisito funcional implementado.
-- [ ] Rota `"/publisher-admin"` continua protegida.
+- [ ] Rotas `"/publisher-admin"` e `"/admin"` continuam protegidas.
 - [ ] Rotas publicas continuam acessiveis sem login.
 - [ ] Fluxo de emprestimo pos-login funciona ponta a ponta.
 - [ ] Contratos de API preservados.

@@ -13,5 +13,6 @@ export interface Book {
     pages: string;
     language: string;
     review: string;
-    image_url: string;
+    image_url?: string | null;
+    access_count?: number;
 }

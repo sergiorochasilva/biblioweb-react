@@ -7,6 +7,8 @@ import AdminView from "./view/AdminView";
 import LoginView from "./view/LoginView";
 import CodeVerificationView from "./view/CodeVerificationView";
 import SelectionView from "./view/SelectionView";
+import CategoriesView from "./view/CategoriesView";
+import ProfileView from "./view/ProfileView";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
@@ -18,8 +20,10 @@ export default function App() {
             <Route path="/" element={<HomeView />} />
             <Route path="/book/:id" element={<BookDetailsWrapper />} />
             <Route path="/search" element={<SearchView />} />
+            <Route path="/categories" element={<CategoriesView />} />
 
             <Route element={<ProtectedRoute />}>
+                <Route path="/profile" element={<ProfileView />} />
                 <Route path="/publisher-admin" element={<PublisherAdminView />} />
                 <Route path="/admin" element={<AdminView />} />
             </Route>

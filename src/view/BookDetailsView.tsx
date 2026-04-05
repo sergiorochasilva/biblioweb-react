@@ -3,10 +3,11 @@ import { useState } from "react";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { App as AntdApp, Button, Card, Descriptions, Divider, Image, Layout, Row, Col, Typography } from "antd";
 import book_icon from "../assets/book_icon.png";
-import { DEFAULT_PUBLIC_LIBRARY_ID, lendBook } from "../service/BookService";
+import { DEFAULT_PUBLIC_LIBRARY_ID, lendBook, registerBookAccess } from "../service/BookService";
 import "../styles/BookDetailsView.css";
 import { useAuth } from "../contexts/AuthContext";
 import { savePendingLendAction } from "../service/postLoginAction";
+import HeaderView from "./HeaderView";
 
 interface BookDetailsViewProps {
     id: string;
@@ -22,7 +23,7 @@ interface BookDetailsViewProps {
     type?: string;
     external_url?: string;
     file_name?: string;
-    image_url?: string;
+    image_url?: string | null;
 }
 
 export default function BookDetailsView({
@@ -61,6 +62,7 @@ export default function BookDetailsView({
 
     return (
         <Layout className="page-shell">
+            <HeaderView />
             <div className="details-hero glass-panel">
                 <Button
                     className="back-button"
@@ -104,6 +106,18 @@ export default function BookDetailsView({
                                 loading={loadingLendBook}
                                 onClick={async () => {
                                     const resolvedType = (bookType || "protected").toLowerCase();
+                                    let accessToken: string | undefined = token || undefined;
+                                    if (token) {
+                                        const refreshedToken = await getAccessToken({ redirectOnFail: false });
+                                        accessToken = refreshedToken || token;
+                                    }
+
+                                    try {
+                                        await registerBookAccess(id, accessToken);
+                                    } catch (error) {
+                                        console.warn("Failed to register book access", error);
+                                    }
+
                                     if (resolvedType === "external") {
                                         if (!external_url) {
                                             message.error("URL externa não cadastrada para este livro.");
@@ -134,8 +148,8 @@ export default function BookDetailsView({
                                     }
                                     setLoadingLendBook(true);
                                     try {
-                                        const accessToken = await getAccessToken({ redirectOnFail: false });
-                                        if (!accessToken) {
+                                        const lendingToken = await getAccessToken({ redirectOnFail: false });
+                                        if (!lendingToken) {
                                             const returnTo = `${location.pathname}${location.search}`;
                                             savePendingLendAction({
                                                 type: "lend",
@@ -146,9 +160,13 @@ export default function BookDetailsView({
                                             navigate(`/login?next=${encodeURIComponent(returnTo)}`);
                                             return;
                                         }
-                                        await lendBook(id, libraryId, accessToken);
-                                    } catch (error: any) {
-                                        message.error(error?.message || "Erro ao solicitar empréstimo.");
+                                        await lendBook(id, libraryId, lendingToken);
+                                    } catch (error: unknown) {
+                                        const messageText =
+                                            error instanceof Error && error.message
+                                                ? error.message
+                                                : "Erro ao solicitar empréstimo.";
+                                        message.error(messageText);
                                     } finally {
                                         setLoadingLendBook(false);
                                     }

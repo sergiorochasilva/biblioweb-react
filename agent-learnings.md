@@ -17,6 +17,93 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-04-04 - home usa `order=access_count desc` na mesma rota de livros
+- Descoberta:
+  - A listagem de "Mais acessados" fica mais estável usando `GET /libraries_books` com `order=access_count desc`, evitando dependência de endpoint dedicado não disponível.
+  - O menu de perfil pode não exibir "Administração" quando o contexto ainda não hidratou `/profile` após login por código.
+- Evidencias:
+  - src/service/BookService.ts
+  - src/view/HeaderView.tsx
+  - logs da API com `404` em `/libraries_books_most_accessed`
+- Acao aplicada:
+  - `fetchMostAccessedPublications` passou a consultar `/libraries_books` com `fields` incluindo `access_count`, `order=access_count desc` e `limit=20`.
+  - Header passou a hidratar `/profile` automaticamente quando autenticado e sem profile sincronizado, além de fallback explícito para usuário `admin`.
+- Impacto esperado:
+  - Carrossel de mais acessados deixa de falhar por rota inexistente e link de Admin passa a aparecer de forma consistente no menu do perfil.
+
+### 2026-04-04 - header público com perfil/categorias e descoberta por acesso/assunto
+- Descoberta:
+  - O header público agora concentra navegação transversal: botão central `Categorias`, busca e menu de perfil por iniciais.
+  - A Home passou a depender de duas fontes de listagem por biblioteca: recentes (`/libraries_books`) e populares (`/libraries_books_most_accessed`).
+  - A nova tela de categorias funciona melhor quando a seleção de assuntos inicia com até 5 itens e carrega carrosséis independentes por assunto.
+- Evidencias:
+  - src/view/HeaderView.tsx
+  - src/view/HomeView.tsx
+  - src/view/CategoriesView.tsx
+  - src/view/ProfileView.tsx
+  - src/service/BookService.ts
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/book_controller.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/library_book_controller.py
+- Acao aplicada:
+  - Incluídas rotas `/categories` (pública) e `/profile` (protegida), com botão e menu no header.
+  - Adicionado consumo de `POST /books/:id/access` ao clicar em `Ler agora`.
+  - Implementado novo carrossel `Mais acessados` na Home e página `Categorias` com multiselect (máximo 5) + carrosséis por assunto.
+- Impacto esperado:
+  - Navegação mais direta para descoberta de conteúdo e ranking de livros baseado em uso real.
+
+### 2026-04-04 - admin global com abas de manutenção e vínculos N:N de usuário
+- Descoberta:
+  - O admin global agora possui 4 contextos independentes (`Livros`, `Usuários`, `Libraries`, `Editoras`) e todos os campos de referência devem usar combos carregados por API.
+  - Para livros, `library` no front é obrigatório e não deve mais usar fallback implícito no save; o filtro já nasce com a primeira library disponível e o modal de criação também.
+  - Cadastro/edição de usuário precisa carregar e persistir associações N:N de `libraries` e `publishers`.
+- Evidencias:
+  - src/controller/AdminController.ts
+  - src/service/AdminService.ts
+  - src/view/AdminView.tsx
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/library_controller.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/publisher_controller.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/service/user_service.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/dao/user_account_dao.py
+- Acao aplicada:
+  - Front passou a consumir CRUD/list de libraries e editoras no `AdminService`, com duas novas abas no `AdminView` e modais de criação/edição.
+  - `AdminController` passou a orquestrar os 4 domínios, inicializar o filtro de library com a primeira opção e exigir `library` no modal de livro.
+  - Modal de usuário passou a persistir arrays `libraries` e `publishers`; edição busca detalhe via `GET /users/:id`.
+- Impacto esperado:
+  - Fluxo administrativo consistente com o contrato atual da API e menor chance de livros sem associação de biblioteca.
+
+### 2026-04-04 - carrossel da home depende de vínculo `book_library`
+- Descoberta:
+  - A Home busca publicações recentes por `GET /libraries_books?library=<id>`, então livro salvo sem vínculo em `book_library` não aparece no carrossel, mesmo existindo em `book`.
+  - No admin global, o `library` é obrigatório no formulário e deve ser enviado explicitamente no payload de create/update.
+- Evidencias:
+  - src/service/BookService.ts
+  - src/view/HomeView.tsx
+  - src/controller/AdminController.ts
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/service/book_custom_service.py
+- Acao aplicada:
+  - `AdminController` passou a enviar `library` no payload de create/update sem fallback no momento do save.
+  - Modal de criação passou a pré-preencher biblioteca com o filtro ativo.
+- Impacto esperado:
+  - Menor chance de cadastro sem vínculo e coerência entre contexto filtrado da tela e dados persistidos.
+
+### 2026-04-04 - regras condicionais de cadastro de livro por `type`
+- Descoberta:
+  - Para manter contrato entre front/back, campos de livro precisam validar de forma condicional por `type`: em `external`, `external_url` é obrigatório e arquivo/metadados binários deixam de ser obrigatórios.
+  - Em DTO do backend com validator de assinatura `(dto_field, value)`, validação entre campos exigiu leitura do contexto da instância durante o ciclo de set do descriptor.
+- Evidencias:
+  - src/controller/AdminController.ts
+  - src/controller/PublisherAdminController.ts
+  - src/view/AdminView.tsx
+  - src/view/PublisherAdminView.tsx
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/dto/book_dto_validators.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/dto/book_post_dto.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/dto/book_list_dto.py
+- Acao aplicada:
+  - Front passou a validar `subject` obrigatório, `external_url` obrigatório só em `external`, e `file_name`/arquivo obrigatórios apenas quando não `external`.
+  - Back passou a validar as mesmas regras via `validator` em `DTOField`, aceitar `image_url` nulo e pular upload binário no pós-insert quando `type` for `external`.
+- Impacto esperado:
+  - Menos rejeição 400 por inconsistência de regra entre camadas e cadastro de livros externos sem arquivo físico.
+
 ### 2026-04-04 - campos opcionais de livro com `null` + validacao em lote
 - Descoberta:
   - Campos com `min=1` e sem `not_null=True` no DTO (ex.: `year`) devem ser enviados como `null` quando vazios; enviar `""` gera erro de validação no backend.

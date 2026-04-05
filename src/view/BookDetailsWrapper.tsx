@@ -5,6 +5,7 @@ import { DEFAULT_PUBLIC_LIBRARY_ID, fetchBookDetails } from "../service/BookServ
 import BookDetailsView from "./BookDetailsView";
 import { Book } from "../model/Book";
 import { useAuth } from "../contexts/AuthContext";
+import HeaderView from "./HeaderView";
 
 export default function BookDetailsWrapper() {
     const navigate = useNavigate();
@@ -47,6 +48,7 @@ export default function BookDetailsWrapper() {
     if (loading) {
         return (
             <Layout className="page-shell">
+                <HeaderView />
                 <Content className="page-content">
                     <Card className="glass-card state-card">
                         <div className="loading-state">
@@ -62,6 +64,7 @@ export default function BookDetailsWrapper() {
     if (!book) {
         return (
             <Layout className="page-shell">
+                <HeaderView />
                 <Content className="page-content">
                     <Card className="glass-card state-card">
                         <Result

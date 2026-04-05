@@ -11,6 +11,13 @@ export interface Library {
 }
 
 export interface ProfileData {
+    email?: string;
+    admin?: boolean;
+    is_admin?: boolean | number | string;
+    isAdmin?: boolean | number | string;
+    role?: string;
+    profile?: string;
+    user_role?: string;
     publishers: Publisher[];
     libraries: Library[];
 }

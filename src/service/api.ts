@@ -3,6 +3,7 @@ const API_HOST = (
 ).replace(/\/+$/, "");
 
 export const API_BASE_URL = API_HOST;
+export type ApiError = Error & { status?: number; body?: unknown };
 
 /**
  * Monta headers padrão para chamadas HTTP da aplicação.
@@ -36,12 +37,28 @@ function buildHeaders(token?: string, withJson = false): HeadersInit {
  */
 async function handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
+        let parsedBody: unknown = null;
+        let message = `API Error: ${response.status} ${response.statusText}`;
+
         try {
-            const errorBody = await response.json();
-            throw new Error(errorBody.message || `API Error: ${response.statusText}`);
-        } catch (e) {
-            throw new Error(`API Error: ${response.statusText}`);
+            parsedBody = await response.json();
+        } catch {
+            parsedBody = null;
         }
+
+        if (
+            parsedBody &&
+            typeof parsedBody === "object" &&
+            "message" in parsedBody &&
+            typeof (parsedBody as { message?: unknown }).message === "string"
+        ) {
+            message = (parsedBody as { message: string }).message;
+        }
+
+        const apiError = new Error(message) as ApiError;
+        apiError.status = response.status;
+        apiError.body = parsedBody;
+        throw apiError;
     }
 
     if (response.status === 204 || response.status === 202) {

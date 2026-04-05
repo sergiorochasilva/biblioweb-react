@@ -1,5 +1,5 @@
 import { Book } from "../model/Book";
-import { api, buildAuthHeaders } from "./api";
+import { api, ApiError, buildAuthHeaders } from "./api";
 
 export type AdminBook = Omit<Book, "publisher"> & {
     book_id?: string | null;
@@ -8,6 +8,18 @@ export type AdminBook = Omit<Book, "publisher"> & {
     publisher_name?: string | null;
     library?: number | null;
     library_name?: string | null;
+};
+
+export type AdminLibrary = {
+    id: number;
+    cnpj: string;
+    nome: string;
+};
+
+export type AdminPublisher = {
+    id: string;
+    name: string;
+    secret?: string;
 };
 
 export type AdminBookFilters = {
@@ -27,6 +39,8 @@ export type AdminUser = {
     email: string;
     pass_hint: string;
     admin: boolean;
+    libraries: number[];
+    publishers: string[];
 };
 
 export type BookFormPayload = {
@@ -34,10 +48,11 @@ export type BookFormPayload = {
     publisher: string | null;
     author: string | null;
     subject: string | null;
+    library?: number;
     type?: string | null;
     external_url?: string | null;
-    file_name: string | null;
-    image_url: string | null;
+    file_name?: string | null;
+    image_url?: string | null;
     edition: string | null;
     year: string | null;
     isbn: string | null;
@@ -48,8 +63,8 @@ export type BookFormPayload = {
 
 export type CreateBookPayload = BookFormPayload & {
     library?: number;
-    base64_content: string;
-    file_extension: string;
+    base64_content?: string | null;
+    file_extension?: string | null;
 };
 
 export type AdminUserPayload = {
@@ -57,13 +72,42 @@ export type AdminUserPayload = {
     senha?: string;
     dica_senha: string;
     admin: boolean;
+    libraries?: number[];
+    publishers?: string[];
+};
+
+export type AdminLibraryPayload = {
+    cnpj: string;
+    nome: string;
+};
+
+export type AdminPublisherPayload = {
+    id: string;
+    name: string;
+};
+
+type ProfileLibrary = {
+    id?: unknown;
+    name?: unknown;
+    nome?: unknown;
+};
+
+type ProfilePublisher = {
+    id?: unknown;
+    name?: unknown;
+    nome?: unknown;
+};
+
+type ProfilePayload = {
+    libraries?: ProfileLibrary[];
+    publishers?: ProfilePublisher[];
 };
 
 /**
- * Normaliza um valor potencial de ID para string utilizavel.
+ * Normaliza um valor potencial de ID para string utilizável.
  *
  * @param value Valor bruto do identificador.
- * @returns ID como string ou ``null`` quando invalido.
+ * @returns ID como string ou ``null`` quando inválido.
  */
 function normalizeBookId(value: unknown): string | null {
     const rawValue =
@@ -102,10 +146,10 @@ function collectBookIdsFromValue(value: unknown): string[] {
 }
 
 /**
- * Monta lista unica de IDs candidatos, preservando ordem de prioridade.
+ * Monta lista única de IDs candidatos, preservando ordem de prioridade.
  *
  * @param values Valores brutos candidatos.
- * @returns IDs candidatos sem duplicacao.
+ * @returns IDs candidatos sem duplicação.
  */
 function buildBookIdCandidates(...values: unknown[]): string[] {
     const unique = new Set<string>();
@@ -120,11 +164,11 @@ function buildBookIdCandidates(...values: unknown[]): string[] {
 }
 
 /**
- * Executa operacao de livro iterando candidatos de ID ate sucesso.
+ * Executa operação de livro iterando candidatos de ID até sucesso.
  *
  * @param candidates IDs candidatos.
- * @param run Funcao que executa operacao usando um candidato.
- * @returns Resultado da primeira execucao bem-sucedida.
+ * @param run Função que executa operação usando um candidato.
+ * @returns Resultado da primeira execução bem-sucedida.
  */
 async function runBookRequestWithCandidates<T>(
     candidates: string[],
@@ -143,14 +187,14 @@ async function runBookRequestWithCandidates<T>(
     if (lastError instanceof Error) {
         throw lastError;
     }
-    throw new Error("Nao foi possivel localizar o livro para esta operacao.");
+    throw new Error("Não foi possível localizar o livro para esta operação.");
 }
 
 /**
- * Normaliza payload unitario que pode vir direto ou em ``{ result: ... }``.
+ * Normaliza payload unitário que pode vir direto ou em ``{ result: ... }``.
  *
  * @param data Payload bruto.
- * @returns Objeto unitario normalizado quando disponivel.
+ * @returns Objeto unitário normalizado quando disponível.
  */
 function normalizeSingleObjectPayload(data: unknown): Record<string, unknown> | null {
     if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -165,10 +209,41 @@ function normalizeSingleObjectPayload(data: unknown): Record<string, unknown> | 
 }
 
 /**
+ * Identifica se o erro recebido representa HTTP 404.
+ *
+ * @param error Erro retornado pela camada HTTP.
+ * @returns ``true`` quando status é 404.
+ */
+function isNotFoundError(error: unknown): boolean {
+    return Boolean((error as ApiError | null)?.status === 404);
+}
+
+/**
+ * Extrai payload de profile para fallback de listas administrativas.
+ *
+ * @param data Resposta bruta de ``/profile``.
+ * @returns Estrutura normalizada de profile.
+ */
+function normalizeProfilePayload(data: unknown): ProfilePayload {
+    const payload = normalizeSingleObjectPayload(data);
+    if (!payload) {
+        return {};
+    }
+
+    const libraries = Array.isArray(payload.libraries) ? payload.libraries : [];
+    const publishers = Array.isArray(payload.publishers) ? payload.publishers : [];
+
+    return {
+        libraries: libraries as ProfileLibrary[],
+        publishers: publishers as ProfilePublisher[],
+    };
+}
+
+/**
  * Normaliza um item bruto da API para o formato esperado de livro administrativo.
  *
  * @param entry Registro bruto recebido da API.
- * @returns Livro normalizado ou ``null`` quando invalido.
+ * @returns Livro normalizado ou ``null`` quando inválido.
  */
 function normalizeAdminBook(entry: unknown): AdminBook | null {
     if (!entry || typeof entry !== "object") {
@@ -254,14 +329,67 @@ export function normalizePaginatedBooksResponse(data: unknown): PaginatedAdminBo
 }
 
 /**
- * Normaliza payload de listagem de usuarios.
+ * Normaliza um item de usuário da API.
+ *
+ * @param entry Registro bruto de usuário.
+ * @returns Usuário normalizado ou ``null`` quando inválido.
+ */
+function normalizeAdminUser(entry: unknown): AdminUser | null {
+    if (!entry || typeof entry !== "object") {
+        return null;
+    }
+
+    const raw = entry as Record<string, unknown>;
+
+    const id =
+        typeof raw.id === "string" || typeof raw.id === "number"
+            ? String(raw.id)
+            : "";
+    const email = typeof raw.email === "string" ? raw.email : "";
+    if (!id || !email) {
+        return null;
+    }
+
+    const libraries = Array.isArray(raw.libraries)
+        ? raw.libraries
+              .map((item) => Number(item))
+              .filter((item) => Number.isFinite(item) && item > 0)
+        : [];
+
+    const publishers = Array.isArray(raw.publishers)
+        ? raw.publishers
+              .map((item) => (item === null || item === undefined ? "" : String(item).trim()))
+              .filter((item) => Boolean(item))
+        : [];
+
+    return {
+        id,
+        email,
+        pass_hint: typeof raw.pass_hint === "string" ? raw.pass_hint : "",
+        admin: Boolean(raw.admin),
+        libraries,
+        publishers,
+    };
+}
+
+/**
+ * Normaliza payload de listagem de usuários.
  *
  * @param data Payload bruto retornado pela API.
- * @returns Lista de usuarios.
+ * @returns Lista de usuários.
  */
 export function normalizeUsersResponse(data: unknown): AdminUser[] {
+    const normalizeList = (items: unknown[]): AdminUser[] =>
+        items.reduce<AdminUser[]>((acc, item) => {
+            const normalized = normalizeAdminUser(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
     if (Array.isArray(data)) {
-        return data as AdminUser[];
+        return normalizeList(data);
     }
 
     if (
@@ -270,17 +398,151 @@ export function normalizeUsersResponse(data: unknown): AdminUser[] {
         "result" in data &&
         Array.isArray((data as { result?: unknown }).result)
     ) {
-        return (data as { result: AdminUser[] }).result;
+        return normalizeList((data as { result: unknown[] }).result);
     }
 
     return [];
 }
 
 /**
- * Separa nome base e extensao do arquivo enviado.
+ * Normaliza payload de item de usuário.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Usuário normalizado.
+ */
+export function normalizeUserResponse(data: unknown): AdminUser {
+    const payload = normalizeSingleObjectPayload(data);
+    const normalized = normalizeAdminUser(payload);
+    if (!normalized) {
+        throw new Error("Usuário inválido retornado pela API.");
+    }
+    return normalized;
+}
+
+/**
+ * Normaliza lista de bibliotecas em formato suportado pela UI.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista de bibliotecas.
+ */
+export function normalizeLibrariesResponse(data: unknown): AdminLibrary[] {
+    const normalizeEntry = (entry: unknown): AdminLibrary | null => {
+        if (!entry || typeof entry !== "object") {
+            return null;
+        }
+
+        const raw = entry as Record<string, unknown>;
+        const id = Number(raw.id);
+        const nome =
+            typeof raw.nome === "string"
+                ? raw.nome
+                : typeof raw.name === "string"
+                    ? raw.name
+                    : "";
+        const cnpj = typeof raw.cnpj === "string" ? raw.cnpj : "";
+
+        if (!Number.isFinite(id) || id <= 0 || !nome.trim()) {
+            return null;
+        }
+
+        return {
+            id,
+            nome,
+            cnpj,
+        };
+    };
+
+    const normalizeList = (items: unknown[]): AdminLibrary[] =>
+        items.reduce<AdminLibrary[]>((acc, item) => {
+            const normalized = normalizeEntry(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
+    if (Array.isArray(data)) {
+        return normalizeList(data);
+    }
+
+    if (
+        data &&
+        typeof data === "object" &&
+        "result" in data &&
+        Array.isArray((data as { result?: unknown }).result)
+    ) {
+        return normalizeList((data as { result: unknown[] }).result);
+    }
+
+    return [];
+}
+
+/**
+ * Normaliza lista de editoras em formato suportado pela UI.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista de editoras.
+ */
+export function normalizePublishersResponse(data: unknown): AdminPublisher[] {
+    const normalizeEntry = (entry: unknown): AdminPublisher | null => {
+        if (!entry || typeof entry !== "object") {
+            return null;
+        }
+
+        const raw = entry as Record<string, unknown>;
+        const id =
+            typeof raw.id === "string" || typeof raw.id === "number"
+                ? String(raw.id).trim()
+                : "";
+        const name =
+            typeof raw.name === "string"
+                ? raw.name
+                : typeof raw.nome === "string"
+                    ? raw.nome
+                    : "";
+        const secret = typeof raw.secret === "string" ? raw.secret : undefined;
+
+        if (!id || !name.trim()) {
+            return null;
+        }
+
+        return {
+            id,
+            name,
+            secret,
+        };
+    };
+
+    const normalizeList = (items: unknown[]): AdminPublisher[] =>
+        items.reduce<AdminPublisher[]>((acc, item) => {
+            const normalized = normalizeEntry(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
+    if (Array.isArray(data)) {
+        return normalizeList(data);
+    }
+
+    if (
+        data &&
+        typeof data === "object" &&
+        "result" in data &&
+        Array.isArray((data as { result?: unknown }).result)
+    ) {
+        return normalizeList((data as { result: unknown[] }).result);
+    }
+
+    return [];
+}
+
+/**
+ * Separa nome base e extensão do arquivo enviado.
  *
  * @param file Arquivo selecionado.
- * @returns Nome base e extensao.
+ * @returns Nome base e extensão.
  */
 export function getFileParts(file: File) {
     const nameParts = file.name.split(".");
@@ -316,11 +578,11 @@ export function readFileAsBase64(file: File): Promise<string> {
 }
 
 /**
- * Carrega pagina inicial de livros com filtros.
+ * Carrega página inicial de livros com filtros.
  *
  * @param token Token JWT.
  * @param filters Filtros opcionais.
- * @returns Pagina de livros.
+ * @returns Página de livros.
  */
 export async function fetchBooksPage(
     token: string,
@@ -331,10 +593,7 @@ export async function fetchBooksPage(
         query.set("search", filters.search);
     }
     if (filters.publisher) {
-        query.set("publisher_name", filters.publisher);
-        if (/^[0-9]+$/.test(filters.publisher)) {
-            query.set("publisher", filters.publisher);
-        }
+        query.set("publisher", filters.publisher);
     }
     if (filters.library) {
         query.set("library", filters.library);
@@ -349,11 +608,11 @@ export async function fetchBooksPage(
 }
 
 /**
- * Carrega proxima pagina de livros a partir do link `next`.
+ * Carrega próxima página de livros a partir do link ``next``.
  *
  * @param token Token JWT.
- * @param nextUrl URL de proxima pagina retornada pela API.
- * @returns Pagina de livros.
+ * @param nextUrl URL de próxima página retornada pela API.
+ * @returns Página de livros.
  */
 export async function fetchBooksPageByNext(
     token: string,
@@ -372,7 +631,7 @@ export async function fetchBooksPageByNext(
                 message = errorData.message;
             }
         } catch {
-            // Mantem mensagem padrao.
+            // Mantém mensagem padrão.
         }
         throw new Error(message);
     }
@@ -382,7 +641,7 @@ export async function fetchBooksPageByNext(
 }
 
 /**
- * Busca um livro por id.
+ * Busca um livro por ID.
  *
  * @param token Token JWT.
  * @param id Identificador do livro.
@@ -391,7 +650,7 @@ export async function fetchBooksPageByNext(
 export async function fetchBookById(token: string, id: string): Promise<AdminBook> {
     const candidates = buildBookIdCandidates(id);
     if (candidates.length === 0) {
-        throw new Error("ID do livro invalido para edicao.");
+        throw new Error("ID do livro inválido para edição.");
     }
 
     return runBookRequestWithCandidates(candidates, async (candidate) => {
@@ -400,10 +659,10 @@ export async function fetchBookById(token: string, id: string): Promise<AdminBoo
 }
 
 /**
- * Tenta resolver ``book_id`` real a partir de um vinculo de ``libraries_books``.
+ * Tenta resolver ``book_id`` real a partir de um vínculo de ``libraries_books``.
  *
  * @param token Token JWT.
- * @param libraryBookId ID do vinculo em ``libraries_books``.
+ * @param libraryBookId ID do vínculo em ``libraries_books``.
  * @returns ID do livro principal quando encontrado.
  */
 export async function resolveBookIdByLibraryBookId(
@@ -435,7 +694,7 @@ export async function resolveBookIdByLibraryBookId(
                 return resolved;
             }
         } catch {
-            // Tenta proximo candidato.
+            // Tenta próximo candidato.
         }
     }
 
@@ -468,7 +727,7 @@ export async function updateBook(
 ): Promise<void> {
     const candidates = buildBookIdCandidates(id);
     if (candidates.length === 0) {
-        throw new Error("ID do livro invalido para atualizacao.");
+        throw new Error("ID do livro inválido para atualização.");
     }
 
     await runBookRequestWithCandidates(candidates, async (candidate) => {
@@ -477,7 +736,7 @@ export async function updateBook(
 }
 
 /**
- * Remove um livro por id.
+ * Remove um livro por ID.
  *
  * @param token Token JWT.
  * @param id Identificador do livro.
@@ -486,7 +745,7 @@ export async function updateBook(
 export async function deleteBook(token: string, id: string): Promise<void> {
     const candidates = buildBookIdCandidates(id);
     if (candidates.length === 0) {
-        throw new Error("ID do livro invalido para remocao.");
+        throw new Error("ID do livro inválido para remoção.");
     }
 
     await runBookRequestWithCandidates(candidates, async (candidate) => {
@@ -495,11 +754,11 @@ export async function deleteBook(token: string, id: string): Promise<void> {
 }
 
 /**
- * Lista usuarios.
+ * Lista usuários administrativos.
  *
  * @param token Token JWT.
  * @param search Busca textual opcional.
- * @returns Lista de usuarios.
+ * @returns Lista de usuários.
  */
 export async function fetchUsers(
     token: string,
@@ -515,42 +774,412 @@ export async function fetchUsers(
 }
 
 /**
- * Cadastra usuario.
+ * Busca usuário por ID.
  *
  * @param token Token JWT.
- * @param payload Dados do usuario.
- * @returns Usuario criado.
+ * @param id Identificador do usuário.
+ * @returns Usuário detalhado.
+ */
+export async function fetchUserById(token: string, id: string): Promise<AdminUser> {
+    const data = await api.get<unknown>(`/users/${encodeURIComponent(id)}`, token);
+    return normalizeUserResponse(data);
+}
+
+/**
+ * Cadastra usuário.
+ *
+ * @param token Token JWT.
+ * @param payload Dados do usuário.
+ * @returns Usuário criado.
  */
 export async function createUser(
     token: string,
     payload: AdminUserPayload & { senha: string }
 ): Promise<AdminUser> {
-    return api.post<AdminUser>("/users", payload, token);
+    const data = await api.post<unknown>("/users", payload, token);
+    return normalizeUserResponse(data);
 }
 
 /**
- * Atualiza usuario.
+ * Atualiza usuário.
  *
  * @param token Token JWT.
- * @param id Identificador do usuario.
+ * @param id Identificador do usuário.
  * @param payload Dados atualizados.
- * @returns Usuario atualizado.
+ * @returns Usuário atualizado.
  */
 export async function updateUser(
     token: string,
     id: string,
     payload: AdminUserPayload
 ): Promise<AdminUser> {
-    return api.put<AdminUser>(`/users/${id}`, payload, token);
+    const data = await api.put<unknown>(`/users/${id}`, payload, token);
+    return normalizeUserResponse(data);
 }
 
 /**
- * Remove usuario por id.
+ * Remove usuário por ID.
  *
  * @param token Token JWT.
- * @param id Identificador do usuario.
+ * @param id Identificador do usuário.
  * @returns Promise<void>.
  */
 export async function deleteUser(token: string, id: string): Promise<void> {
     await api.delete(`/users/${id}`, token);
+}
+
+/**
+ * Busca profile atual para suportar fallback de listas administrativas.
+ *
+ * @param token Token JWT.
+ * @returns Payload bruto do endpoint ``/profile``.
+ */
+async function fetchProfileForFallback(token: string): Promise<ProfilePayload> {
+    const data = await api.get<unknown>("/profile", token);
+    return normalizeProfilePayload(data);
+}
+
+/**
+ * Converte bibliotecas do profile no formato administrativo.
+ *
+ * @param profile Payload normalizado de profile.
+ * @returns Lista de bibliotecas para a UI.
+ */
+function mapProfileLibrariesToAdmin(profile: ProfilePayload): AdminLibrary[] {
+    const libraries = Array.isArray(profile.libraries) ? profile.libraries : [];
+    return libraries
+        .map((item) => {
+            const id = Number(item?.id);
+            const nomeRaw = item?.nome ?? item?.name;
+            const nome = typeof nomeRaw === "string" ? nomeRaw : "";
+            if (!Number.isFinite(id) || id <= 0 || !nome.trim()) {
+                return null;
+            }
+
+            return {
+                id,
+                nome,
+                cnpj: "",
+            };
+        })
+        .filter((item): item is AdminLibrary => Boolean(item));
+}
+
+/**
+ * Converte editoras do profile no formato administrativo.
+ *
+ * @param profile Payload normalizado de profile.
+ * @returns Lista de editoras para a UI.
+ */
+function mapProfilePublishersToAdmin(profile: ProfilePayload): AdminPublisher[] {
+    const publishers = Array.isArray(profile.publishers) ? profile.publishers : [];
+    return publishers
+        .map((item) => {
+            const idRaw = item?.id;
+            const id =
+                typeof idRaw === "string" || typeof idRaw === "number"
+                    ? String(idRaw).trim()
+                    : "";
+            const nameRaw = item?.name ?? item?.nome;
+            const name = typeof nameRaw === "string" ? nameRaw : "";
+
+            if (!id || !name.trim()) {
+                return null;
+            }
+
+            return {
+                id,
+                name,
+            };
+        })
+        .filter((item): item is AdminPublisher => Boolean(item));
+}
+
+/**
+ * Monta erro explicativo para endpoint ainda indisponível no backend ativo.
+ *
+ * @param resource Recurso alvo (libraries/publishers).
+ * @returns Erro com mensagem amigável.
+ */
+function buildUnavailableEndpointError(resource: "libraries" | "publishers"): Error {
+    const label = resource === "libraries" ? "bibliotecas" : "editoras";
+    return new Error(`API de ${label} indisponível no backend atual.`);
+}
+
+/**
+ * Lista bibliotecas para manutenção.
+ *
+ * @param token Token JWT.
+ * @param search Busca textual opcional.
+ * @returns Lista de bibliotecas.
+ */
+export async function fetchLibraries(token: string, search?: string): Promise<AdminLibrary[]> {
+    const query = new URLSearchParams({
+        limit: "200",
+    });
+    if (search) {
+        query.set("search", search);
+    }
+    try {
+        const data = await api.get<unknown>(`/libraries?${query.toString()}`, token);
+        return normalizeLibrariesResponse(data);
+    } catch (error) {
+        if (!isNotFoundError(error)) {
+            throw error;
+        }
+
+        const profile = await fetchProfileForFallback(token);
+        const libraries = mapProfileLibrariesToAdmin(profile);
+        const normalizedSearch = (search || "").trim().toLowerCase();
+        if (!normalizedSearch) {
+            return libraries;
+        }
+
+        return libraries.filter((item) => {
+            const composite = `${item.nome} ${item.id} ${item.cnpj}`.toLowerCase();
+            return composite.includes(normalizedSearch);
+        });
+    }
+}
+
+/**
+ * Cria uma biblioteca.
+ *
+ * @param token Token JWT.
+ * @param payload Dados da biblioteca.
+ * @returns Biblioteca criada.
+ */
+export async function createLibrary(
+    token: string,
+    payload: AdminLibraryPayload
+): Promise<AdminLibrary> {
+    let data: unknown;
+    try {
+        data = await api.post<unknown>("/libraries", payload, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("libraries");
+        }
+        throw error;
+    }
+
+    const normalized = normalizeSingleObjectPayload(data);
+    const id = Number(normalized?.id);
+    const nome =
+        typeof normalized?.nome === "string"
+            ? normalized.nome
+            : typeof normalized?.name === "string"
+                ? normalized.name
+                : "";
+    const cnpj = typeof normalized?.cnpj === "string" ? normalized.cnpj : "";
+    if (!Number.isFinite(id) || id <= 0 || !nome.trim()) {
+        throw new Error("Resposta inválida ao criar biblioteca.");
+    }
+    return {
+        id,
+        nome,
+        cnpj,
+    };
+}
+
+/**
+ * Atualiza uma biblioteca.
+ *
+ * @param token Token JWT.
+ * @param id Identificador da biblioteca.
+ * @param payload Dados atualizados.
+ * @returns Biblioteca atualizada.
+ */
+export async function updateLibrary(
+    token: string,
+    id: number,
+    payload: AdminLibraryPayload
+): Promise<AdminLibrary> {
+    let data: unknown;
+    try {
+        data = await api.put<unknown>(`/libraries/${id}`, payload, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("libraries");
+        }
+        throw error;
+    }
+
+    const normalized = normalizeSingleObjectPayload(data);
+    const parsedId = Number(normalized?.id);
+    const nome =
+        typeof normalized?.nome === "string"
+            ? normalized.nome
+            : typeof normalized?.name === "string"
+                ? normalized.name
+                : "";
+    const cnpj = typeof normalized?.cnpj === "string" ? normalized.cnpj : "";
+    if (!Number.isFinite(parsedId) || parsedId <= 0 || !nome.trim()) {
+        throw new Error("Resposta inválida ao atualizar biblioteca.");
+    }
+    return {
+        id: parsedId,
+        nome,
+        cnpj,
+    };
+}
+
+/**
+ * Remove uma biblioteca.
+ *
+ * @param token Token JWT.
+ * @param id Identificador da biblioteca.
+ * @returns Promise<void>.
+ */
+export async function deleteLibrary(token: string, id: number): Promise<void> {
+    try {
+        await api.delete(`/libraries/${id}`, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("libraries");
+        }
+        throw error;
+    }
+}
+
+/**
+ * Lista editoras para manutenção.
+ *
+ * @param token Token JWT.
+ * @param search Busca textual opcional.
+ * @returns Lista de editoras.
+ */
+export async function fetchPublishers(token: string, search?: string): Promise<AdminPublisher[]> {
+    const query = new URLSearchParams({
+        limit: "200",
+    });
+    if (search) {
+        query.set("search", search);
+    }
+    try {
+        const data = await api.get<unknown>(`/publishers?${query.toString()}`, token);
+        return normalizePublishersResponse(data);
+    } catch (error) {
+        if (!isNotFoundError(error)) {
+            throw error;
+        }
+
+        const profile = await fetchProfileForFallback(token);
+        const publishers = mapProfilePublishersToAdmin(profile);
+        const normalizedSearch = (search || "").trim().toLowerCase();
+        if (!normalizedSearch) {
+            return publishers;
+        }
+
+        return publishers.filter((item) => {
+            const composite = `${item.name} ${item.id}`.toLowerCase();
+            return composite.includes(normalizedSearch);
+        });
+    }
+}
+
+/**
+ * Cria uma editora.
+ *
+ * @param token Token JWT.
+ * @param payload Dados da editora.
+ * @returns Editora criada.
+ */
+export async function createPublisher(
+    token: string,
+    payload: AdminPublisherPayload
+): Promise<AdminPublisher> {
+    let data: unknown;
+    try {
+        data = await api.post<unknown>("/publishers", payload, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("publishers");
+        }
+        throw error;
+    }
+
+    const normalized = normalizeSingleObjectPayload(data);
+    const id =
+        typeof normalized?.id === "string" || typeof normalized?.id === "number"
+            ? String(normalized.id).trim()
+            : "";
+    const name =
+        typeof normalized?.name === "string"
+            ? normalized.name
+            : typeof normalized?.nome === "string"
+                ? normalized.nome
+                : "";
+    const secret = typeof normalized?.secret === "string" ? normalized.secret : undefined;
+    if (!id || !name.trim()) {
+        throw new Error("Resposta inválida ao criar editora.");
+    }
+    return {
+        id,
+        name,
+        secret,
+    };
+}
+
+/**
+ * Atualiza uma editora.
+ *
+ * @param token Token JWT.
+ * @param id Identificador da editora.
+ * @param payload Dados atualizados.
+ * @returns Editora atualizada.
+ */
+export async function updatePublisher(
+    token: string,
+    id: string,
+    payload: AdminPublisherPayload
+): Promise<AdminPublisher> {
+    let data: unknown;
+    try {
+        data = await api.put<unknown>(`/publishers/${encodeURIComponent(id)}`, payload, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("publishers");
+        }
+        throw error;
+    }
+
+    const normalized = normalizeSingleObjectPayload(data);
+    const parsedId =
+        typeof normalized?.id === "string" || typeof normalized?.id === "number"
+            ? String(normalized.id).trim()
+            : "";
+    const name =
+        typeof normalized?.name === "string"
+            ? normalized.name
+            : typeof normalized?.nome === "string"
+                ? normalized.nome
+                : "";
+    const secret = typeof normalized?.secret === "string" ? normalized.secret : undefined;
+    if (!parsedId || !name.trim()) {
+        throw new Error("Resposta inválida ao atualizar editora.");
+    }
+    return {
+        id: parsedId,
+        name,
+        secret,
+    };
+}
+
+/**
+ * Remove uma editora.
+ *
+ * @param token Token JWT.
+ * @param id Identificador da editora.
+ * @returns Promise<void>.
+ */
+export async function deletePublisher(token: string, id: string): Promise<void> {
+    try {
+        await api.delete(`/publishers/${encodeURIComponent(id)}`, token);
+    } catch (error) {
+        if (isNotFoundError(error)) {
+            throw buildUnavailableEndpointError("publishers");
+        }
+        throw error;
+    }
 }

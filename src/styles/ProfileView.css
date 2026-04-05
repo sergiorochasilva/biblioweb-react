@@ -1,0 +1,33 @@
+.profile-card {
+    border-radius: 24px;
+}
+
+.profile-loading-state {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    min-height: 160px;
+}
+
+.profile-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.profile-block-title {
+    font-weight: 700;
+    color: var(--text-strong);
+}
+
+.profile-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.profile-switch-context-button {
+    align-self: flex-start;
+}

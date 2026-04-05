@@ -14,8 +14,37 @@
     width: min(1200px, 92vw);
     margin: 0 auto;
     display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.header-top {
+    display: flex;
     align-items: center;
-    gap: 16px;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.header-slot-left,
+.header-slot-center,
+.header-slot-right {
+    flex: 1;
+    min-width: 0;
+}
+
+.header-slot-left {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.header-slot-center {
+    display: flex;
+    justify-content: center;
+}
+
+.header-slot-right {
+    display: flex;
+    justify-content: flex-end;
 }
 
 .logo-button {
@@ -39,28 +68,71 @@
 }
 
 .header-search {
-    flex: 1;
+    width: 100%;
+}
+
+.categories-button {
+    border-radius: 999px;
+    font-weight: 600;
+    padding-inline: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.profile-button,
+.header-login-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.6);
+    font-weight: 700;
+    font-family: "Sora", "Manrope", sans-serif;
+}
+
+.header-login-button {
+    width: auto;
+    padding-inline: 16px;
+    font-weight: 600;
+}
+
+.profile-button.ant-btn:focus,
+.header-login-button.ant-btn:focus,
+.categories-button.ant-btn:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(27, 120, 214, 0.25);
 }
 
 .header-search .ant-input {
     font-size: 14px;
 }
 
-.menu-button {
-    border-radius: 999px;
-}
-
 @media (max-width: 720px) {
     .header-inner {
-        flex-direction: column;
-        align-items: stretch;
+        gap: 10px;
     }
 
-    .menu-button {
-        align-self: flex-end;
+    .header-top {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+    }
+
+    .header-slot-left,
+    .header-slot-center,
+    .header-slot-right {
+        flex: unset;
+    }
+
+    .header-slot-center {
+        justify-content: center;
     }
 
     .logo-image {
         height: 48px;
+    }
+
+    .categories-button {
+        padding-inline: 12px;
     }
 }

@@ -165,7 +165,7 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">Assunto</label>
+                                        <label className="field-label">Assunto (*)</label>
                                         <Input
                                             value={state.editForm.subject}
                                             onChange={(event) =>
@@ -190,7 +190,10 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">URL externa</label>
+                                        <label className="field-label">
+                                            URL externa
+                                            {state.editForm.type === "external" ? " (*)" : ""}
+                                        </label>
                                         <Input
                                             value={state.editForm.external_url}
                                             onChange={(event) =>
@@ -199,7 +202,10 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">Nome do arquivo</label>
+                                        <label className="field-label">
+                                            Nome do arquivo
+                                            {state.editForm.type !== "external" ? " (*)" : ""}
+                                        </label>
                                         <Input
                                             value={state.editForm.file_name}
                                             onChange={(event) =>
@@ -318,7 +324,7 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">Assunto</label>
+                                        <label className="field-label">Assunto (*)</label>
                                         <Input
                                             value={state.createForm.subject}
                                             onChange={(event) =>
@@ -343,7 +349,10 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">URL externa</label>
+                                        <label className="field-label">
+                                            URL externa
+                                            {state.createForm.type === "external" ? " (*)" : ""}
+                                        </label>
                                         <Input
                                             value={state.createForm.external_url}
                                             onChange={(event) =>
@@ -352,7 +361,10 @@ export default function PublisherAdminView() {
                                         />
                                     </div>
                                     <div className="form-field">
-                                        <label className="field-label">Nome do arquivo</label>
+                                        <label className="field-label">
+                                            Nome do arquivo
+                                            {state.createForm.type !== "external" ? " (*)" : ""}
+                                        </label>
                                         <Input
                                             value={state.createForm.file_name}
                                             onChange={(event) =>
@@ -435,7 +447,10 @@ export default function PublisherAdminView() {
                                     />
                                 </div>
                                 <div className="form-field full">
-                                    <label className="field-label">Arquivo (EPUB)</label>
+                                    <label className="field-label">
+                                        Arquivo (EPUB)
+                                        {state.createForm.type !== "external" ? " (*)" : ""}
+                                    </label>
                                     <Upload
                                         beforeUpload={(file) => {
                                             actions.setBookFile(file);

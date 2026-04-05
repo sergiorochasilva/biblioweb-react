@@ -2,26 +2,26 @@ import { Book } from "../model/Book";
 import { api, buildAuthHeaders } from "./api";
 
 export type UpdateBookPayload = {
-    title: string;
-    publisher: string;
-    author: string;
-    subject: string;
-    type?: string;
-    external_url?: string;
-    file_name: string;
-    image_url: string;
-    edition: string;
-    year: string;
-    isbn: string;
-    pages: string;
-    language: string;
-    review: string;
+    title: string | null;
+    publisher: string | null;
+    author: string | null;
+    subject: string | null;
+    type?: string | null;
+    external_url?: string | null;
+    file_name?: string | null;
+    image_url?: string | null;
+    edition: string | null;
+    year: string | null;
+    isbn: string | null;
+    pages: string | null;
+    language: string | null;
+    review: string | null;
 };
 
 export type CreateBookPayload = UpdateBookPayload & {
     library?: number;
-    base64_content: string;
-    file_extension: string;
+    base64_content?: string | null;
+    file_extension?: string | null;
 };
 
 export type PurchaseLinkPayload = {
@@ -42,12 +42,17 @@ export type PurchaseLinkResponse = {
  * @param data Payload bruto retornado pela API.
  * @returns Lista de livros.
  */
-export function normalizeBooksResponse(data: any): Book[] {
+export function normalizeBooksResponse(data: unknown): Book[] {
     if (Array.isArray(data)) {
         return data as Book[];
     }
-    if (data && Array.isArray(data.result)) {
-        return data.result as Book[];
+    if (
+        data &&
+        typeof data === "object" &&
+        "result" in data &&
+        Array.isArray((data as { result?: unknown }).result)
+    ) {
+        return (data as { result: Book[] }).result;
     }
     return [];
 }

@@ -36,15 +36,33 @@ update user_account set revoke_tokens_before = now() where id = <user_id>;
 
 Foi adicionada a rota protegida `"/admin"` para manutenção global do sistema:
 
-- Abas separadas de **Livros** e **Usuários** (um card principal por aba).
+- Abas separadas de **Livros**, **Usuários**, **Libraries** e **Editoras**.
 - CRUD de livros em modal único (criar/editar no mesmo formulário).
-- Busca e filtros de livros por texto, **nome da editora** e biblioteca.
+- Busca e filtros de livros por texto, editora e biblioteca (combos carregados por API).
 - Paginação por `next` com botão **Carregar mais** na listagem.
 - CRUD de usuários em modal único.
+- Associação N:N de usuários com múltiplas libraries e editoras.
+- CRUD de libraries e editoras em modal único por aba, com pesquisa.
 - Botão **Atualizar** contextual, respeitando a aba ativa.
 - Validação local com feedback imediato em modal (toaster + destaque visual de campo inválido).
+- Regras condicionais no cadastro de livro:
+  - `Assunto` obrigatório.
+  - `URL da capa` opcional (pode ser `null`).
+  - Tipo `Externo`: `URL externa` obrigatória, `Nome do arquivo` e `Arquivo` não obrigatórios.
+  - Tipos não externos: `Nome do arquivo` e `Arquivo` obrigatórios.
 
 A rota `"/publisher-admin"` continua disponível para o fluxo legado da editora.
+
+## Navegação pública e descoberta
+
+- Header público com:
+  - botão central **Categorias** (`/categories`);
+  - botão de perfil com iniciais do usuário autenticado (menu com **Meu perfil** e **Administração** para administradores).
+- Nova rota protegida `"/profile"` para visualização de contexto do usuário (email, vínculo admin, libraries e editoras).
+- Home com dois carrosséis:
+  - **Publicações recentes**;
+  - **Mais acessados** (baseado em `book.access_count`).
+- Clique em **Ler agora** registra acesso via `POST /books/:id/access`.
 
 ## React + TypeScript + Vite
 

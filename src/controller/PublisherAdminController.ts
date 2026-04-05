@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Book } from "../model/Book";
 import { useAuth } from "../contexts/AuthContext";
 import {
+    CreateBookPayload,
+    UpdateBookPayload,
     createBook,
     fetchBooks,
     generatePurchaseLink,
@@ -42,7 +44,7 @@ const emptyBookForm: BookFormState = {
     publisher: "",
     author: "",
     subject: "",
-    type: "",
+    type: "protected",
     external_url: "",
     file_name: "",
     edition: "",
@@ -67,6 +69,82 @@ function normalizeErrorMessage(error: unknown, fallback: string) {
         return error.message;
     }
     return fallback;
+}
+
+/**
+ * Converte texto de formulário para valor opcional compatível com o DTO.
+ *
+ * @param value Texto bruto do campo.
+ * @returns Texto com ``trim`` ou ``null`` quando vazio.
+ */
+function toNullableField(value: string): string | null {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+}
+
+/**
+ * Normaliza o tipo do livro para o formato esperado pela API.
+ *
+ * @param value Valor bruto do campo ``type``.
+ * @returns Tipo normalizado ou ``null`` quando vazio.
+ */
+function normalizeBookType(value: string): string | null {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+        return null;
+    }
+    if (normalized === "externo") {
+        return "external";
+    }
+    return normalized;
+}
+
+/**
+ * Indica se o tipo informado representa livro externo.
+ *
+ * @param type Tipo selecionado no formulário.
+ * @returns ``true`` quando o tipo for ``external``.
+ */
+function isExternalType(type: string): boolean {
+    return normalizeBookType(type) === "external";
+}
+
+/**
+ * Valida campos obrigatórios do formulário de livro da editora.
+ *
+ * @param form Estado atual do formulário.
+ * @param mode Modo do formulário (criação ou edição).
+ * @param hasBookFile Indica se arquivo foi selecionado para upload.
+ * @returns Mensagem de erro quando inválido, senão ``null``.
+ */
+function validatePublisherBookForm(
+    form: BookFormState,
+    mode: "create" | "edit",
+    hasBookFile: boolean
+): string | null {
+    const externalType = isExternalType(form.type);
+
+    if (!form.subject.trim()) {
+        return "Assunto obrigatório.";
+    }
+
+    if (externalType && !form.external_url.trim()) {
+        return "URL externa obrigatória para livros do tipo Externo.";
+    }
+
+    if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
+        return "Nome do arquivo obrigatório para tipos não externos.";
+    }
+
+    if (mode === "create" && !externalType && !hasBookFile) {
+        return "Selecione o arquivo do livro para tipos não externos.";
+    }
+
+    if (mode === "create" && externalType && hasBookFile) {
+        return "Arquivo não permitido para livros do tipo Externo.";
+    }
+
+    return null;
 }
 
 /**
@@ -172,6 +250,12 @@ export function usePublisherAdminController() {
             return;
         }
 
+        const validationError = validatePublisherBookForm(editForm, "edit", false);
+        if (validationError) {
+            setError(validationError);
+            return;
+        }
+
         setError("");
         try {
             const accessToken = await getAccessToken();
@@ -179,21 +263,22 @@ export function usePublisherAdminController() {
                 setError("Sessão expirada. Faça login novamente.");
                 return;
             }
-            const payload = {
-                title: editForm.title,
-                publisher: editForm.publisher,
-                author: editForm.author,
-                subject: editForm.subject,
-                type: editForm.type,
-                external_url: editForm.external_url,
-                file_name: editForm.file_name,
-                image_url: editForm.image_url,
-                edition: editForm.edition,
-                year: editForm.year,
-                isbn: editForm.isbn,
-                pages: editForm.pages,
-                language: editForm.language,
-                review: editForm.review,
+
+            const payload: UpdateBookPayload = {
+                title: toNullableField(editForm.title),
+                publisher: toNullableField(editForm.publisher),
+                author: toNullableField(editForm.author),
+                subject: toNullableField(editForm.subject),
+                type: normalizeBookType(editForm.type),
+                external_url: toNullableField(editForm.external_url),
+                file_name: toNullableField(editForm.file_name),
+                image_url: toNullableField(editForm.image_url),
+                edition: toNullableField(editForm.edition),
+                year: toNullableField(editForm.year),
+                isbn: toNullableField(editForm.isbn),
+                pages: toNullableField(editForm.pages),
+                language: toNullableField(editForm.language),
+                review: toNullableField(editForm.review),
             };
 
             await updateBook(accessToken, editForm.id, payload);
@@ -211,8 +296,13 @@ export function usePublisherAdminController() {
      */
     async function handleCreateBook(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
-        if (!bookFile) {
-            setError("Selecione o arquivo do livro.");
+        const validationError = validatePublisherBookForm(
+            createForm,
+            "create",
+            Boolean(bookFile)
+        );
+        if (validationError) {
+            setError(validationError);
             return;
         }
 
@@ -223,31 +313,35 @@ export function usePublisherAdminController() {
                 setError("Sessão expirada. Faça login novamente.");
                 return;
             }
-            const base64Content = await readFileAsBase64(bookFile);
-            const { fileName, fileExtension } = getFileParts(bookFile);
             const resolvedLibraryId = createForm.library
                 ? Number(createForm.library)
                 : library?.id;
 
-            const payload = {
-                title: createForm.title,
-                publisher: createForm.publisher,
-                author: createForm.author,
-                subject: createForm.subject,
-                type: createForm.type,
-                external_url: createForm.external_url,
-                file_name: createForm.file_name || fileName,
-                edition: createForm.edition,
-                year: createForm.year,
-                isbn: createForm.isbn,
-                pages: createForm.pages,
-                language: createForm.language,
-                review: createForm.review,
-                image_url: createForm.image_url,
+            const payload: CreateBookPayload = {
+                title: toNullableField(createForm.title),
+                publisher: toNullableField(createForm.publisher),
+                author: toNullableField(createForm.author),
+                subject: toNullableField(createForm.subject),
+                type: normalizeBookType(createForm.type),
+                external_url: toNullableField(createForm.external_url),
+                file_name: toNullableField(createForm.file_name),
+                edition: toNullableField(createForm.edition),
+                year: toNullableField(createForm.year),
+                isbn: toNullableField(createForm.isbn),
+                pages: toNullableField(createForm.pages),
+                language: toNullableField(createForm.language),
+                review: toNullableField(createForm.review),
+                image_url: toNullableField(createForm.image_url),
                 library: resolvedLibraryId,
-                base64_content: base64Content,
-                file_extension: fileExtension,
             };
+
+            if (bookFile) {
+                const base64Content = await readFileAsBase64(bookFile);
+                const { fileName, fileExtension } = getFileParts(bookFile);
+                payload.file_name = payload.file_name || fileName;
+                payload.base64_content = base64Content;
+                payload.file_extension = fileExtension;
+            }
 
             await createBook(accessToken, payload);
             setCreateForm(emptyBookForm);

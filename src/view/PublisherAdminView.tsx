@@ -203,6 +203,18 @@ export default function PublisherAdminView() {
                                     </div>
                                     <div className="form-field">
                                         <label className="field-label">
+                                            Fonte Externa
+                                            {state.editForm.type === "external" ? " (*)" : ""}
+                                        </label>
+                                        <Input
+                                            value={state.editForm.external_source}
+                                            onChange={(event) =>
+                                                actions.setEditForm((prev) => ({ ...prev, external_source: event.target.value }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="field-label">
                                             Nome do arquivo
                                             {state.editForm.type !== "external" ? " (*)" : ""}
                                         </label>
@@ -357,6 +369,18 @@ export default function PublisherAdminView() {
                                             value={state.createForm.external_url}
                                             onChange={(event) =>
                                                 actions.setCreateForm((prev) => ({ ...prev, external_url: event.target.value }))
+                                            }
+                                        />
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="field-label">
+                                            Fonte Externa
+                                            {state.createForm.type === "external" ? " (*)" : ""}
+                                        </label>
+                                        <Input
+                                            value={state.createForm.external_source}
+                                            onChange={(event) =>
+                                                actions.setCreateForm((prev) => ({ ...prev, external_source: event.target.value }))
                                             }
                                         />
                                     </div>

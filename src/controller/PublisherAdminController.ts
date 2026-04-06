@@ -28,6 +28,7 @@ type BookFormState = {
     subject: string;
     type: string;
     external_url: string;
+    external_source: string;
     file_name: string;
     edition: string;
     year: string;
@@ -46,6 +47,7 @@ const emptyBookForm: BookFormState = {
     subject: "",
     type: "protected",
     external_url: "",
+    external_source: "",
     file_name: "",
     edition: "",
     year: "",
@@ -132,6 +134,10 @@ function validatePublisherBookForm(
         return "URL externa obrigatória para livros do tipo Externo.";
     }
 
+    if (externalType && !form.external_source.trim()) {
+        return "Fonte Externa obrigatória para livros do tipo Externo.";
+    }
+
     if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
         return "Nome do arquivo obrigatório para tipos não externos.";
     }
@@ -189,6 +195,7 @@ export function usePublisherAdminController() {
             subject: selectedBook.subject || "",
             type: selectedBook.type || "",
             external_url: selectedBook.external_url || "",
+            external_source: selectedBook.external_source || "",
             file_name: selectedBook.file_name || "",
             edition: selectedBook.edition || "",
             year: selectedBook.year || "",
@@ -271,6 +278,7 @@ export function usePublisherAdminController() {
                 subject: toNullableField(editForm.subject),
                 type: normalizeBookType(editForm.type),
                 external_url: toNullableField(editForm.external_url),
+                external_source: toNullableField(editForm.external_source),
                 file_name: toNullableField(editForm.file_name),
                 image_url: toNullableField(editForm.image_url),
                 edition: toNullableField(editForm.edition),
@@ -324,6 +332,7 @@ export function usePublisherAdminController() {
                 subject: toNullableField(createForm.subject),
                 type: normalizeBookType(createForm.type),
                 external_url: toNullableField(createForm.external_url),
+                external_source: toNullableField(createForm.external_source),
                 file_name: toNullableField(createForm.file_name),
                 edition: toNullableField(createForm.edition),
                 year: toNullableField(createForm.year),

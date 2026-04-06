@@ -22,6 +22,7 @@ interface BookDetailsViewProps {
     review: string;
     type?: string;
     external_url?: string;
+    external_source?: string;
     file_name?: string;
     image_url?: string | null;
 }
@@ -39,6 +40,7 @@ export default function BookDetailsView({
     review,
     type: bookType,
     external_url,
+    external_source,
     file_name,
     image_url,
 }: BookDetailsViewProps) {
@@ -98,6 +100,19 @@ export default function BookDetailsView({
                                 <Descriptions.Item label="ISBN">{isbn}</Descriptions.Item>
                                 <Descriptions.Item label="Páginas">{pages}</Descriptions.Item>
                                 <Descriptions.Item label="Idioma">{language}</Descriptions.Item>
+                                <Descriptions.Item label="Fonte Externa">
+                                    {external_source ? (
+                                        <Typography.Link
+                                            href={external_source}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            {external_source}
+                                        </Typography.Link>
+                                    ) : (
+                                        "-"
+                                    )}
+                                </Descriptions.Item>
                             </Descriptions>
                             <Button
                                 type="primary"

@@ -6,6 +6,7 @@ export interface Book {
     subject?: string;
     type?: string;
     external_url?: string;
+    external_source?: string;
     file_name?: string;
     edition: string;
     year: string;

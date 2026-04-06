@@ -39,6 +39,7 @@ type BookFormState = {
     subject: string;
     type: string;
     external_url: string;
+    external_source: string;
     file_name: string;
     edition: string;
     year: string;
@@ -88,6 +89,7 @@ type BookFieldErrorKey =
     | "image_url"
     | "edition"
     | "external_url"
+    | "external_source"
     | "library"
     | "file";
 
@@ -109,6 +111,7 @@ const emptyBookForm: BookFormState = {
     subject: "",
     type: "protected",
     external_url: "",
+    external_source: "",
     file_name: "",
     edition: "",
     year: "",
@@ -161,6 +164,7 @@ function mapBookToForm(book: AdminBook, fallbackLibraryId: string): BookFormStat
         subject: book.subject || "",
         type: book.type || "protected",
         external_url: book.external_url || "",
+        external_source: book.external_source || "",
         file_name: book.file_name || "",
         edition: book.edition || "",
         year: book.year || "",
@@ -237,6 +241,10 @@ function validateBookForm(
 
     if (externalType && !form.external_url.trim()) {
         fieldErrors.external_url = "URL externa obrigatória.";
+    }
+
+    if (externalType && !form.external_source.trim()) {
+        fieldErrors.external_source = "Fonte externa obrigatória.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -1178,6 +1186,7 @@ export function useAdminController() {
                 library: libraryId,
                 type: normalizeBookType(bookForm.type),
                 external_url: toNullableField(bookForm.external_url),
+                external_source: toNullableField(bookForm.external_source),
                 file_name: toNullableField(bookForm.file_name),
                 image_url: toNullableField(bookForm.image_url),
                 edition: toNullableField(bookForm.edition),

@@ -2,7 +2,7 @@ import { Book } from "../model/Book";
 import { api, API_BASE_URL, ApiError, buildAuthHeaders } from "./api";
 
 export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
-const DEFAULT_BOOK_FIELDS = "review,type,external_url,file_name";
+const DEFAULT_BOOK_FIELDS = "review,type,external_url,external_source,file_name";
 const MOST_ACCESSED_ORDER = "access_count desc";
 
 /**

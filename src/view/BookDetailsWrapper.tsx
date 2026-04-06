@@ -95,6 +95,7 @@ export default function BookDetailsWrapper() {
         review={book.review}
         type={book.type}
         external_url={book.external_url}
+        external_source={book.external_source}
         file_name={book.file_name}
         image_url={book.image_url}
     />;

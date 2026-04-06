@@ -614,6 +614,27 @@ export default function AdminView() {
                         </div>
                         <div className="form-field">
                             <label className="field-label">
+                                Fonte Externa
+                                {state.bookForm.type === "external" ? " (*)" : ""}
+                            </label>
+                            <Input
+                                className="admin-input"
+                                status={state.bookFormErrors.external_source ? "error" : undefined}
+                                value={state.bookForm.external_source}
+                                onChange={(event) => {
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        external_source: event.target.value,
+                                    }));
+                                    actions.clearBookFieldError("external_source");
+                                }}
+                            />
+                            {state.bookFormErrors.external_source && (
+                                <span className="form-field-error">{state.bookFormErrors.external_source}</span>
+                            )}
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">
                                 Nome do arquivo
                                 {state.bookForm.type !== "external" ? " (*)" : ""}
                             </label>

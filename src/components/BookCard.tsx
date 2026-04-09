@@ -1,6 +1,6 @@
 import { Card, Typography } from "antd";
 import book_icon from "../assets/book_icon.png";
-import { Book } from "../model/Book";
+import { Book, getBookAuthorsText } from "../model/Book";
 
 interface BookCardProps {
     book: Book;
@@ -9,6 +9,8 @@ interface BookCardProps {
 }
 
 export default function BookCard({ book, onClick, className = "" }: BookCardProps) {
+    const authorsText = getBookAuthorsText(book);
+
     return (
         <Card
             hoverable
@@ -26,7 +28,9 @@ export default function BookCard({ book, onClick, className = "" }: BookCardProp
             <Typography.Title level={5} className="book-card-title">
                 {book.title}
             </Typography.Title>
-            <Typography.Text className="book-card-meta">Autor: {book.author}</Typography.Text>
+            <Typography.Text className="book-card-meta">
+                Autor: {authorsText || "Autor não informado"}
+            </Typography.Text>
             <Typography.Text className="book-card-meta">Editora: {book.publisher}</Typography.Text>
         </Card>
     );

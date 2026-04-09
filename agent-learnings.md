@@ -17,6 +17,35 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-04-08 - CRUD admin com endpoints que retornam corpo vazio em create/update
+- Descoberta:
+  - Em manutenção administrativa (`libraries`, `publishers`, `authors`), alguns ambientes retornam sucesso sem body (`202/204` ou `{}`), e validar estrutura do objeto no front gera falso negativo ("Resposta inválida ...").
+  - A listagem administrativa deve usar nomenclatura de negócio ("Acervos") em vez de termos técnicos de entidade ("Libraries").
+- Evidencias:
+  - src/service/AdminService.ts
+  - src/view/AdminView.tsx
+- Acao aplicada:
+  - `create/update` de bibliotecas, editoras e autores passaram a tratar sucesso HTTP sem exigir payload de retorno.
+  - Aba `Libraries` foi renomeada para `Acervos` e o título correspondente para `Manitenção de acervos`.
+- Impacto esperado:
+  - Fluxo de salvar entidades no admin sem erro falso por resposta vazia e interface mais alinhada ao domínio.
+
+### 2026-04-08 - detalhes do livro com exportacao MARC21 e referencia bibliografica
+- Descoberta:
+  - A API expõe MARC21 por `GET /books-marc/:id`, mas o ID da tela de detalhe pode vir como vínculo de `libraries_books`; para robustez, o front deve tentar resolver `book_id` antes do fallback final.
+  - Geração de referência no front precisa montar segmentos condicionais para não exibir campos ausentes em APA/ABNT.
+- Evidencias:
+  - src/service/BookService.ts
+  - src/view/BookDetailsView.tsx
+  - src/styles/BookDetailsView.css
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/book_marc_controller.py
+- Acao aplicada:
+  - Adicionado `fetchBookMarc21` no `BookService` com fallback de IDs e mensagem consistente para 401/403.
+  - Tela de detalhes recebeu botões secundários e modais para visualizar/copiar MARC21 e alternar referência entre APA/ABNT.
+  - README atualizado com as novas ações da página de detalhe.
+- Impacto esperado:
+  - Exportação MARC21 operacional no fluxo de visualização e referência bibliográfica pronta sem depender de backend adicional.
+
 ### 2026-04-04 - home usa `order=access_count desc` na mesma rota de livros
 - Descoberta:
   - A listagem de "Mais acessados" fica mais estável usando `GET /libraries_books` com `order=access_count desc`, evitando dependência de endpoint dedicado não disponível.

@@ -41,7 +41,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
         let message = `API Error: ${response.status} ${response.statusText}`;
 
         try {
-            parsedBody = await response.json();
+            const rawBody = await response.text();
+            parsedBody = rawBody.trim() ? JSON.parse(rawBody) : null;
         } catch {
             parsedBody = null;
         }
@@ -65,7 +66,16 @@ async function handleResponse<T>(response: Response): Promise<T> {
         return {} as T;
     }
 
-    return response.json();
+    const rawBody = await response.text();
+    if (!rawBody.trim()) {
+        return {} as T;
+    }
+
+    try {
+        return JSON.parse(rawBody) as T;
+    } catch {
+        return rawBody as T;
+    }
 }
 
 export const api = {

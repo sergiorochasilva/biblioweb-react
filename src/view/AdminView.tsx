@@ -24,6 +24,7 @@ import {
 } from "@ant-design/icons";
 import HeaderView from "./HeaderView";
 import { useAdminController } from "../controller/AdminController";
+import { getBookAuthorsText } from "../model/Book";
 import "../styles/AdminView.css";
 
 /**
@@ -43,6 +44,10 @@ export default function AdminView() {
                 ? state.isLoadingLibraries
                 : state.activeTab === "publishers"
                     ? state.isLoadingPublishers
+                    : state.activeTab === "subjects"
+                        ? state.isLoadingSubjects
+                        : state.activeTab === "authors"
+                            ? state.isLoadingAuthors
                     : state.isLoadingBooks;
 
     const publisherOptions = useMemo(
@@ -63,6 +68,24 @@ export default function AdminView() {
         [state.libraries]
     );
 
+    const subjectOptions = useMemo(
+        () =>
+            state.subjects.map((subject) => ({
+                value: String(subject.id),
+                label: subject.name,
+            })),
+        [state.subjects]
+    );
+
+    const authorOptions = useMemo(
+        () =>
+            state.authors.map((author) => ({
+                value: String(author.id),
+                label: author.name,
+            })),
+        [state.authors]
+    );
+
     const bookPublisherOptions = useMemo(() => {
         const options = [...publisherOptions];
         const currentPublisher = state.bookForm.publisher.trim();
@@ -76,6 +99,27 @@ export default function AdminView() {
 
         return options;
     }, [publisherOptions, state.bookForm.publisher]);
+
+    /**
+     * Resolve o texto de acervo exibido na listagem de livros.
+     *
+     * @param book Item de livro da listagem administrativa.
+     * @returns Texto amigável para o acervo associado.
+     */
+    function getBookLibraryLabel(book: (typeof state.books)[number]): string {
+        const relatedLibraries = Array.isArray(book.libraries)
+            ? book.libraries
+                  .map((item) => Number(item))
+                  .filter((item) => Number.isFinite(item) && item > 0)
+            : [];
+        if (relatedLibraries.length > 0) {
+            return `${relatedLibraries.length} ${
+                relatedLibraries.length === 1 ? "acervo" : "acervos"
+            }`;
+        }
+
+        return "0 acervos";
+    }
 
     return (
         <Layout className="page-shell">
@@ -152,9 +196,9 @@ export default function AdminView() {
                                                     />
                                                 </div>
                                                 <div className="form-field">
-                                                    <label className="field-label">Biblioteca (*)</label>
+                                                    <label className="field-label">Acervo (*)</label>
                                                     <Select
-                                                        placeholder="Selecione a biblioteca"
+                                                        placeholder="Selecione o acervo"
                                                         value={state.libraryFilter || undefined}
                                                         options={libraryOptions}
                                                         onChange={(value: string) =>
@@ -216,7 +260,7 @@ export default function AdminView() {
                                                                 description={
                                                                     <div className="admin-item-meta">
                                                                         <span>
-                                                                            {book.author ||
+                                                                            {getBookAuthorsText(book) ||
                                                                                 "Autor não informado"}
                                                                         </span>
                                                                         <span>
@@ -225,11 +269,7 @@ export default function AdminView() {
                                                                                 "Editora não informada"}
                                                                         </span>
                                                                         <span>
-                                                                            {book.library_name ||
-                                                                                (book.library !== null &&
-                                                                                book.library !== undefined
-                                                                                    ? `Biblioteca ${book.library}`
-                                                                                    : "Sem biblioteca")}
+                                                                            {getBookLibraryLabel(book)}
                                                                         </span>
                                                                     </div>
                                                                 }
@@ -327,7 +367,7 @@ export default function AdminView() {
                                                                         Perfil: {user.admin ? "Administrador" : "Usuário comum"}
                                                                     </span>
                                                                     <span>
-                                                                        Libraries: {user.libraries.length} | Editoras: {user.publishers.length}
+                                                                        Acervos: {user.libraries.length} | Editoras: {user.publishers.length}
                                                                     </span>
                                                                 </div>
                                                             }
@@ -341,11 +381,11 @@ export default function AdminView() {
                             },
                             {
                                 key: "libraries",
-                                label: "Libraries",
+                                label: "Acervos",
                                 children: (
                                     <Card
                                         className="glass-card admin-panel admin-tab-card"
-                                        title="Manutenção de libraries"
+                                        title="Manitenção de acervos"
                                         extra={
                                             <Button
                                                 type="primary"
@@ -489,6 +529,156 @@ export default function AdminView() {
                                     </Card>
                                 ),
                             },
+                            {
+                                key: "subjects",
+                                label: "Assuntos",
+                                children: (
+                                    <Card
+                                        className="glass-card admin-panel admin-tab-card"
+                                        title="Manutenção de assuntos"
+                                        extra={
+                                            <Button
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={actions.openCreateSubjectModal}
+                                            >
+                                                Novo assunto
+                                            </Button>
+                                        }
+                                    >
+                                        <div className="users-toolbar">
+                                            <Input
+                                                placeholder="Buscar por nome ou ID..."
+                                                value={state.subjectSearch}
+                                                onChange={(event) => actions.setSubjectSearch(event.target.value)}
+                                                onPressEnter={actions.applySubjectSearch}
+                                            />
+                                            <Button type="primary" onClick={actions.applySubjectSearch}>
+                                                Buscar
+                                            </Button>
+                                            <Button onClick={actions.clearSubjectSearch}>Limpar</Button>
+                                        </div>
+
+                                        {state.subjectRows.length === 0 && !state.isLoadingSubjects ? (
+                                            <Empty description="Nenhum assunto encontrado." />
+                                        ) : (
+                                            <List
+                                                className="admin-list"
+                                                loading={state.isLoadingSubjects}
+                                                dataSource={state.subjectRows}
+                                                renderItem={(subject) => (
+                                                    <List.Item
+                                                        className="admin-list-item"
+                                                        actions={[
+                                                            <Button
+                                                                key="edit"
+                                                                icon={<EditOutlined />}
+                                                                onClick={() => actions.openEditSubjectModal(subject)}
+                                                            >
+                                                                Editar
+                                                            </Button>,
+                                                            <Popconfirm
+                                                                key="delete"
+                                                                title="Excluir assunto"
+                                                                description="Essa ação não pode ser desfeita."
+                                                                okText="Excluir"
+                                                                cancelText="Cancelar"
+                                                                onConfirm={() => {
+                                                                    void actions.removeSubject(subject.id);
+                                                                }}
+                                                            >
+                                                                <Button danger icon={<DeleteOutlined />}>
+                                                                    Excluir
+                                                                </Button>
+                                                            </Popconfirm>,
+                                                        ]}
+                                                    >
+                                                        <List.Item.Meta
+                                                            title={subject.name}
+                                                            description={<span>ID: {subject.id}</span>}
+                                                        />
+                                                    </List.Item>
+                                                )}
+                                            />
+                                        )}
+                                    </Card>
+                                ),
+                            },
+                            {
+                                key: "authors",
+                                label: "Autores",
+                                children: (
+                                    <Card
+                                        className="glass-card admin-panel admin-tab-card"
+                                        title="Manutenção de autores"
+                                        extra={
+                                            <Button
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={actions.openCreateAuthorModal}
+                                            >
+                                                Novo autor
+                                            </Button>
+                                        }
+                                    >
+                                        <div className="users-toolbar">
+                                            <Input
+                                                placeholder="Buscar por nome ou ID..."
+                                                value={state.authorSearch}
+                                                onChange={(event) => actions.setAuthorSearch(event.target.value)}
+                                                onPressEnter={actions.applyAuthorSearch}
+                                            />
+                                            <Button type="primary" onClick={actions.applyAuthorSearch}>
+                                                Buscar
+                                            </Button>
+                                            <Button onClick={actions.clearAuthorSearch}>Limpar</Button>
+                                        </div>
+
+                                        {state.authorRows.length === 0 && !state.isLoadingAuthors ? (
+                                            <Empty description="Nenhum autor encontrado." />
+                                        ) : (
+                                            <List
+                                                className="admin-list"
+                                                loading={state.isLoadingAuthors}
+                                                dataSource={state.authorRows}
+                                                renderItem={(author) => (
+                                                    <List.Item
+                                                        className="admin-list-item"
+                                                        actions={[
+                                                            <Button
+                                                                key="edit"
+                                                                icon={<EditOutlined />}
+                                                                onClick={() => actions.openEditAuthorModal(author)}
+                                                            >
+                                                                Editar
+                                                            </Button>,
+                                                            <Popconfirm
+                                                                key="delete"
+                                                                title="Excluir autor"
+                                                                description="Essa ação não pode ser desfeita."
+                                                                okText="Excluir"
+                                                                cancelText="Cancelar"
+                                                                onConfirm={() => {
+                                                                    void actions.removeAuthor(author.id);
+                                                                }}
+                                                            >
+                                                                <Button danger icon={<DeleteOutlined />}>
+                                                                    Excluir
+                                                                </Button>
+                                                            </Popconfirm>,
+                                                        ]}
+                                                    >
+                                                        <List.Item.Meta
+                                                            title={author.name}
+                                                            description={<span>ID: {author.id}</span>}
+                                                        />
+                                                    </List.Item>
+                                                )}
+                                            />
+                                        )}
+                                    </Card>
+                                ),
+                            },
                         ]}
                     />
                 </section>
@@ -513,7 +703,7 @@ export default function AdminView() {
                     )}
                     <div className="form-grid">
                         <div className="form-field">
-                            <label className="field-label">Título (*)</label>
+                            <label className="field-label">Título (*) <span className="marc-tag">[245$a]</span></label>
                             <Input
                                 className="admin-input"
                                 status={state.bookFormErrors.title ? "error" : undefined}
@@ -528,22 +718,47 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Autor (*)</label>
+                            <label className="field-label">Subtítulo <span className="marc-tag">[245$b]</span></label>
                             <Input
                                 className="admin-input"
-                                status={state.bookFormErrors.author ? "error" : undefined}
-                                value={state.bookForm.author}
-                                onChange={(event) => {
-                                    actions.setBookForm((previous) => ({ ...previous, author: event.target.value }));
-                                    actions.clearBookFieldError("author");
-                                }}
+                                value={state.bookForm.subtitle}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, subtitle: event.target.value }))
+                                }
                             />
-                            {state.bookFormErrors.author && (
-                                <span className="form-field-error">{state.bookFormErrors.author}</span>
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Título variante <span className="marc-tag">[246$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.title_variant}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, title_variant: event.target.value }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Autores (*) <span className="marc-tag">[100$a/700$a]</span></label>
+                            <Select
+                                mode="multiple"
+                                className="admin-select"
+                                status={state.bookFormErrors.authors ? "error" : undefined}
+                                placeholder="Selecione um ou mais autores"
+                                value={state.bookForm.authors}
+                                options={authorOptions}
+                                onChange={(values: string[]) => {
+                                    actions.setBookForm((previous) => ({ ...previous, authors: values }));
+                                    actions.clearBookFieldError("authors");
+                                }}
+                                optionFilterProp="label"
+                                showSearch
+                            />
+                            {state.bookFormErrors.authors && (
+                                <span className="form-field-error">{state.bookFormErrors.authors}</span>
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Editora (*)</label>
+                            <label className="field-label">Editora (*) <span className="marc-tag">[264$b]</span></label>
                             <Select
                                 className="admin-select"
                                 status={state.bookFormErrors.publisher ? "error" : undefined}
@@ -562,19 +777,54 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Assunto (*)</label>
+                            <label className="field-label">Local de publicação <span className="marc-tag">[264$a]</span></label>
                             <Input
                                 className="admin-input"
-                                status={state.bookFormErrors.subject ? "error" : undefined}
-                                value={state.bookForm.subject}
-                                onChange={(event) => {
-                                    actions.setBookForm((previous) => ({ ...previous, subject: event.target.value }));
-                                    actions.clearBookFieldError("subject");
-                                }}
+                                value={state.bookForm.publication_place}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, publication_place: event.target.value }))
+                                }
                             />
-                            {state.bookFormErrors.subject && (
-                                <span className="form-field-error">{state.bookFormErrors.subject}</span>
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Ano <span className="marc-tag">[264$c]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.year}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, year: event.target.value }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Assuntos (*) <span className="marc-tag">[650$a]</span></label>
+                            <Select
+                                mode="multiple"
+                                className="admin-select"
+                                status={state.bookFormErrors.subjects ? "error" : undefined}
+                                placeholder="Selecione um ou mais assuntos"
+                                value={state.bookForm.subjects}
+                                options={subjectOptions}
+                                onChange={(values: string[]) => {
+                                    actions.setBookForm((previous) => ({ ...previous, subjects: values }));
+                                    actions.clearBookFieldError("subjects");
+                                }}
+                                optionFilterProp="label"
+                                showSearch
+                            />
+                            {state.bookFormErrors.subjects && (
+                                <span className="form-field-error">{state.bookFormErrors.subjects}</span>
                             )}
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">CDD <span className="marc-tag">[082$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.dewey_decimal}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, dewey_decimal: event.target.value }))
+                                }
+                            />
                         </div>
                         <div className="form-field">
                             <label className="field-label">Tipo</label>
@@ -593,7 +843,7 @@ export default function AdminView() {
                         </div>
                         <div className="form-field">
                             <label className="field-label">
-                                URL externa
+                                URL externa <span className="marc-tag">[856$u]</span>
                                 {state.bookForm.type === "external" ? " (*)" : ""}
                             </label>
                             <Input
@@ -614,7 +864,7 @@ export default function AdminView() {
                         </div>
                         <div className="form-field">
                             <label className="field-label">
-                                Fonte Externa
+                                Fonte Externa <span className="marc-tag">[500$a]</span>
                                 {state.bookForm.type === "external" ? " (*)" : ""}
                             </label>
                             <Input
@@ -667,7 +917,7 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Edição (*)</label>
+                            <label className="field-label">Edição (*) <span className="marc-tag">[250$a]</span></label>
                             <Input
                                 className="admin-input"
                                 status={state.bookFormErrors.edition ? "error" : undefined}
@@ -682,17 +932,7 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Ano</label>
-                            <Input
-                                className="admin-input"
-                                value={state.bookForm.year}
-                                onChange={(event) =>
-                                    actions.setBookForm((previous) => ({ ...previous, year: event.target.value }))
-                                }
-                            />
-                        </div>
-                        <div className="form-field">
-                            <label className="field-label">ISBN</label>
+                            <label className="field-label">ISBN <span className="marc-tag">[020$a]</span></label>
                             <Input
                                 className="admin-input"
                                 value={state.bookForm.isbn}
@@ -712,7 +952,7 @@ export default function AdminView() {
                             />
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Idioma</label>
+                            <label className="field-label">Idioma <span className="marc-tag">[041$a]</span></label>
                             <Input
                                 className="admin-input"
                                 value={state.bookForm.language}
@@ -722,33 +962,86 @@ export default function AdminView() {
                             />
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Biblioteca (*)</label>
+                            <label className="field-label">Tipo de conteúdo <span className="marc-tag">[336$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.content_type}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, content_type: event.target.value }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Tipo de mídia <span className="marc-tag">[337$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.media_type}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, media_type: event.target.value }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Tipo de suporte <span className="marc-tag">[338$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.carrier_type}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({ ...previous, carrier_type: event.target.value }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Acervo (*)</label>
                             <Select
                                 className="admin-select"
-                                status={state.bookFormErrors.library ? "error" : undefined}
-                                placeholder="Selecione a biblioteca"
-                                value={state.bookForm.library || undefined}
+                                mode="multiple"
+                                status={state.bookFormErrors.libraries ? "error" : undefined}
+                                placeholder="Selecione um ou mais acervos"
+                                value={state.bookForm.libraries}
                                 options={libraryOptions}
-                                onChange={(value: string) => {
-                                    actions.setBookForm((previous) => ({ ...previous, library: value || "" }));
-                                    actions.clearBookFieldError("library");
+                                onChange={(values: string[]) => {
+                                    actions.setBookForm((previous) => ({ ...previous, libraries: values }));
+                                    actions.clearBookFieldError("libraries");
                                 }}
                                 showSearch
                                 optionFilterProp="label"
                             />
-                            {state.bookFormErrors.library && (
-                                <span className="form-field-error">{state.bookFormErrors.library}</span>
+                            {state.bookFormErrors.libraries && (
+                                <span className="form-field-error">{state.bookFormErrors.libraries}</span>
                             )}
                         </div>
                     </div>
                     <div className="form-field form-field-full">
-                        <label className="field-label">Resenha</label>
+                        <label className="field-label">Resumo <span className="marc-tag">[520$a]</span></label>
                         <Input.TextArea
                             className="admin-input"
-                            rows={4}
-                            value={state.bookForm.review}
+                            rows={3}
+                            value={state.bookForm.summary}
                             onChange={(event) =>
-                                actions.setBookForm((previous) => ({ ...previous, review: event.target.value }))
+                                actions.setBookForm((previous) => ({ ...previous, summary: event.target.value }))
+                            }
+                        />
+                    </div>
+                    <div className="form-field form-field-full">
+                        <label className="field-label">Nota geral <span className="marc-tag">[500$a]</span></label>
+                        <Input.TextArea
+                            className="admin-input"
+                            rows={3}
+                            value={state.bookForm.general_note}
+                            onChange={(event) =>
+                                actions.setBookForm((previous) => ({ ...previous, general_note: event.target.value }))
+                            }
+                        />
+                    </div>
+                    <div className="form-field form-field-full">
+                        <label className="field-label">Nota de bibliografia <span className="marc-tag">[504$a]</span></label>
+                        <Input.TextArea
+                            className="admin-input"
+                            rows={3}
+                            value={state.bookForm.bibliography_note}
+                            onChange={(event) =>
+                                actions.setBookForm((previous) => ({ ...previous, bibliography_note: event.target.value }))
                             }
                         />
                     </div>
@@ -850,11 +1143,11 @@ export default function AdminView() {
                         )}
                     </div>
                     <div className="form-field">
-                        <label className="field-label">Libraries</label>
+                        <label className="field-label">Acervos</label>
                         <Select
                             mode="multiple"
                             className="admin-select"
-                            placeholder="Selecione uma ou mais libraries"
+                            placeholder="Selecione um ou mais acervos"
                             value={state.userForm.libraries}
                             options={libraryOptions}
                             onChange={(values: string[]) =>
@@ -1002,6 +1295,88 @@ export default function AdminView() {
                     <div className="modal-actions">
                         <Button onClick={actions.closePublisherModal}>Cancelar</Button>
                         <Button type="primary" htmlType="submit" loading={state.isSavingPublisher}>
+                            Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                title={state.subjectModalMode === "create" ? "Novo assunto" : "Editar assunto"}
+                open={state.subjectModalOpen}
+                onCancel={actions.closeSubjectModal}
+                footer={null}
+                width={520}
+                destroyOnClose
+            >
+                <form className="admin-form" onSubmit={(event) => void actions.saveSubject(event)}>
+                    {state.subjectModalError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={state.subjectModalError}
+                            className="admin-modal-alert"
+                        />
+                    )}
+                    <div className="form-field">
+                        <label className="field-label">Nome (*) <span className="marc-tag">[650$a]</span></label>
+                        <Input
+                            className="admin-input"
+                            status={state.subjectFormErrors.name ? "error" : undefined}
+                            value={state.subjectForm.name}
+                            onChange={(event) => {
+                                actions.setSubjectForm((previous) => ({ ...previous, name: event.target.value }));
+                                actions.clearSubjectFieldError("name");
+                            }}
+                        />
+                        {state.subjectFormErrors.name && (
+                            <span className="form-field-error">{state.subjectFormErrors.name}</span>
+                        )}
+                    </div>
+                    <div className="modal-actions">
+                        <Button onClick={actions.closeSubjectModal}>Cancelar</Button>
+                        <Button type="primary" htmlType="submit" loading={state.isSavingSubject}>
+                            Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                title={state.authorModalMode === "create" ? "Novo autor" : "Editar autor"}
+                open={state.authorModalOpen}
+                onCancel={actions.closeAuthorModal}
+                footer={null}
+                width={520}
+                destroyOnClose
+            >
+                <form className="admin-form" onSubmit={(event) => void actions.saveAuthor(event)}>
+                    {state.authorModalError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={state.authorModalError}
+                            className="admin-modal-alert"
+                        />
+                    )}
+                    <div className="form-field">
+                        <label className="field-label">Nome (*) <span className="marc-tag">[100$a/700$a]</span></label>
+                        <Input
+                            className="admin-input"
+                            status={state.authorFormErrors.name ? "error" : undefined}
+                            value={state.authorForm.name}
+                            onChange={(event) => {
+                                actions.setAuthorForm((previous) => ({ ...previous, name: event.target.value }));
+                                actions.clearAuthorFieldError("name");
+                            }}
+                        />
+                        {state.authorFormErrors.name && (
+                            <span className="form-field-error">{state.authorFormErrors.name}</span>
+                        )}
+                    </div>
+                    <div className="modal-actions">
+                        <Button onClick={actions.closeAuthorModal}>Cancelar</Button>
+                        <Button type="primary" htmlType="submit" loading={state.isSavingAuthor}>
                             Salvar
                         </Button>
                     </div>

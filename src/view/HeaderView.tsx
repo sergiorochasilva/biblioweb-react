@@ -6,6 +6,10 @@ import logo from "../assets/logo.png";
 import "../styles/HeaderView.css";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../service/api";
+import {
+    hasGlobalAdminPermission,
+    hasPublisherAdminPermission,
+} from "../service/permissions";
 import type { ProfileData } from "../types";
 
 /**
@@ -44,74 +48,6 @@ function getEmailFromToken(token: string | null): string | null {
     const payload = getTokenPayload(token);
     const email = payload?.email;
     return typeof email === "string" ? email : null;
-}
-
-/**
- * Extrai a flag admin de um JWT sem validação de assinatura.
- *
- * @param token JWT no formato ``header.payload.signature``.
- * @returns ``true`` quando o payload indicar perfil administrador.
- */
-function getAdminFromToken(token: string | null): boolean {
-    const payload = getTokenPayload(token);
-    const adminValue = payload?.admin ?? payload?.is_admin ?? payload?.isAdmin;
-    const roleValue = payload?.role ?? payload?.profile ?? payload?.user_role;
-
-    if (adminValue === true || adminValue === 1 || adminValue === "1") {
-        return true;
-    }
-
-    if (typeof roleValue === "string" && roleValue.trim().toLowerCase() === "admin") {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Extrai flag admin a partir do profile em memória.
- *
- * @param profile Perfil do contexto de autenticação.
- * @returns ``true`` quando o profile indicar administração.
- */
-function getAdminFromProfile(profile: ProfileData | null): boolean {
-    if (!profile || typeof profile !== "object") {
-        return false;
-    }
-
-    const rawProfile = profile as unknown as Record<string, unknown>;
-    const adminValue = rawProfile.admin ?? rawProfile.is_admin ?? rawProfile.isAdmin;
-    const roleValue = rawProfile.role ?? rawProfile.profile ?? rawProfile.user_role;
-
-    if (adminValue === true || adminValue === 1 || adminValue === "1") {
-        return true;
-    }
-
-    if (typeof roleValue === "string" && roleValue.trim().toLowerCase() === "admin") {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Verifica se o identificador de usuário representa o admin padrão.
- *
- * @param email E-mail do usuário autenticado.
- * @returns ``true`` quando o usuário for ``admin``.
- */
-function isAdminUser(email: string): boolean {
-    const normalized = email.trim().toLowerCase();
-    if (!normalized) {
-        return false;
-    }
-
-    if (normalized === "admin") {
-        return true;
-    }
-
-    const localPart = normalized.split("@")[0] || "";
-    return localPart === "admin";
 }
 
 /**
@@ -208,10 +144,8 @@ export default function HeaderView() {
         }
         return getInitialsFromEmail(userEmail);
     }, [userEmail]);
-    const isAdmin = useMemo(
-        () => getAdminFromProfile(profile) || getAdminFromToken(token) || isAdminUser(userEmail),
-        [profile, token, userEmail]
-    );
+    const isAdmin = useMemo(() => hasGlobalAdminPermission(profile), [profile]);
+    const isPublisherAdmin = useMemo(() => hasPublisherAdminPermission(profile), [profile]);
 
     /**
      * Dispara a navegação para ``/search?query=...``.
@@ -240,6 +174,14 @@ export default function HeaderView() {
                   },
               ]
             : []),
+        ...(isPublisherAdmin
+            ? [
+                  {
+                      key: "publisher-admin",
+                      label: "Adminstrar Editora",
+                  },
+              ]
+            : []),
         {
             type: "divider",
         },
@@ -265,6 +207,11 @@ export default function HeaderView() {
             return;
         }
 
+        if (key === "publisher-admin") {
+            navigate("/publisher-admin");
+            return;
+        }
+
         if (key === "logout") {
             logout();
             navigate("/");
@@ -287,13 +234,29 @@ export default function HeaderView() {
                     </div>
 
                     <div className="header-slot-center">
-                        <Button
-                            className="categories-button"
-                            type="text"
-                            onClick={() => navigate("/categories")}
-                        >
-                            Categorias
-                        </Button>
+                        <div className="header-center-actions">
+                            <Button
+                                className="categories-button"
+                                type="text"
+                                onClick={() => navigate("/")}
+                            >
+                                Home
+                            </Button>
+                            <Button
+                                className="categories-button"
+                                type="text"
+                                onClick={() => navigate("/categories")}
+                            >
+                                Categorias
+                            </Button>
+                            <Button
+                                className="categories-button"
+                                type="text"
+                                onClick={() => navigate("/authors")}
+                            >
+                                Autores
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="header-slot-right">
@@ -325,16 +288,24 @@ export default function HeaderView() {
                     </div>
                 </div>
 
-                <Input.Search
-                    placeholder="Procure por: título, autor ou descrição de um livro"
-                    className="header-search"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    onSearch={doSearch}
-                    enterButton={<SearchOutlined />}
-                    allowClear
-                    size="large"
-                />
+                <div className="header-search-wrap">
+                    <Input.Search
+                        placeholder="Procure por: título, autor ou descrição de um livro"
+                        className="header-search"
+                        value={input}
+                        onChange={(event) => setInput(event.target.value)}
+                        onSearch={doSearch}
+                        enterButton={<SearchOutlined />}
+                        allowClear
+                        size="large"
+                    />
+                    <Button
+                        className="advanced-search-button"
+                        onClick={() => navigate("/advanced-search")}
+                    >
+                        Busca avançada
+                    </Button>
+                </div>
             </div>
         </Header>
     );

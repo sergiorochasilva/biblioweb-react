@@ -8,6 +8,7 @@ export type AdminBook = Omit<Book, "publisher"> & {
     publisher_name?: string | null;
     library?: number | null;
     library_name?: string | null;
+    libraries?: number[];
 };
 
 export type AdminLibrary = {
@@ -20,6 +21,16 @@ export type AdminPublisher = {
     id: string;
     name: string;
     secret?: string;
+};
+
+export type AdminSubject = {
+    id: number;
+    name: string;
+};
+
+export type AdminAuthor = {
+    id: number;
+    name: string;
 };
 
 export type AdminBookFilters = {
@@ -45,10 +56,13 @@ export type AdminUser = {
 
 export type BookFormPayload = {
     title: string | null;
+    subtitle?: string | null;
+    title_variant?: string | null;
     publisher: string | null;
-    author: string | null;
-    subject: string | null;
+    publication_place?: string | null;
+    dewey_decimal?: string | null;
     library?: number;
+    libraries?: number[];
     type?: string | null;
     external_url?: string | null;
     external_source?: string | null;
@@ -59,11 +73,19 @@ export type BookFormPayload = {
     isbn: string | null;
     pages: string | null;
     language: string | null;
-    review: string | null;
+    summary?: string | null;
+    general_note?: string | null;
+    bibliography_note?: string | null;
+    content_type?: string | null;
+    media_type?: string | null;
+    carrier_type?: string | null;
+    authors?: Array<{ id?: number; author: number }>;
+    subjects?: Array<{ id?: number; subject: number }>;
 };
 
 export type CreateBookPayload = BookFormPayload & {
     library?: number;
+    libraries?: number[];
     base64_content?: string | null;
     file_extension?: string | null;
 };
@@ -84,6 +106,14 @@ export type AdminLibraryPayload = {
 
 export type AdminPublisherPayload = {
     id: string;
+    name: string;
+};
+
+export type AdminSubjectPayload = {
+    name: string;
+};
+
+export type AdminAuthorPayload = {
     name: string;
 };
 
@@ -120,6 +150,50 @@ function normalizeBookId(value: unknown): string | null {
 
     return rawValue || null;
 }
+
+/**
+ * Converte um valor bruto para ID de acervo válido.
+ *
+ * @param value Valor bruto recebido.
+ * @returns ID numérico (> 0) ou ``null``.
+ */
+function normalizeLibraryId(value: unknown): number | null {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+    }
+    return parsed;
+}
+
+/**
+ * Normaliza uma lista bruta de IDs de acervo.
+ *
+ * @param value Valor potencialmente contendo IDs de acervo.
+ * @returns IDs únicos de acervo.
+ */
+function normalizeLibraryIds(value: unknown): number[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    const unique = new Set<number>();
+    for (const item of value) {
+        const rawValue =
+            item && typeof item === "object"
+                ? (item as Record<string, unknown>).library
+                : item;
+        const normalized = normalizeLibraryId(rawValue);
+        if (normalized !== null) {
+            unique.add(normalized);
+        }
+    }
+    return Array.from(unique);
+}
+
+type BookLibraryLink = {
+    bookId: string;
+    libraryId: number;
+};
 
 /**
  * Coleta IDs candidatos de um valor bruto sem alterar formato recebido.
@@ -265,6 +339,9 @@ function normalizeAdminBook(entry: unknown): AdminBook | null {
             : typeof publisherRaw === "number"
                 ? String(publisherRaw)
                 : null;
+    const relatedLibraries = normalizeLibraryIds(raw.libraries);
+    const primaryLibrary =
+        raw.library === null ? null : normalizeLibraryId(raw.library);
 
     if (!resolvedId) {
         return null;
@@ -280,12 +357,135 @@ function normalizeAdminBook(entry: unknown): AdminBook | null {
                 ? raw.publisher_id
                 : null,
         publisher_name: publisherName,
-        library:
-            typeof raw.library === "number" || raw.library === null
-                ? raw.library
-                : undefined,
+        library: primaryLibrary === null || typeof primaryLibrary === "number"
+            ? primaryLibrary
+            : undefined,
         library_name: typeof raw.library_name === "string" ? raw.library_name : null,
+        libraries: relatedLibraries,
     };
+}
+
+/**
+ * Normaliza payload de ``/libraries_books`` para pares ``bookId`` x ``libraryId``.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista normalizada de vínculos de acervo por livro.
+ */
+function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLink[] {
+    const source = Array.isArray(data)
+        ? data
+        : data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)
+            ? (data as { result: unknown[] }).result
+            : [];
+
+    const links: BookLibraryLink[] = [];
+    for (const item of source) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+
+        const raw = item as Record<string, unknown>;
+        const bookId = buildBookIdCandidates(raw.id, raw.book_id, raw.book)[0];
+        const libraryId = normalizeLibraryId(raw.library);
+
+        if (!bookId || libraryId === null) {
+            continue;
+        }
+
+        links.push({
+            bookId,
+            libraryId,
+        });
+    }
+
+    return links;
+}
+
+/**
+ * Busca todos os acervos associados a uma lista de livros.
+ *
+ * @param token Token JWT.
+ * @param books Livros já normalizados da listagem.
+ * @returns Mapa ``bookId`` -> lista de IDs de acervo.
+ */
+async function fetchLibrariesMapByBooks(
+    token: string,
+    books: AdminBook[]
+): Promise<Map<string, number[]>> {
+    const targetBookIds = Array.from(
+        new Set(
+            books
+                .map((book) => buildBookIdCandidates(book.book_id, book.id)[0] || "")
+                .filter((bookId) => Boolean(bookId))
+        )
+    );
+
+    const librariesByBook = new Map<string, Set<number>>();
+    if (targetBookIds.length <= 0) {
+        return new Map();
+    }
+
+    const query = new URLSearchParams({
+        id: targetBookIds.join(","),
+        fields: "library",
+        limit: "1000",
+    });
+    const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
+    const normalizedLinks = normalizeBookLibraryLinksResponse(data);
+
+    for (const item of normalizedLinks) {
+        const knownLibraries = librariesByBook.get(item.bookId) || new Set<number>();
+        knownLibraries.add(item.libraryId);
+        librariesByBook.set(item.bookId, knownLibraries);
+    }
+
+    const result = new Map<string, number[]>();
+    for (const [bookId, librarySet] of librariesByBook.entries()) {
+        result.set(bookId, Array.from(librarySet));
+    }
+
+    return result;
+}
+
+/**
+ * Enriquce a listagem de livros com a lista de acervos de cada livro.
+ *
+ * @param token Token JWT.
+ * @param books Livros da página atual.
+ * @returns Lista de livros com ``libraries`` preenchido quando disponível.
+ */
+async function enrichBooksWithLibraries(
+    token: string,
+    books: AdminBook[]
+): Promise<AdminBook[]> {
+    if (books.length <= 0) {
+        return books;
+    }
+
+    const librariesByBook = await fetchLibrariesMapByBooks(token, books);
+
+    return books.map((book) => {
+        const resolvedBookId = buildBookIdCandidates(book.book_id, book.id)[0];
+        if (!resolvedBookId) {
+            return {
+                ...book,
+                libraries: Array.isArray(book.libraries) ? book.libraries : [],
+            };
+        }
+
+        const linkedLibraries = librariesByBook.get(resolvedBookId);
+        if (!linkedLibraries) {
+            return {
+                ...book,
+                libraries: Array.isArray(book.libraries) ? book.libraries : [],
+            };
+        }
+
+        return {
+            ...book,
+            libraries: linkedLibraries,
+        };
+    });
 }
 
 /**
@@ -327,6 +527,51 @@ export function normalizePaginatedBooksResponse(data: unknown): PaginatedAdminBo
     }
 
     return { next: null, result: [] };
+}
+
+/**
+ * Normaliza payload unitário de livro.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Livro normalizado.
+ */
+function normalizeSingleBookResponse(data: unknown): AdminBook {
+    const payload = normalizeSingleObjectPayload(data);
+    const normalized = normalizeAdminBook(payload);
+    if (!normalized) {
+        throw new Error("Livro inválido retornado pela API.");
+    }
+    return normalized;
+}
+
+/**
+ * Normaliza payload bruto de vínculos ``book_library`` para IDs de acervo.
+ *
+ * @param data Payload bruto do endpoint ``/libraries_books``.
+ * @returns IDs únicos de acervo.
+ */
+function normalizeBookLibraryIdsResponse(data: unknown): number[] {
+    const source = Array.isArray(data)
+        ? data
+        : data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)
+            ? (data as { result: unknown[] }).result
+            : [];
+
+    const unique = new Set<number>();
+    for (const item of source) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+
+        const normalized = normalizeLibraryId(
+            (item as Record<string, unknown>).library
+        );
+        if (normalized !== null) {
+            unique.add(normalized);
+        }
+    }
+
+    return Array.from(unique);
 }
 
 /**
@@ -540,6 +785,108 @@ export function normalizePublishersResponse(data: unknown): AdminPublisher[] {
 }
 
 /**
+ * Normaliza lista de assuntos em formato suportado pela UI.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista de assuntos.
+ */
+export function normalizeSubjectsResponse(data: unknown): AdminSubject[] {
+    const normalizeEntry = (entry: unknown): AdminSubject | null => {
+        if (!entry || typeof entry !== "object") {
+            return null;
+        }
+
+        const raw = entry as Record<string, unknown>;
+        const id = Number(raw.id);
+        const name = typeof raw.name === "string" ? raw.name : "";
+
+        if (!Number.isFinite(id) || id <= 0 || !name.trim()) {
+            return null;
+        }
+
+        return {
+            id,
+            name,
+        };
+    };
+
+    const normalizeList = (items: unknown[]): AdminSubject[] =>
+        items.reduce<AdminSubject[]>((acc, item) => {
+            const normalized = normalizeEntry(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
+    if (Array.isArray(data)) {
+        return normalizeList(data);
+    }
+
+    if (
+        data &&
+        typeof data === "object" &&
+        "result" in data &&
+        Array.isArray((data as { result?: unknown }).result)
+    ) {
+        return normalizeList((data as { result: unknown[] }).result);
+    }
+
+    return [];
+}
+
+/**
+ * Normaliza lista de autores em formato suportado pela UI.
+ *
+ * @param data Payload bruto retornado pela API.
+ * @returns Lista de autores.
+ */
+export function normalizeAuthorsResponse(data: unknown): AdminAuthor[] {
+    const normalizeEntry = (entry: unknown): AdminAuthor | null => {
+        if (!entry || typeof entry !== "object") {
+            return null;
+        }
+
+        const raw = entry as Record<string, unknown>;
+        const id = Number(raw.id);
+        const name = typeof raw.name === "string" ? raw.name : "";
+
+        if (!Number.isFinite(id) || id <= 0 || !name.trim()) {
+            return null;
+        }
+
+        return {
+            id,
+            name,
+        };
+    };
+
+    const normalizeList = (items: unknown[]): AdminAuthor[] =>
+        items.reduce<AdminAuthor[]>((acc, item) => {
+            const normalized = normalizeEntry(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
+    if (Array.isArray(data)) {
+        return normalizeList(data);
+    }
+
+    if (
+        data &&
+        typeof data === "object" &&
+        "result" in data &&
+        Array.isArray((data as { result?: unknown }).result)
+    ) {
+        return normalizeList((data as { result: unknown[] }).result);
+    }
+
+    return [];
+}
+
+/**
  * Separa nome base e extensão do arquivo enviado.
  *
  * @param file Arquivo selecionado.
@@ -590,6 +937,7 @@ export async function fetchBooksPage(
     filters: AdminBookFilters = {}
 ): Promise<PaginatedAdminBooksResponse> {
     const query = new URLSearchParams();
+
     if (filters.search) {
         query.set("search", filters.search);
     }
@@ -604,8 +952,13 @@ export async function fetchBooksPage(
     }
 
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    const data = await api.get<unknown>(`/books${suffix}`, token);
-    return normalizePaginatedBooksResponse(data);
+    const data = await api.get<unknown>(`/libraries_books${suffix}`, token);
+    const page = normalizePaginatedBooksResponse(data);
+    const enrichedBooks = await enrichBooksWithLibraries(token, page.result);
+    return {
+        ...page,
+        result: enrichedBooks,
+    };
 }
 
 /**
@@ -638,7 +991,12 @@ export async function fetchBooksPageByNext(
     }
 
     const data = (await response.json()) as unknown;
-    return normalizePaginatedBooksResponse(data);
+    const page = normalizePaginatedBooksResponse(data);
+    const enrichedBooks = await enrichBooksWithLibraries(token, page.result);
+    return {
+        ...page,
+        result: enrichedBooks,
+    };
 }
 
 /**
@@ -655,7 +1013,35 @@ export async function fetchBookById(token: string, id: string): Promise<AdminBoo
     }
 
     return runBookRequestWithCandidates(candidates, async (candidate) => {
-        return api.get<AdminBook>(`/books/${encodeURIComponent(candidate)}`, token);
+        const data = await api.get<unknown>(`/books/${encodeURIComponent(candidate)}`, token);
+        return normalizeSingleBookResponse(data);
+    });
+}
+
+/**
+ * Lista IDs de acervos associados a um livro.
+ *
+ * @param token Token JWT.
+ * @param bookId Identificador do livro.
+ * @returns Lista de IDs de acervo.
+ */
+export async function fetchBookLibraryIds(
+    token: string,
+    bookId: string
+): Promise<number[]> {
+    const candidates = buildBookIdCandidates(bookId);
+    if (candidates.length === 0) {
+        return [];
+    }
+
+    return runBookRequestWithCandidates(candidates, async (candidate) => {
+        const query = new URLSearchParams({
+            id: candidate,
+            fields: "library",
+            limit: "200",
+        });
+        const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
+        return normalizeBookLibraryIdsResponse(data);
     });
 }
 
@@ -948,39 +1334,20 @@ export async function fetchLibraries(token: string, search?: string): Promise<Ad
  *
  * @param token Token JWT.
  * @param payload Dados da biblioteca.
- * @returns Biblioteca criada.
+ * @returns Promise<void>.
  */
 export async function createLibrary(
     token: string,
     payload: AdminLibraryPayload
-): Promise<AdminLibrary> {
-    let data: unknown;
+): Promise<void> {
     try {
-        data = await api.post<unknown>("/libraries", payload, token);
+        await api.post<unknown>("/libraries", payload, token);
     } catch (error) {
         if (isNotFoundError(error)) {
             throw buildUnavailableEndpointError("libraries");
         }
         throw error;
     }
-
-    const normalized = normalizeSingleObjectPayload(data);
-    const id = Number(normalized?.id);
-    const nome =
-        typeof normalized?.nome === "string"
-            ? normalized.nome
-            : typeof normalized?.name === "string"
-                ? normalized.name
-                : "";
-    const cnpj = typeof normalized?.cnpj === "string" ? normalized.cnpj : "";
-    if (!Number.isFinite(id) || id <= 0 || !nome.trim()) {
-        throw new Error("Resposta inválida ao criar biblioteca.");
-    }
-    return {
-        id,
-        nome,
-        cnpj,
-    };
 }
 
 /**
@@ -989,40 +1356,21 @@ export async function createLibrary(
  * @param token Token JWT.
  * @param id Identificador da biblioteca.
  * @param payload Dados atualizados.
- * @returns Biblioteca atualizada.
+ * @returns Promise<void>.
  */
 export async function updateLibrary(
     token: string,
     id: number,
     payload: AdminLibraryPayload
-): Promise<AdminLibrary> {
-    let data: unknown;
+): Promise<void> {
     try {
-        data = await api.put<unknown>(`/libraries/${id}`, payload, token);
+        await api.put<unknown>(`/libraries/${id}`, payload, token);
     } catch (error) {
         if (isNotFoundError(error)) {
             throw buildUnavailableEndpointError("libraries");
         }
         throw error;
     }
-
-    const normalized = normalizeSingleObjectPayload(data);
-    const parsedId = Number(normalized?.id);
-    const nome =
-        typeof normalized?.nome === "string"
-            ? normalized.nome
-            : typeof normalized?.name === "string"
-                ? normalized.name
-                : "";
-    const cnpj = typeof normalized?.cnpj === "string" ? normalized.cnpj : "";
-    if (!Number.isFinite(parsedId) || parsedId <= 0 || !nome.trim()) {
-        throw new Error("Resposta inválida ao atualizar biblioteca.");
-    }
-    return {
-        id: parsedId,
-        nome,
-        cnpj,
-    };
 }
 
 /**
@@ -1084,42 +1432,20 @@ export async function fetchPublishers(token: string, search?: string): Promise<A
  *
  * @param token Token JWT.
  * @param payload Dados da editora.
- * @returns Editora criada.
+ * @returns Promise<void>.
  */
 export async function createPublisher(
     token: string,
     payload: AdminPublisherPayload
-): Promise<AdminPublisher> {
-    let data: unknown;
+): Promise<void> {
     try {
-        data = await api.post<unknown>("/publishers", payload, token);
+        await api.post<unknown>("/publishers", payload, token);
     } catch (error) {
         if (isNotFoundError(error)) {
             throw buildUnavailableEndpointError("publishers");
         }
         throw error;
     }
-
-    const normalized = normalizeSingleObjectPayload(data);
-    const id =
-        typeof normalized?.id === "string" || typeof normalized?.id === "number"
-            ? String(normalized.id).trim()
-            : "";
-    const name =
-        typeof normalized?.name === "string"
-            ? normalized.name
-            : typeof normalized?.nome === "string"
-                ? normalized.nome
-                : "";
-    const secret = typeof normalized?.secret === "string" ? normalized.secret : undefined;
-    if (!id || !name.trim()) {
-        throw new Error("Resposta inválida ao criar editora.");
-    }
-    return {
-        id,
-        name,
-        secret,
-    };
 }
 
 /**
@@ -1128,43 +1454,21 @@ export async function createPublisher(
  * @param token Token JWT.
  * @param id Identificador da editora.
  * @param payload Dados atualizados.
- * @returns Editora atualizada.
+ * @returns Promise<void>.
  */
 export async function updatePublisher(
     token: string,
     id: string,
     payload: AdminPublisherPayload
-): Promise<AdminPublisher> {
-    let data: unknown;
+): Promise<void> {
     try {
-        data = await api.put<unknown>(`/publishers/${encodeURIComponent(id)}`, payload, token);
+        await api.put<unknown>(`/publishers/${encodeURIComponent(id)}`, payload, token);
     } catch (error) {
         if (isNotFoundError(error)) {
             throw buildUnavailableEndpointError("publishers");
         }
         throw error;
     }
-
-    const normalized = normalizeSingleObjectPayload(data);
-    const parsedId =
-        typeof normalized?.id === "string" || typeof normalized?.id === "number"
-            ? String(normalized.id).trim()
-            : "";
-    const name =
-        typeof normalized?.name === "string"
-            ? normalized.name
-            : typeof normalized?.nome === "string"
-                ? normalized.nome
-                : "";
-    const secret = typeof normalized?.secret === "string" ? normalized.secret : undefined;
-    if (!parsedId || !name.trim()) {
-        throw new Error("Resposta inválida ao atualizar editora.");
-    }
-    return {
-        id: parsedId,
-        name,
-        secret,
-    };
 }
 
 /**
@@ -1183,4 +1487,122 @@ export async function deletePublisher(token: string, id: string): Promise<void> 
         }
         throw error;
     }
+}
+
+/**
+ * Lista assuntos para manutenção.
+ *
+ * @param token Token JWT.
+ * @param search Busca textual opcional.
+ * @returns Lista de assuntos.
+ */
+export async function fetchSubjects(token: string, search?: string): Promise<AdminSubject[]> {
+    const query = new URLSearchParams({
+        limit: "200",
+    });
+    if (search) {
+        query.set("search", search);
+    }
+    const data = await api.get<unknown>(`/subjects?${query.toString()}`, token);
+    return normalizeSubjectsResponse(data);
+}
+
+/**
+ * Cria um assunto.
+ *
+ * @param token Token JWT.
+ * @param payload Dados do assunto.
+ * @returns Promise<void>.
+ */
+export async function createSubject(
+    token: string,
+    payload: AdminSubjectPayload
+): Promise<void> {
+    await api.post<unknown>("/subjects", payload, token);
+}
+
+/**
+ * Atualiza um assunto.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do assunto.
+ * @param payload Dados atualizados.
+ * @returns Promise<void>.
+ */
+export async function updateSubject(
+    token: string,
+    id: number,
+    payload: AdminSubjectPayload
+): Promise<void> {
+    await api.put<unknown>(`/subjects/${id}`, payload, token);
+}
+
+/**
+ * Remove um assunto.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do assunto.
+ * @returns Promise<void>.
+ */
+export async function deleteSubject(token: string, id: number): Promise<void> {
+    await api.delete(`/subjects/${id}`, token);
+}
+
+/**
+ * Lista autores para manutenção.
+ *
+ * @param token Token JWT.
+ * @param search Busca textual opcional.
+ * @returns Lista de autores.
+ */
+export async function fetchAuthors(token: string, search?: string): Promise<AdminAuthor[]> {
+    const query = new URLSearchParams({
+        limit: "200",
+    });
+    if (search) {
+        query.set("search", search);
+    }
+    const data = await api.get<unknown>(`/authors?${query.toString()}`, token);
+    return normalizeAuthorsResponse(data);
+}
+
+/**
+ * Cria um autor.
+ *
+ * @param token Token JWT.
+ * @param payload Dados do autor.
+ * @returns Promise<void>.
+ */
+export async function createAuthor(
+    token: string,
+    payload: AdminAuthorPayload
+): Promise<void> {
+    await api.post<unknown>("/authors", payload, token);
+}
+
+/**
+ * Atualiza um autor.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do autor.
+ * @param payload Dados atualizados.
+ * @returns Promise<void>.
+ */
+export async function updateAuthor(
+    token: string,
+    id: number,
+    payload: AdminAuthorPayload
+): Promise<void> {
+    await api.put<unknown>(`/authors/${id}`, payload, token);
+}
+
+/**
+ * Remove um autor.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do autor.
+ * @returns Promise<void>.
+ */
+export async function deleteAuthor(token: string, id: number): Promise<void> {
+    await api.delete(`/authors/${id}`, token);
 }

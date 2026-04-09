@@ -1,17 +1,25 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Book } from "../model/Book";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import type { Publisher } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import {
     CreateBookPayload,
-    UpdateBookPayload,
-    createBook,
+    fetchAuthors,
+    fetchBookById,
+    fetchBookLibraryIds,
     fetchBooks,
+    fetchSubjects,
     generatePurchaseLink,
     getFileParts,
+    PublisherAdminBook,
+    PublisherAuthor,
+    PublisherSubject,
     readFileAsBase64,
     sha256Hex,
+    UpdateBookPayload,
     updateBook,
+    createBook,
 } from "../service/PublisherAdminService";
+import { getPublisherAdminPublishers } from "../service/permissions";
 
 type PurchaseLinkItem = {
     url: string;
@@ -20,43 +28,72 @@ type PurchaseLinkItem = {
     createdAt: string;
 };
 
+type PublisherAdminTabKey = "books" | "sale-links";
+type BookModalMode = "create" | "edit";
+
+type BookFieldErrorKey =
+    | "title"
+    | "authors"
+    | "publisher"
+    | "subjects"
+    | "file_name"
+    | "edition"
+    | "file";
+
+type ValidationResult<TField extends string> = {
+    message: string;
+    fieldErrors: Partial<Record<TField, string>>;
+};
+
 type BookFormState = {
     id?: string;
     title: string;
+    subtitle: string;
+    title_variant: string;
     publisher: string;
-    author: string;
-    subject: string;
-    type: string;
-    external_url: string;
-    external_source: string;
+    publication_place: string;
+    authors: string[];
+    dewey_decimal: string;
+    subjects: string[];
     file_name: string;
     edition: string;
     year: string;
     isbn: string;
     pages: string;
     language: string;
-    review: string;
+    summary: string;
+    general_note: string;
+    bibliography_note: string;
+    content_type: string;
+    media_type: string;
+    carrier_type: string;
     image_url: string;
-    library: string;
+    libraries: string[];
 };
 
 const emptyBookForm: BookFormState = {
     title: "",
+    subtitle: "",
+    title_variant: "",
     publisher: "",
-    author: "",
-    subject: "",
-    type: "protected",
-    external_url: "",
-    external_source: "",
+    publication_place: "",
+    authors: [],
+    dewey_decimal: "",
+    subjects: [],
     file_name: "",
     edition: "",
     year: "",
     isbn: "",
     pages: "",
     language: "",
-    review: "",
+    summary: "",
+    general_note: "",
+    bibliography_note: "",
+    content_type: "",
+    media_type: "",
+    carrier_type: "",
     image_url: "",
-    library: "",
+    libraries: [],
 };
 
 /**
@@ -85,69 +122,212 @@ function toNullableField(value: string): string | null {
 }
 
 /**
- * Normaliza o tipo do livro para o formato esperado pela API.
+ * Converte lista textual para IDs numéricos únicos de assunto.
  *
- * @param value Valor bruto do campo ``type``.
- * @returns Tipo normalizado ou ``null`` quando vazio.
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
  */
-function normalizeBookType(value: string): string | null {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) {
-        return null;
+function parseBookSubjectIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            continue;
+        }
+        unique.add(parsed);
     }
-    if (normalized === "externo") {
-        return "external";
-    }
-    return normalized;
+
+    return Array.from(unique.values());
 }
 
 /**
- * Indica se o tipo informado representa livro externo.
+ * Converte lista textual para IDs numéricos únicos de autor.
  *
- * @param type Tipo selecionado no formulário.
- * @returns ``true`` quando o tipo for ``external``.
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
  */
-function isExternalType(type: string): boolean {
-    return normalizeBookType(type) === "external";
+function parseBookAuthorIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            continue;
+        }
+        unique.add(parsed);
+    }
+
+    return Array.from(unique.values());
+}
+
+/**
+ * Converte lista textual para IDs numéricos únicos de acervo.
+ *
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
+ */
+function parseBookLibraryIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            unique.add(parsed);
+        }
+    }
+
+    return Array.from(unique.values());
+}
+
+/**
+ * Indica se um livro é do tipo protegido.
+ *
+ * @param value Tipo bruto retornado pela API.
+ * @returns ``true`` quando o tipo for ``protected``.
+ */
+function isProtectedType(value: string | null | undefined): boolean {
+    return (value || "").trim().toLowerCase() === "protected";
+}
+
+/**
+ * Resolve o valor de editora permitido para o formulário.
+ *
+ * @param rawPublisher Editora bruta vinda da API.
+ * @param allowedPublishers Editoras administráveis pelo usuário.
+ * @param fallback Valor padrão quando editora não for permitida.
+ * @returns Editora válida para o formulário.
+ */
+function resolveAllowedPublisher(
+    rawPublisher: string,
+    allowedPublishers: Publisher[],
+    fallback: string
+): string {
+    const trimmed = rawPublisher.trim();
+    if (trimmed && allowedPublishers.some((publisher) => publisher.id === trimmed)) {
+        return trimmed;
+    }
+    return fallback;
+}
+
+/**
+ * Converte dados de livro para estado de formulário de modal.
+ *
+ * @param book Livro retornado pela API.
+ * @param allowedPublishers Editoras administráveis pelo usuário.
+ * @param defaultPublisherId Editora padrão.
+ * @returns Estado preenchido para edição.
+ */
+function mapBookToForm(
+    book: PublisherAdminBook,
+    allowedPublishers: Publisher[],
+    defaultPublisherId: string
+): BookFormState {
+    const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
+    const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
+    const rawBook = book as unknown as Record<string, unknown>;
+
+    const rawLibraries = Array.isArray(rawBook.libraries)
+        ? rawBook.libraries
+              .map((item) => (item === null || item === undefined ? "" : String(item).trim()))
+              .filter((item) => Boolean(item))
+        : [];
+    const rawLibrary = rawBook.library;
+    const fallbackLibrary =
+        typeof rawLibrary === "number"
+            ? String(rawLibrary)
+            : typeof rawLibrary === "string"
+                ? rawLibrary.trim()
+                : "";
+    const resolvedLibraries = rawLibraries.length > 0
+        ? rawLibraries
+        : fallbackLibrary
+            ? [fallbackLibrary]
+            : [];
+
+    return {
+        id: book.id,
+        title: book.title || "",
+        subtitle: book.subtitle || "",
+        title_variant: book.title_variant || "",
+        publisher: resolveAllowedPublisher(
+            book.publisher || "",
+            allowedPublishers,
+            defaultPublisherId
+        ),
+        publication_place: book.publication_place || "",
+        authors: rawAuthors
+            .map((item) => (item && typeof item.author === "number" ? String(item.author) : ""))
+            .filter((item) => Boolean(item)),
+        dewey_decimal: book.dewey_decimal || "",
+        subjects: rawSubjects
+            .map((item) => (item && typeof item.subject === "number" ? String(item.subject) : ""))
+            .filter((item) => Boolean(item)),
+        file_name: book.file_name || "",
+        edition: book.edition || "",
+        year: book.year || "",
+        isbn: book.isbn || "",
+        pages: book.pages || "",
+        language: book.language || "",
+        summary: book.summary || "",
+        general_note: book.general_note || "",
+        bibliography_note: book.bibliography_note || "",
+        content_type: book.content_type || "",
+        media_type: book.media_type || "",
+        carrier_type: book.carrier_type || "",
+        image_url: book.image_url || "",
+        libraries: resolvedLibraries,
+    };
 }
 
 /**
  * Valida campos obrigatórios do formulário de livro da editora.
  *
  * @param form Estado atual do formulário.
- * @param mode Modo do formulário (criação ou edição).
+ * @param mode Modo de operação (criação ou edição).
  * @param hasBookFile Indica se arquivo foi selecionado para upload.
- * @returns Mensagem de erro quando inválido, senão ``null``.
+ * @returns Mensagem/campos inválidos ou ``null`` quando válido.
  */
-function validatePublisherBookForm(
+function validateBookForm(
     form: BookFormState,
-    mode: "create" | "edit",
+    mode: BookModalMode,
     hasBookFile: boolean
-): string | null {
-    const externalType = isExternalType(form.type);
+): ValidationResult<BookFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<BookFieldErrorKey, string>> = {};
 
-    if (!form.subject.trim()) {
-        return "Assunto obrigatório.";
+    if (!form.title.trim()) {
+        fieldErrors.title = "Título obrigatório.";
     }
 
-    if (externalType && !form.external_url.trim()) {
-        return "URL externa obrigatória para livros do tipo Externo.";
+    if (!form.authors || form.authors.length <= 0) {
+        fieldErrors.authors = "Selecione ao menos um autor.";
     }
 
-    if (externalType && !form.external_source.trim()) {
-        return "Fonte Externa obrigatória para livros do tipo Externo.";
+    if (!form.publisher.trim()) {
+        fieldErrors.publisher = "Editora obrigatória.";
     }
 
-    if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
-        return "Nome do arquivo obrigatório para tipos não externos.";
+    if (!form.subjects || form.subjects.length <= 0) {
+        fieldErrors.subjects = "Selecione ao menos um assunto.";
     }
 
-    if (mode === "create" && !externalType && !hasBookFile) {
-        return "Selecione o arquivo do livro para tipos não externos.";
+    if (!form.file_name.trim() && !(mode === "create" && hasBookFile)) {
+        fieldErrors.file_name = "Nome do arquivo obrigatório.";
     }
 
-    if (mode === "create" && externalType && hasBookFile) {
-        return "Arquivo não permitido para livros do tipo Externo.";
+    if (!form.edition.trim()) {
+        fieldErrors.edition = "Edição obrigatória.";
+    }
+
+    if (mode === "create" && !hasBookFile) {
+        fieldErrors.file = "Arquivo obrigatório para cadastro.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
     }
 
     return null;
@@ -156,114 +336,278 @@ function validatePublisherBookForm(
 /**
  * Hook/controller da tela administrativa da editora.
  *
- * @returns Objeto com estado da tela e ações para CRUD de livros e geração de links.
+ * @returns Estado e ações para CRUD de livros protegidos e geração de links.
  */
 export function usePublisherAdminController() {
-    const { getAccessToken, isAuthenticated, publisher, library } = useAuth();
-    const [books, setBooks] = useState<Book[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const { getAccessToken, isAuthenticated, publisher, profile } = useAuth();
+
+    const publisherAdminPublishers = useMemo(
+        () => getPublisherAdminPublishers(profile),
+        [profile]
+    );
+    const defaultPublisherId = useMemo(() => {
+        if (publisherAdminPublishers.length <= 0) {
+            return "";
+        }
+
+        if (
+            publisher?.id &&
+            publisherAdminPublishers.some((item) => item.id === publisher.id)
+        ) {
+            return publisher.id;
+        }
+
+        return publisherAdminPublishers[0].id;
+    }, [publisher?.id, publisherAdminPublishers]);
+
+    const [activeTab, setActiveTab] = useState<PublisherAdminTabKey>("books");
+    const [books, setBooks] = useState<PublisherAdminBook[]>([]);
+    const [subjects, setSubjects] = useState<PublisherSubject[]>([]);
+    const [authors, setAuthors] = useState<PublisherAuthor[]>([]);
+
+    const [isLoadingBooks, setIsLoadingBooks] = useState(false);
+    const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+    const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
+    const [isSavingBook, setIsSavingBook] = useState(false);
+    const [isGeneratingPurchaseLink, setIsGeneratingPurchaseLink] = useState(false);
+
     const [error, setError] = useState("");
-    const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-    const [editForm, setEditForm] = useState<BookFormState>(emptyBookForm);
-    const [createForm, setCreateForm] = useState<BookFormState>(emptyBookForm);
+
+    const [bookSearch, setBookSearch] = useState("");
+    const [appliedBookSearch, setAppliedBookSearch] = useState("");
+    const [publisherFilter, setPublisherFilter] = useState("");
+
+    const [bookModalOpen, setBookModalOpen] = useState(false);
+    const [bookModalMode, setBookModalMode] = useState<BookModalMode>("create");
+    const [bookModalError, setBookModalError] = useState("");
+    const [bookForm, setBookForm] = useState<BookFormState>(emptyBookForm);
+    const [bookFormErrors, setBookFormErrors] =
+        useState<Partial<Record<BookFieldErrorKey, string>>>({});
     const [bookFile, setBookFile] = useState<File | null>(null);
-    const [publisherId, setPublisherId] = useState("");
+
+    const [purchasePublisherId, setPurchasePublisherId] = useState("");
     const [purchaseEmail, setPurchaseEmail] = useState("");
     const [purchasePassword, setPurchasePassword] = useState("");
     const [purchaseHint, setPurchaseHint] = useState("");
     const [purchaseBookId, setPurchaseBookId] = useState("");
     const [purchaseLinks, setPurchaseLinks] = useState<PurchaseLinkItem[]>([]);
 
-    const bookOptions = useMemo(() => books.filter((book) => book.id), [books]);
-
-    useEffect(() => {
-        if (isAuthenticated) {
-            loadBooks();
-        }
-    }, [isAuthenticated]);
-
-    useEffect(() => {
-        if (!selectedBook) {
-            return;
-        }
-
-        setEditForm({
-            id: selectedBook.id,
-            title: selectedBook.title || "",
-            publisher: selectedBook.publisher || "",
-            author: selectedBook.author || "",
-            subject: selectedBook.subject || "",
-            type: selectedBook.type || "",
-            external_url: selectedBook.external_url || "",
-            external_source: selectedBook.external_source || "",
-            file_name: selectedBook.file_name || "",
-            edition: selectedBook.edition || "",
-            year: selectedBook.year || "",
-            isbn: selectedBook.isbn || "",
-            pages: selectedBook.pages || "",
-            language: selectedBook.language || "",
-            review: selectedBook.review || "",
-            image_url: selectedBook.image_url || "",
-            library: "",
-        });
-        setPurchaseBookId(selectedBook.id);
-    }, [selectedBook]);
-
-    useEffect(() => {
-        if (publisher && !publisherId) {
-            setPublisherId(publisher.id);
-        }
-    }, [publisher, publisherId]);
-
-    useEffect(() => {
-        if (library && !createForm.library) {
-            setCreateForm((prev) => ({ ...prev, library: library.id.toString() }));
-        }
-    }, [library, createForm.library]);
+    const bookOptions = useMemo(
+        () =>
+            books
+                .filter((book) => Boolean(book.id))
+                .map((book) => ({
+                    value: book.id,
+                    label: book.title,
+                })),
+        [books]
+    );
 
     /**
-     * Carrega a lista de livros administrativos.
+     * Carrega lista de assuntos para seleção no cadastro/edição de livros.
      *
      * @returns Promise<void>
      */
-    async function loadBooks(): Promise<void> {
-        setIsLoading(true);
-        setError("");
+    const loadSubjects = useCallback(async (): Promise<void> => {
+        setIsLoadingSubjects(true);
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
                 setError("Sessão expirada. Faça login novamente.");
                 return;
             }
-            const result = await fetchBooks(accessToken);
-            setBooks(result);
+
+            const result = await fetchSubjects(accessToken);
+            setSubjects(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao buscar assuntos."));
+        } finally {
+            setIsLoadingSubjects(false);
+        }
+    }, [getAccessToken]);
+
+    /**
+     * Carrega lista de autores para seleção no cadastro/edição de livros.
+     *
+     * @returns Promise<void>
+     */
+    const loadAuthors = useCallback(async (): Promise<void> => {
+        setIsLoadingAuthors(true);
+        try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await fetchAuthors(accessToken);
+            setAuthors(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao buscar autores."));
+        } finally {
+            setIsLoadingAuthors(false);
+        }
+    }, [getAccessToken]);
+
+    /**
+     * Carrega livros protegidos, aplicando filtros de busca e contexto.
+     *
+     * @returns Promise<void>
+     */
+    const loadBooks = useCallback(async (): Promise<void> => {
+        if (!publisherFilter) {
+            setBooks([]);
+            return;
+        }
+
+        setIsLoadingBooks(true);
+        setError("");
+
+        try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await fetchBooks(accessToken, {
+                publisher: publisherFilter,
+                search: appliedBookSearch.trim() || undefined,
+                limit: 200,
+            });
+
+            const protectedBooks = result.filter((book) => isProtectedType(book.type));
+            setBooks(protectedBooks);
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao buscar livros."));
         } finally {
-            setIsLoading(false);
+            setIsLoadingBooks(false);
         }
+    }, [appliedBookSearch, getAccessToken, publisherFilter]);
+
+    /**
+     * Recarrega dados de acordo com a aba ativa.
+     *
+     * @returns Promise<void>
+     */
+    const refreshCurrentTab = useCallback(async (): Promise<void> => {
+        if (activeTab === "books") {
+            await Promise.all([loadBooks(), loadSubjects(), loadAuthors()]);
+            return;
+        }
+
+        await loadBooks();
+    }, [activeTab, loadAuthors, loadBooks, loadSubjects]);
+
+    useEffect(() => {
+        if (publisherAdminPublishers.length <= 0) {
+            setPublisherFilter("");
+            setPurchasePublisherId("");
+            return;
+        }
+
+        setPublisherFilter((previous) => {
+            if (
+                previous &&
+                publisherAdminPublishers.some((item) => item.id === previous)
+            ) {
+                return previous;
+            }
+            return defaultPublisherId;
+        });
+
+        setPurchasePublisherId((previous) => {
+            if (
+                previous &&
+                publisherAdminPublishers.some((item) => item.id === previous)
+            ) {
+                return previous;
+            }
+            return defaultPublisherId;
+        });
+    }, [defaultPublisherId, publisherAdminPublishers]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            return;
+        }
+
+        if (publisherAdminPublishers.length <= 0 || !publisherFilter) {
+            return;
+        }
+
+        void loadBooks();
+    }, [isAuthenticated, loadBooks, publisherAdminPublishers.length, publisherFilter]);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            return;
+        }
+
+        void loadSubjects();
+        void loadAuthors();
+    }, [isAuthenticated, loadAuthors, loadSubjects]);
+
+    useEffect(() => {
+        if (books.length <= 0) {
+            setPurchaseBookId("");
+            return;
+        }
+
+        setPurchaseBookId((previous) => {
+            if (previous && books.some((book) => book.id === previous)) {
+                return previous;
+            }
+            return books[0].id;
+        });
+    }, [books]);
+
+    /**
+     * Limpa mensagem de erro de um campo específico do formulário.
+     *
+     * @param key Campo que deve ter o erro removido.
+     * @returns void
+     */
+    function clearBookFieldError(key: BookFieldErrorKey): void {
+        setBookFormErrors((previous) => {
+            if (!previous[key]) {
+                return previous;
+            }
+            const clone = { ...previous };
+            delete clone[key];
+            return clone;
+        });
     }
 
     /**
-     * Submete atualização dos dados de um livro já existente.
+     * Abre modal para cadastro de novo livro protegido.
      *
-     * @param event Evento de submit do formulário.
+     * @returns void
+     */
+    function openCreateBookModal(): void {
+        setBookModalMode("create");
+        setBookModalError("");
+        setBookFormErrors({});
+        setBookFile(null);
+        setBookForm({
+            ...emptyBookForm,
+            publisher: publisherFilter || defaultPublisherId,
+        });
+        setBookModalOpen(true);
+    }
+
+    /**
+     * Abre modal para edição carregando dados completos do livro.
+     *
+     * @param book Livro selecionado na listagem.
      * @returns Promise<void>
      */
-    async function handleUpdateBook(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
-        if (!editForm.id) {
-            setError("Selecione um livro para editar.");
-            return;
-        }
-
-        const validationError = validatePublisherBookForm(editForm, "edit", false);
-        if (validationError) {
-            setError(validationError);
-            return;
-        }
-
+    async function openEditBookModal(book: PublisherAdminBook): Promise<void> {
+        setBookModalError("");
+        setBookFormErrors({});
+        setBookFile(null);
         setError("");
+
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
@@ -271,98 +615,157 @@ export function usePublisherAdminController() {
                 return;
             }
 
-            const payload: UpdateBookPayload = {
-                title: toNullableField(editForm.title),
-                publisher: toNullableField(editForm.publisher),
-                author: toNullableField(editForm.author),
-                subject: toNullableField(editForm.subject),
-                type: normalizeBookType(editForm.type),
-                external_url: toNullableField(editForm.external_url),
-                external_source: toNullableField(editForm.external_source),
-                file_name: toNullableField(editForm.file_name),
-                image_url: toNullableField(editForm.image_url),
-                edition: toNullableField(editForm.edition),
-                year: toNullableField(editForm.year),
-                isbn: toNullableField(editForm.isbn),
-                pages: toNullableField(editForm.pages),
-                language: toNullableField(editForm.language),
-                review: toNullableField(editForm.review),
+            const detailedBook = await fetchBookById(accessToken, book.id);
+            const relatedLibraries = await fetchBookLibraryIds(accessToken, detailedBook.id);
+            const detailedBookWithLibraries: PublisherAdminBook = {
+                ...detailedBook,
+                libraries: relatedLibraries,
             };
+            const mappedForm = mapBookToForm(
+                detailedBookWithLibraries,
+                publisherAdminPublishers,
+                publisherFilter || defaultPublisherId
+            );
 
-            await updateBook(accessToken, editForm.id, payload);
-            await loadBooks();
+            setBookModalMode("edit");
+            setBookForm(mappedForm);
+            setBookModalOpen(true);
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao atualizar livro."));
+            setError(normalizeErrorMessage(err, "Erro ao carregar dados do livro."));
         }
     }
 
     /**
-     * Submete cadastro de novo livro com upload de arquivo.
+     * Fecha modal de livro e limpa erros locais.
+     *
+     * @returns void
+     */
+    function closeBookModal(): void {
+        setBookModalOpen(false);
+        setBookModalError("");
+        setBookFormErrors({});
+        setBookFile(null);
+    }
+
+    /**
+     * Persiste livro (cadastro ou edição) conforme o modo atual do modal.
      *
      * @param event Evento de submit do formulário.
      * @returns Promise<void>
      */
-    async function handleCreateBook(event: FormEvent<HTMLFormElement>): Promise<void> {
+    async function saveBook(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
-        const validationError = validatePublisherBookForm(
-            createForm,
-            "create",
+
+        const validationError = validateBookForm(
+            bookForm,
+            bookModalMode,
             Boolean(bookFile)
         );
         if (validationError) {
-            setError(validationError);
+            setBookModalError(validationError.message);
+            setBookFormErrors(validationError.fieldErrors);
             return;
         }
 
+        if (bookModalMode === "edit" && !bookForm.id) {
+            setBookModalError("Livro inválido para edição.");
+            return;
+        }
+
+        setBookModalError("");
+        setBookFormErrors({});
         setError("");
+        setIsSavingBook(true);
+
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
-                setError("Sessão expirada. Faça login novamente.");
+                setBookModalError("Sessão expirada. Faça login novamente.");
                 return;
             }
-            const resolvedLibraryId = createForm.library
-                ? Number(createForm.library)
-                : library?.id;
 
-            const payload: CreateBookPayload = {
-                title: toNullableField(createForm.title),
-                publisher: toNullableField(createForm.publisher),
-                author: toNullableField(createForm.author),
-                subject: toNullableField(createForm.subject),
-                type: normalizeBookType(createForm.type),
-                external_url: toNullableField(createForm.external_url),
-                external_source: toNullableField(createForm.external_source),
-                file_name: toNullableField(createForm.file_name),
-                edition: toNullableField(createForm.edition),
-                year: toNullableField(createForm.year),
-                isbn: toNullableField(createForm.isbn),
-                pages: toNullableField(createForm.pages),
-                language: toNullableField(createForm.language),
-                review: toNullableField(createForm.review),
-                image_url: toNullableField(createForm.image_url),
-                library: resolvedLibraryId,
+            const subjectIds = parseBookSubjectIds(bookForm.subjects);
+            const authorIds = parseBookAuthorIds(bookForm.authors);
+            const parsedLibraryIds = parseBookLibraryIds(bookForm.libraries);
+            const payload: UpdateBookPayload = {
+                title: toNullableField(bookForm.title),
+                subtitle: toNullableField(bookForm.subtitle),
+                title_variant: toNullableField(bookForm.title_variant),
+                publisher: toNullableField(bookForm.publisher),
+                publication_place: toNullableField(bookForm.publication_place),
+                dewey_decimal: toNullableField(bookForm.dewey_decimal),
+                type: "protected",
+                external_url: null,
+                external_source: null,
+                file_name: toNullableField(bookForm.file_name),
+                image_url: toNullableField(bookForm.image_url),
+                edition: toNullableField(bookForm.edition),
+                year: toNullableField(bookForm.year),
+                isbn: toNullableField(bookForm.isbn),
+                pages: toNullableField(bookForm.pages),
+                language: toNullableField(bookForm.language),
+                summary: toNullableField(bookForm.summary),
+                general_note: toNullableField(bookForm.general_note),
+                bibliography_note: toNullableField(bookForm.bibliography_note),
+                content_type: toNullableField(bookForm.content_type),
+                media_type: toNullableField(bookForm.media_type),
+                carrier_type: toNullableField(bookForm.carrier_type),
+                authors: authorIds.map((authorId) => ({ author: authorId })),
+                subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
             };
 
-            if (bookFile) {
-                const base64Content = await readFileAsBase64(bookFile);
-                const { fileName, fileExtension } = getFileParts(bookFile);
-                payload.file_name = payload.file_name || fileName;
-                payload.base64_content = base64Content;
-                payload.file_extension = fileExtension;
+            if (bookModalMode === "edit" && parsedLibraryIds.length > 0) {
+                payload.libraries = parsedLibraryIds;
             }
 
-            await createBook(accessToken, payload);
-            setCreateForm(emptyBookForm);
-            setBookFile(null);
+            if (bookModalMode === "create") {
+                const createPayload: CreateBookPayload = {
+                    ...payload,
+                };
+
+                if (bookFile) {
+                    const base64Content = await readFileAsBase64(bookFile);
+                    const { fileName, fileExtension } = getFileParts(bookFile);
+                    createPayload.file_name = createPayload.file_name || fileName;
+                    createPayload.base64_content = base64Content;
+                    createPayload.file_extension = fileExtension;
+                }
+
+                await createBook(accessToken, createPayload);
+            } else {
+                await updateBook(accessToken, bookForm.id!, payload);
+            }
+
+            closeBookModal();
             await loadBooks();
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao cadastrar livro."));
+            setBookModalError(normalizeErrorMessage(err, "Erro ao salvar livro."));
+        } finally {
+            setIsSavingBook(false);
         }
     }
 
     /**
-     * Gera um link assinado de compra/empréstimo licenciado.
+     * Aplica filtros de busca da aba de livros.
+     *
+     * @returns void
+     */
+    function applyBookFilters(): void {
+        setAppliedBookSearch(bookSearch.trim());
+    }
+
+    /**
+     * Limpa filtros de busca da aba de livros.
+     *
+     * @returns void
+     */
+    function clearBookFilters(): void {
+        setBookSearch("");
+        setAppliedBookSearch("");
+    }
+
+    /**
+     * Gera um link assinado de venda/licenciamento.
      *
      * @param event Evento de submit do formulário.
      * @returns Promise<void>
@@ -372,22 +775,30 @@ export function usePublisherAdminController() {
     ): Promise<void> {
         event.preventDefault();
 
-        const resolvedPublisherId = publisherId || publisher?.id || "";
-
-        if (!resolvedPublisherId || !purchaseBookId || !purchaseEmail || !purchasePassword || !purchaseHint) {
-            setError("Preencha todos os campos do link de compra.");
+        if (
+            !purchasePublisherId ||
+            !purchaseBookId ||
+            !purchaseEmail ||
+            !purchasePassword ||
+            !purchaseHint
+        ) {
+            setError("Preencha todos os campos do link de venda.");
             return;
         }
+
         setError("");
+        setIsGeneratingPurchaseLink(true);
+
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
                 setError("Sessão expirada. Faça login novamente.");
                 return;
             }
+
             const passHash = await sha256Hex(purchasePassword);
             const payload = {
-                publisher: resolvedPublisherId,
+                publisher: purchasePublisherId,
                 book_id: purchaseBookId,
                 user_email: purchaseEmail,
                 pass_hint: purchaseHint,
@@ -399,17 +810,19 @@ export function usePublisherAdminController() {
                 throw new Error("Resposta inválida ao gerar link.");
             }
 
-            setPurchaseLinks((prev) => [
+            setPurchaseLinks((previous) => [
                 {
                     url: data.purchase_link,
                     bookId: purchaseBookId,
                     userEmail: purchaseEmail,
                     createdAt: new Date().toLocaleString("pt-BR"),
                 },
-                ...prev,
+                ...previous,
             ]);
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao gerar link."));
+        } finally {
+            setIsGeneratingPurchaseLink(false);
         }
     }
 
@@ -429,34 +842,53 @@ export function usePublisherAdminController() {
 
     return {
         state: {
+            activeTab,
             books,
-            isLoading,
+            subjects,
+            authors,
+            isLoadingBooks,
+            isLoadingSubjects,
+            isLoadingAuthors,
+            isSavingBook,
+            isGeneratingPurchaseLink,
             error,
-            selectedBook,
-            editForm,
-            createForm,
+            bookSearch,
+            publisherFilter,
+            bookModalOpen,
+            bookModalMode,
+            bookModalError,
+            bookForm,
+            bookFormErrors,
             bookFile,
-            publisherId,
+            purchasePublisherId,
             purchaseEmail,
             purchasePassword,
             purchaseHint,
             purchaseBookId,
             purchaseLinks,
             bookOptions,
+            publisherAdminPublishers,
+            hasPublisherScope: publisherAdminPublishers.length > 0,
         },
         actions: {
-            setSelectedBook,
-            setEditForm,
-            setCreateForm,
+            setActiveTab,
+            setBookSearch,
+            setPublisherFilter,
+            applyBookFilters,
+            clearBookFilters,
+            refreshCurrentTab,
+            openCreateBookModal,
+            openEditBookModal,
+            closeBookModal,
+            saveBook,
+            setBookForm,
+            clearBookFieldError,
             setBookFile,
-            setPublisherId,
+            setPurchasePublisherId,
             setPurchaseEmail,
             setPurchasePassword,
             setPurchaseHint,
             setPurchaseBookId,
-            loadBooks,
-            handleUpdateBook,
-            handleCreateBook,
             handleGeneratePurchaseLink,
             handleCopyLink,
         },

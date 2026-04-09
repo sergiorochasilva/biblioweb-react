@@ -2,41 +2,56 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { message } from "antd";
 import { useAuth } from "../contexts/AuthContext";
 import {
+    AdminAuthor,
     AdminBook,
     AdminLibrary,
     AdminPublisher,
+    AdminSubject,
     AdminUser,
     CreateBookPayload,
     createBook,
+    createAuthor,
     createLibrary,
     createPublisher,
+    createSubject,
     createUser,
     deleteBook,
+    deleteAuthor,
     deleteLibrary,
     deletePublisher,
+    deleteSubject,
     deleteUser,
     fetchBookById,
+    fetchBookLibraryIds,
     fetchBooksPage,
     fetchBooksPageByNext,
+    fetchAuthors,
     fetchLibraries,
     fetchPublishers,
+    fetchSubjects,
     fetchUserById,
     fetchUsers,
     getFileParts,
     readFileAsBase64,
     resolveBookIdByLibraryBookId,
+    updateAuthor,
     updateBook,
     updateLibrary,
     updatePublisher,
+    updateSubject,
     updateUser,
 } from "../service/AdminService";
 
 type BookFormState = {
     id?: string;
     title: string;
+    subtitle: string;
+    title_variant: string;
     publisher: string;
-    author: string;
-    subject: string;
+    publication_place: string;
+    authors: string[];
+    dewey_decimal: string;
+    subjects: string[];
     type: string;
     external_url: string;
     external_source: string;
@@ -46,9 +61,14 @@ type BookFormState = {
     isbn: string;
     pages: string;
     language: string;
-    review: string;
+    summary: string;
+    general_note: string;
+    bibliography_note: string;
+    content_type: string;
+    media_type: string;
+    carrier_type: string;
     image_url: string;
-    library: string;
+    libraries: string[];
 };
 
 type UserFormState = {
@@ -72,30 +92,48 @@ type PublisherFormState = {
     name: string;
 };
 
+type SubjectFormState = {
+    id?: number;
+    name: string;
+};
+
+type AuthorFormState = {
+    id?: number;
+    name: string;
+};
+
 type AppliedBookFilters = {
     search: string;
     publisher: string;
     library: string;
 };
 
-type AdminTabKey = "books" | "users" | "libraries" | "publishers";
+type AdminTabKey =
+    | "books"
+    | "users"
+    | "libraries"
+    | "publishers"
+    | "subjects"
+    | "authors";
 
 type BookFieldErrorKey =
     | "title"
-    | "author"
+    | "authors"
     | "publisher"
-    | "subject"
+    | "subjects"
     | "file_name"
     | "image_url"
     | "edition"
     | "external_url"
     | "external_source"
-    | "library"
+    | "libraries"
     | "file";
 
 type UserFieldErrorKey = "email" | "senha" | "dica_senha";
 type LibraryFieldErrorKey = "cnpj" | "nome";
 type PublisherFieldErrorKey = "id" | "name";
+type SubjectFieldErrorKey = "name";
+type AuthorFieldErrorKey = "name";
 
 type ValidationResult<TField extends string> = {
     message: string;
@@ -106,9 +144,13 @@ const ADMIN_BOOKS_PAGE_SIZE = 20;
 
 const emptyBookForm: BookFormState = {
     title: "",
+    subtitle: "",
+    title_variant: "",
     publisher: "",
-    author: "",
-    subject: "",
+    publication_place: "",
+    authors: [],
+    dewey_decimal: "",
+    subjects: [],
     type: "protected",
     external_url: "",
     external_source: "",
@@ -118,9 +160,14 @@ const emptyBookForm: BookFormState = {
     isbn: "",
     pages: "",
     language: "",
-    review: "",
+    summary: "",
+    general_note: "",
+    bibliography_note: "",
+    content_type: "",
+    media_type: "",
+    carrier_type: "",
     image_url: "",
-    library: "",
+    libraries: [],
 };
 
 const emptyUserForm: UserFormState = {
@@ -142,6 +189,14 @@ const emptyPublisherForm: PublisherFormState = {
     name: "",
 };
 
+const emptySubjectForm: SubjectFormState = {
+    name: "",
+};
+
+const emptyAuthorForm: AuthorFormState = {
+    name: "",
+};
+
 const emptyFilters: AppliedBookFilters = {
     search: "",
     publisher: "",
@@ -149,19 +204,53 @@ const emptyFilters: AppliedBookFilters = {
 };
 
 /**
+ * Extrai IDs de acervo de um livro administrativo.
+ *
+ * @param book Livro retornado pela API administrativa.
+ * @returns IDs únicos de acervo em formato textual.
+ */
+function extractBookLibraries(book: AdminBook): string[] {
+    const unique = new Set<string>();
+
+    if (Array.isArray(book.libraries)) {
+        for (const libraryId of book.libraries) {
+            const parsed = Number(libraryId);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                unique.add(String(parsed));
+            }
+        }
+    }
+
+    return Array.from(unique);
+}
+
+/**
  * Converte dados de livro para o estado de formulário utilizado no modal.
  *
  * @param book Livro bruto vindo da listagem ou do endpoint de detalhe.
- * @param fallbackLibraryId Biblioteca padrão quando o livro não tiver vínculo explícito.
+ * @param fallbackLibraryIds Bibliotecas padrão quando o livro não tiver vínculo explícito.
  * @returns Estado preenchido para o formulário de livro.
  */
-function mapBookToForm(book: AdminBook, fallbackLibraryId: string): BookFormState {
+function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormState {
+    const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
+    const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
+    const parsedLibraries = extractBookLibraries(book);
+    const libraries = parsedLibraries.length > 0 ? parsedLibraries : fallbackLibraryIds;
+
     return {
         id: book.book_id || book.id,
         title: book.title || "",
+        subtitle: book.subtitle || "",
+        title_variant: book.title_variant || "",
         publisher: book.publisher_name || book.publisher || "",
-        author: book.author || "",
-        subject: book.subject || "",
+        publication_place: book.publication_place || "",
+        authors: rawAuthors
+            .map((item) => (item && typeof item.author === "number" ? String(item.author) : ""))
+            .filter((item) => Boolean(item)),
+        dewey_decimal: book.dewey_decimal || "",
+        subjects: rawSubjects
+            .map((item) => (item && typeof item.subject === "number" ? String(item.subject) : ""))
+            .filter((item) => Boolean(item)),
         type: book.type || "protected",
         external_url: book.external_url || "",
         external_source: book.external_source || "",
@@ -171,12 +260,14 @@ function mapBookToForm(book: AdminBook, fallbackLibraryId: string): BookFormStat
         isbn: book.isbn || "",
         pages: book.pages || "",
         language: book.language || "",
-        review: book.review || "",
+        summary: book.summary || "",
+        general_note: book.general_note || "",
+        bibliography_note: book.bibliography_note || "",
+        content_type: book.content_type || "",
+        media_type: book.media_type || "",
+        carrier_type: book.carrier_type || "",
         image_url: book.image_url || "",
-        library:
-            book.library === undefined || book.library === null
-                ? fallbackLibraryId
-                : String(book.library),
+        libraries,
     };
 }
 
@@ -207,20 +298,20 @@ function validateBookForm(
         fieldErrors.title = "Título obrigatório.";
     }
 
-    if (!form.author.trim()) {
-        fieldErrors.author = "Autor obrigatório.";
+    if (!form.authors || form.authors.length <= 0) {
+        fieldErrors.authors = "Selecione ao menos um autor.";
     }
 
     if (!form.publisher.trim()) {
         fieldErrors.publisher = "Editora obrigatória.";
     }
 
-    if (!form.subject.trim()) {
-        fieldErrors.subject = "Assunto obrigatório.";
+    if (!form.subjects || form.subjects.length <= 0) {
+        fieldErrors.subjects = "Selecione ao menos um assunto.";
     }
 
-    if (!form.library.trim()) {
-        fieldErrors.library = "Biblioteca obrigatória.";
+    if (!form.libraries || form.libraries.length <= 0) {
+        fieldErrors.libraries = "Selecione ao menos um acervo.";
     }
 
     if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
@@ -353,6 +444,56 @@ function validatePublisherForm(
 }
 
 /**
+ * Valida campos do formulário de assunto.
+ *
+ * @param form Estado atual do formulário.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateSubjectForm(
+    form: SubjectFormState
+): ValidationResult<SubjectFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<SubjectFieldErrorKey, string>> = {};
+
+    if (!form.name.trim()) {
+        fieldErrors.name = "Nome obrigatório.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
+/**
+ * Valida campos do formulário de autor.
+ *
+ * @param form Estado atual do formulário.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateAuthorForm(
+    form: AuthorFormState
+): ValidationResult<AuthorFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<AuthorFieldErrorKey, string>> = {};
+
+    if (!form.name.trim()) {
+        fieldErrors.name = "Nome obrigatório.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
+/**
  * Converte texto de formulário para formato compatível com DTO opcional.
  *
  * @param value Texto bruto informado no formulário.
@@ -406,6 +547,65 @@ function parseLibraryId(value: string): number | undefined {
         return undefined;
     }
     return parsed;
+}
+
+/**
+ * Converte lista textual para IDs numéricos únicos de assunto.
+ *
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
+ */
+function parseBookSubjectIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            continue;
+        }
+        unique.add(parsed);
+    }
+
+    return Array.from(unique.values());
+}
+
+/**
+ * Converte lista textual para IDs numéricos únicos de autor.
+ *
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
+ */
+function parseBookAuthorIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            continue;
+        }
+        unique.add(parsed);
+    }
+
+    return Array.from(unique.values());
+}
+
+/**
+ * Converte lista textual para IDs numéricos únicos de acervo.
+ *
+ * @param values IDs em formato textual.
+ * @returns IDs numéricos únicos.
+ */
+function parseBookLibraryIds(values: string[]): number[] {
+    const unique = new Set<number>();
+
+    for (const value of values) {
+        const parsed = parseLibraryId(value);
+        if (parsed) {
+            unique.add(parsed);
+        }
+    }
+
+    return Array.from(unique.values());
 }
 
 /**
@@ -473,18 +673,26 @@ export function useAdminController() {
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
     const [isLoadingPublishers, setIsLoadingPublishers] = useState(false);
+    const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
+    const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
     const [isSavingBook, setIsSavingBook] = useState(false);
     const [isSavingUser, setIsSavingUser] = useState(false);
     const [isSavingLibrary, setIsSavingLibrary] = useState(false);
     const [isSavingPublisher, setIsSavingPublisher] = useState(false);
+    const [isSavingSubject, setIsSavingSubject] = useState(false);
+    const [isSavingAuthor, setIsSavingAuthor] = useState(false);
 
     const [books, setBooks] = useState<AdminBook[]>([]);
     const [booksNext, setBooksNext] = useState<string | null>(null);
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [libraries, setLibraries] = useState<AdminLibrary[]>([]);
     const [publishers, setPublishers] = useState<AdminPublisher[]>([]);
+    const [subjects, setSubjects] = useState<AdminSubject[]>([]);
+    const [authors, setAuthors] = useState<AdminAuthor[]>([]);
     const [libraryRows, setLibraryRows] = useState<AdminLibrary[]>([]);
     const [publisherRows, setPublisherRows] = useState<AdminPublisher[]>([]);
+    const [subjectRows, setSubjectRows] = useState<AdminSubject[]>([]);
+    const [authorRows, setAuthorRows] = useState<AdminAuthor[]>([]);
 
     const [bookSearch, setBookSearch] = useState("");
     const [publisherFilter, setPublisherFilter] = useState("");
@@ -492,12 +700,16 @@ export function useAdminController() {
     const [userSearch, setUserSearch] = useState("");
     const [librarySearch, setLibrarySearch] = useState("");
     const [publisherSearch, setPublisherSearch] = useState("");
+    const [subjectSearch, setSubjectSearch] = useState("");
+    const [authorSearch, setAuthorSearch] = useState("");
 
     const [activeTab, setActiveTabState] = useState<AdminTabKey>("books");
     const [appliedFilters, setAppliedFilters] = useState<AppliedBookFilters>(emptyFilters);
     const [appliedUserSearch, setAppliedUserSearch] = useState("");
     const [appliedLibrarySearch, setAppliedLibrarySearch] = useState("");
     const [appliedPublisherSearch, setAppliedPublisherSearch] = useState("");
+    const [appliedSubjectSearch, setAppliedSubjectSearch] = useState("");
+    const [appliedAuthorSearch, setAppliedAuthorSearch] = useState("");
 
     const [error, setError] = useState("");
 
@@ -530,6 +742,20 @@ export function useAdminController() {
     const [publisherFormErrors, setPublisherFormErrors] =
         useState<Partial<Record<PublisherFieldErrorKey, string>>>({});
 
+    const [subjectModalOpen, setSubjectModalOpen] = useState(false);
+    const [subjectModalMode, setSubjectModalMode] = useState<"create" | "edit">("create");
+    const [subjectForm, setSubjectForm] = useState<SubjectFormState>(emptySubjectForm);
+    const [subjectModalError, setSubjectModalError] = useState("");
+    const [subjectFormErrors, setSubjectFormErrors] =
+        useState<Partial<Record<SubjectFieldErrorKey, string>>>({});
+
+    const [authorModalOpen, setAuthorModalOpen] = useState(false);
+    const [authorModalMode, setAuthorModalMode] = useState<"create" | "edit">("create");
+    const [authorForm, setAuthorForm] = useState<AuthorFormState>(emptyAuthorForm);
+    const [authorModalError, setAuthorModalError] = useState("");
+    const [authorFormErrors, setAuthorFormErrors] =
+        useState<Partial<Record<AuthorFieldErrorKey, string>>>({});
+
     const hasMoreBooks = useMemo(() => Boolean(booksNext), [booksNext]);
 
     /**
@@ -545,15 +771,26 @@ export function useAdminController() {
                 return;
             }
 
-            const [loadedLibraries, loadedPublishers] = await Promise.all([
+            const [
+                loadedLibraries,
+                loadedPublishers,
+                loadedSubjects,
+                loadedAuthors,
+            ] = await Promise.all([
                 fetchLibraries(token),
                 fetchPublishers(token),
+                fetchSubjects(token),
+                fetchAuthors(token),
             ]);
 
             setLibraries(loadedLibraries);
             setPublishers(loadedPublishers);
+            setSubjects(loadedSubjects);
+            setAuthors(loadedAuthors);
             setLibraryRows(loadedLibraries);
             setPublisherRows(loadedPublishers);
+            setSubjectRows(loadedSubjects);
+            setAuthorRows(loadedAuthors);
 
             const firstLibraryId = loadedLibraries[0]?.id
                 ? String(loadedLibraries[0].id)
@@ -745,13 +982,69 @@ export function useAdminController() {
     }, [appliedPublisherSearch, getAccessToken]);
 
     /**
+     * Carrega assuntos para aba de manutenção.
+     *
+     * @returns Promise<void>.
+     */
+    const loadSubjectRows = useCallback(async (): Promise<void> => {
+        setIsLoadingSubjects(true);
+        setError("");
+
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await fetchSubjects(token, appliedSubjectSearch || undefined);
+            setSubjectRows(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar assuntos."));
+        } finally {
+            setIsLoadingSubjects(false);
+        }
+    }, [appliedSubjectSearch, getAccessToken]);
+
+    /**
+     * Carrega autores para aba de manutenção.
+     *
+     * @returns Promise<void>.
+     */
+    const loadAuthorRows = useCallback(async (): Promise<void> => {
+        setIsLoadingAuthors(true);
+        setError("");
+
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await fetchAuthors(token, appliedAuthorSearch || undefined);
+            setAuthorRows(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar autores."));
+        } finally {
+            setIsLoadingAuthors(false);
+        }
+    }, [appliedAuthorSearch, getAccessToken]);
+
+    /**
      * Atualiza a aba ativa de administração.
      *
      * @param tabKey Identificador da aba.
      * @returns void.
      */
     function setActiveTab(tabKey: string): void {
-        if (tabKey === "users" || tabKey === "libraries" || tabKey === "publishers") {
+        if (
+            tabKey === "users" ||
+            tabKey === "libraries" ||
+            tabKey === "publishers" ||
+            tabKey === "subjects" ||
+            tabKey === "authors"
+        ) {
             setActiveTabState(tabKey);
             return;
         }
@@ -781,9 +1074,30 @@ export function useAdminController() {
             return;
         }
 
+        if (activeTab === "subjects") {
+            await loadReferenceData();
+            await loadSubjectRows();
+            return;
+        }
+
+        if (activeTab === "authors") {
+            await loadReferenceData();
+            await loadAuthorRows();
+            return;
+        }
+
         await loadReferenceData();
         await loadBooks();
-    }, [activeTab, loadBooks, loadLibraryRows, loadPublisherRows, loadReferenceData, loadUsers]);
+    }, [
+        activeTab,
+        loadBooks,
+        loadAuthorRows,
+        loadLibraryRows,
+        loadPublisherRows,
+        loadReferenceData,
+        loadSubjectRows,
+        loadUsers,
+    ]);
 
     /**
      * Remove erro de um campo do formulário de livro.
@@ -858,6 +1172,42 @@ export function useAdminController() {
     }
 
     /**
+     * Remove erro de um campo do formulário de assunto.
+     *
+     * @param field Campo a ser limpo.
+     * @returns void.
+     */
+    function clearSubjectFieldError(field: SubjectFieldErrorKey): void {
+        setSubjectModalError("");
+        setSubjectFormErrors((previous) => {
+            if (!previous[field]) {
+                return previous;
+            }
+            const next = { ...previous };
+            delete next[field];
+            return next;
+        });
+    }
+
+    /**
+     * Remove erro de um campo do formulário de autor.
+     *
+     * @param field Campo a ser limpo.
+     * @returns void.
+     */
+    function clearAuthorFieldError(field: AuthorFieldErrorKey): void {
+        setAuthorModalError("");
+        setAuthorFormErrors((previous) => {
+            if (!previous[field]) {
+                return previous;
+            }
+            const next = { ...previous };
+            delete next[field];
+            return next;
+        });
+    }
+
+    /**
      * Exibe erro no modal de livros e dispara toaster.
      *
      * @param text Mensagem a ser exibida.
@@ -921,6 +1271,38 @@ export function useAdminController() {
         message.error(text);
     }
 
+    /**
+     * Exibe erro no modal de assuntos e dispara toaster.
+     *
+     * @param text Mensagem a ser exibida.
+     * @param fieldErrors Erros de campos opcionais.
+     * @returns void.
+     */
+    function showSubjectModalError(
+        text: string,
+        fieldErrors: Partial<Record<SubjectFieldErrorKey, string>> = {}
+    ): void {
+        setSubjectModalError(text);
+        setSubjectFormErrors(fieldErrors);
+        message.error(text);
+    }
+
+    /**
+     * Exibe erro no modal de autores e dispara toaster.
+     *
+     * @param text Mensagem a ser exibida.
+     * @param fieldErrors Erros de campos opcionais.
+     * @returns void.
+     */
+    function showAuthorModalError(
+        text: string,
+        fieldErrors: Partial<Record<AuthorFieldErrorKey, string>> = {}
+    ): void {
+        setAuthorModalError(text);
+        setAuthorFormErrors(fieldErrors);
+        message.error(text);
+    }
+
     useEffect(() => {
         if (!isAuthenticated) {
             return;
@@ -961,6 +1343,22 @@ export function useAdminController() {
         void loadPublisherRows();
     }, [activeTab, isAuthenticated, loadPublisherRows]);
 
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "subjects") {
+            return;
+        }
+
+        void loadSubjectRows();
+    }, [activeTab, isAuthenticated, loadSubjectRows]);
+
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "authors") {
+            return;
+        }
+
+        void loadAuthorRows();
+    }, [activeTab, isAuthenticated, loadAuthorRows]);
+
     /**
      * Aplica filtros da listagem de livros.
      *
@@ -969,7 +1367,7 @@ export function useAdminController() {
     function applyBookFilters(): void {
         const normalizedLibrary = libraryFilter.trim();
         if (!normalizedLibrary) {
-            message.error("Selecione uma biblioteca para filtrar os livros.");
+            message.error("Selecione um acervo para filtrar os livros.");
             return;
         }
 
@@ -1054,6 +1452,44 @@ export function useAdminController() {
     }
 
     /**
+     * Aplica busca textual da aba de assuntos.
+     *
+     * @returns void.
+     */
+    function applySubjectSearch(): void {
+        setAppliedSubjectSearch(subjectSearch.trim());
+    }
+
+    /**
+     * Limpa busca textual da aba de assuntos.
+     *
+     * @returns void.
+     */
+    function clearSubjectSearch(): void {
+        setSubjectSearch("");
+        setAppliedSubjectSearch("");
+    }
+
+    /**
+     * Aplica busca textual da aba de autores.
+     *
+     * @returns void.
+     */
+    function applyAuthorSearch(): void {
+        setAppliedAuthorSearch(authorSearch.trim());
+    }
+
+    /**
+     * Limpa busca textual da aba de autores.
+     *
+     * @returns void.
+     */
+    function clearAuthorSearch(): void {
+        setAuthorSearch("");
+        setAppliedAuthorSearch("");
+    }
+
+    /**
      * Abre modal para cadastro de novo livro.
      *
      * @returns void.
@@ -1061,14 +1497,14 @@ export function useAdminController() {
     function openCreateBookModal(): void {
         const defaultLibrary = libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
         if (!defaultLibrary) {
-            message.error("Cadastre ao menos uma biblioteca antes de adicionar livros.");
+            message.error("Cadastre ao menos um acervo antes de adicionar livros.");
             return;
         }
 
         setBookModalMode("create");
         setBookForm({
             ...emptyBookForm,
-            library: defaultLibrary,
+            libraries: [defaultLibrary],
             publisher: publishers[0]?.id || "",
         });
         setBookFile(null);
@@ -1089,11 +1525,15 @@ export function useAdminController() {
         setBookModalError("");
         setBookFormErrors({});
 
-        const fallbackLibrary =
-            book.library !== undefined && book.library !== null
-                ? String(book.library)
-                : libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
-        const fallbackForm = mapBookToForm(book, fallbackLibrary);
+        const fallbackLibraries = extractBookLibraries(book);
+        if (fallbackLibraries.length <= 0) {
+            const fallbackLibrary =
+                libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
+            if (fallbackLibrary) {
+                fallbackLibraries.push(fallbackLibrary);
+            }
+        }
+        const fallbackForm = mapBookToForm(book, fallbackLibraries);
 
         const token = await getAccessToken();
         if (!token || !book.id) {
@@ -1103,7 +1543,28 @@ export function useAdminController() {
 
         try {
             const selected = await fetchBookById(token, book.book_id || book.id);
-            setBookForm(mapBookToForm(selected, fallbackLibrary));
+            const resolvedBookId = selected.book_id || selected.id;
+            let librariesFromLink = extractBookLibraries(selected);
+            if (resolvedBookId) {
+                try {
+                    const linkedLibraries = await fetchBookLibraryIds(token, resolvedBookId);
+                    if (linkedLibraries.length > 0) {
+                        librariesFromLink = linkedLibraries.map((item) => String(item));
+                    }
+                } catch {
+                    // Mantém fallback de bibliotecas já conhecidas no DTO principal.
+                }
+            }
+
+            setBookForm(
+                mapBookToForm(
+                    {
+                        ...selected,
+                        libraries: parseBookLibraryIds(librariesFromLink),
+                    },
+                    fallbackLibraries
+                )
+            );
             setBookFile(null);
             setBookModalOpen(true);
         } catch (err) {
@@ -1111,7 +1572,19 @@ export function useAdminController() {
             if (resolvedByLibraryBook) {
                 try {
                     const selected = await fetchBookById(token, resolvedByLibraryBook);
-                    setBookForm(mapBookToForm(selected, fallbackLibrary));
+                    const linkedLibraries = await fetchBookLibraryIds(token, resolvedByLibraryBook);
+                    setBookForm(
+                        mapBookToForm(
+                            {
+                                ...selected,
+                                libraries:
+                                    linkedLibraries.length > 0
+                                        ? linkedLibraries
+                                        : selected.libraries,
+                            },
+                            fallbackLibraries
+                        )
+                    );
                     setBookFile(null);
                     setBookModalOpen(true);
                     return;
@@ -1170,20 +1643,37 @@ export function useAdminController() {
                 return;
             }
 
-            const libraryId = parseLibraryId(bookForm.library);
-            if (!libraryId) {
-                showBookModalError("Selecione uma biblioteca válida.", {
-                    library: "Biblioteca obrigatória.",
+            const libraryIds = parseBookLibraryIds(bookForm.libraries);
+            if (libraryIds.length <= 0) {
+                showBookModalError("Selecione ao menos um acervo.", {
+                    libraries: "Selecione ao menos um acervo.",
+                });
+                return;
+            }
+
+            const subjectIds = parseBookSubjectIds(bookForm.subjects);
+            if (subjectIds.length <= 0) {
+                showBookModalError("Selecione ao menos um assunto.", {
+                    subjects: "Selecione ao menos um assunto.",
+                });
+                return;
+            }
+            const authorIds = parseBookAuthorIds(bookForm.authors);
+            if (authorIds.length <= 0) {
+                showBookModalError("Selecione ao menos um autor.", {
+                    authors: "Selecione ao menos um autor.",
                 });
                 return;
             }
 
             const payload = {
                 title: toNullableField(bookForm.title),
+                subtitle: toNullableField(bookForm.subtitle),
+                title_variant: toNullableField(bookForm.title_variant),
                 publisher: toNullableField(bookForm.publisher),
-                author: toNullableField(bookForm.author),
-                subject: toNullableField(bookForm.subject),
-                library: libraryId,
+                publication_place: toNullableField(bookForm.publication_place),
+                dewey_decimal: toNullableField(bookForm.dewey_decimal),
+                libraries: libraryIds,
                 type: normalizeBookType(bookForm.type),
                 external_url: toNullableField(bookForm.external_url),
                 external_source: toNullableField(bookForm.external_source),
@@ -1194,7 +1684,14 @@ export function useAdminController() {
                 isbn: toNullableField(bookForm.isbn),
                 pages: toNullableField(bookForm.pages),
                 language: toNullableField(bookForm.language),
-                review: toNullableField(bookForm.review),
+                summary: toNullableField(bookForm.summary),
+                general_note: toNullableField(bookForm.general_note),
+                bibliography_note: toNullableField(bookForm.bibliography_note),
+                content_type: toNullableField(bookForm.content_type),
+                media_type: toNullableField(bookForm.media_type),
+                carrier_type: toNullableField(bookForm.carrier_type),
+                authors: authorIds.map((authorId) => ({ author: authorId })),
+                subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
             };
 
             if (bookModalMode === "edit" && bookForm.id) {
@@ -1638,30 +2135,266 @@ export function useAdminController() {
         }
     }
 
+    /**
+     * Abre modal de criação de assunto.
+     *
+     * @returns void.
+     */
+    function openCreateSubjectModal(): void {
+        setSubjectModalMode("create");
+        setSubjectForm(emptySubjectForm);
+        setSubjectModalError("");
+        setSubjectFormErrors({});
+        setSubjectModalOpen(true);
+    }
+
+    /**
+     * Abre modal de edição de assunto.
+     *
+     * @param item Assunto selecionado.
+     * @returns void.
+     */
+    function openEditSubjectModal(item: AdminSubject): void {
+        setSubjectModalMode("edit");
+        setSubjectForm({
+            id: item.id,
+            name: item.name,
+        });
+        setSubjectModalError("");
+        setSubjectFormErrors({});
+        setSubjectModalOpen(true);
+    }
+
+    /**
+     * Fecha modal de assunto.
+     *
+     * @returns void.
+     */
+    function closeSubjectModal(): void {
+        setSubjectModalOpen(false);
+        setSubjectModalError("");
+        setSubjectFormErrors({});
+    }
+
+    /**
+     * Persiste formulário de assunto.
+     *
+     * @param event Evento de submit.
+     * @returns Promise<void>.
+     */
+    async function saveSubject(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setSubjectModalError("");
+        setSubjectFormErrors({});
+
+        const validationError = validateSubjectForm(subjectForm);
+        if (validationError) {
+            showSubjectModalError(validationError.message, validationError.fieldErrors);
+            return;
+        }
+
+        setIsSavingSubject(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                showSubjectModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const payload = {
+                name: subjectForm.name.trim(),
+            };
+
+            if (subjectModalMode === "edit" && subjectForm.id) {
+                await updateSubject(token, subjectForm.id, payload);
+            } else {
+                await createSubject(token, payload);
+            }
+
+            setSubjectModalOpen(false);
+            setSubjectForm(emptySubjectForm);
+            setSubjectModalError("");
+            setSubjectFormErrors({});
+
+            await loadReferenceData();
+            await loadSubjectRows();
+        } catch (err) {
+            showSubjectModalError(normalizeErrorMessage(err, "Erro ao salvar assunto."));
+        } finally {
+            setIsSavingSubject(false);
+        }
+    }
+
+    /**
+     * Remove um assunto da manutenção.
+     *
+     * @param subjectId ID do assunto.
+     * @returns Promise<void>.
+     */
+    async function removeSubject(subjectId: number): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await deleteSubject(token, subjectId);
+            await loadReferenceData();
+            await loadSubjectRows();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao remover assunto."));
+        }
+    }
+
+    /**
+     * Abre modal de criação de autor.
+     *
+     * @returns void.
+     */
+    function openCreateAuthorModal(): void {
+        setAuthorModalMode("create");
+        setAuthorForm(emptyAuthorForm);
+        setAuthorModalError("");
+        setAuthorFormErrors({});
+        setAuthorModalOpen(true);
+    }
+
+    /**
+     * Abre modal de edição de autor.
+     *
+     * @param item Autor selecionado.
+     * @returns void.
+     */
+    function openEditAuthorModal(item: AdminAuthor): void {
+        setAuthorModalMode("edit");
+        setAuthorForm({
+            id: item.id,
+            name: item.name,
+        });
+        setAuthorModalError("");
+        setAuthorFormErrors({});
+        setAuthorModalOpen(true);
+    }
+
+    /**
+     * Fecha modal de autor.
+     *
+     * @returns void.
+     */
+    function closeAuthorModal(): void {
+        setAuthorModalOpen(false);
+        setAuthorModalError("");
+        setAuthorFormErrors({});
+    }
+
+    /**
+     * Persiste formulário de autor.
+     *
+     * @param event Evento de submit.
+     * @returns Promise<void>.
+     */
+    async function saveAuthor(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setAuthorModalError("");
+        setAuthorFormErrors({});
+
+        const validationError = validateAuthorForm(authorForm);
+        if (validationError) {
+            showAuthorModalError(validationError.message, validationError.fieldErrors);
+            return;
+        }
+
+        setIsSavingAuthor(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                showAuthorModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const payload = {
+                name: authorForm.name.trim(),
+            };
+
+            if (authorModalMode === "edit" && authorForm.id) {
+                await updateAuthor(token, authorForm.id, payload);
+            } else {
+                await createAuthor(token, payload);
+            }
+
+            setAuthorModalOpen(false);
+            setAuthorForm(emptyAuthorForm);
+            setAuthorModalError("");
+            setAuthorFormErrors({});
+
+            await loadReferenceData();
+            await loadAuthorRows();
+        } catch (err) {
+            showAuthorModalError(normalizeErrorMessage(err, "Erro ao salvar autor."));
+        } finally {
+            setIsSavingAuthor(false);
+        }
+    }
+
+    /**
+     * Remove um autor da manutenção.
+     *
+     * @param authorId ID do autor.
+     * @returns Promise<void>.
+     */
+    async function removeAuthor(authorId: number): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await deleteAuthor(token, authorId);
+            await loadReferenceData();
+            await loadAuthorRows();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao remover autor."));
+        }
+    }
+
     return {
         state: {
             books,
             users,
             libraries,
             publishers,
+            subjects,
+            authors,
             libraryRows,
             publisherRows,
+            subjectRows,
+            authorRows,
             hasMoreBooks,
             isLoadingBooks,
             isLoadingMoreBooks,
             isLoadingUsers,
             isLoadingLibraries,
             isLoadingPublishers,
+            isLoadingSubjects,
+            isLoadingAuthors,
             isSavingBook,
             isSavingUser,
             isSavingLibrary,
             isSavingPublisher,
+            isSavingSubject,
+            isSavingAuthor,
             bookSearch,
             publisherFilter,
             libraryFilter,
             userSearch,
             librarySearch,
             publisherSearch,
+            subjectSearch,
+            authorSearch,
             activeTab,
             error,
             bookModalOpen,
@@ -1685,6 +2418,16 @@ export function useAdminController() {
             publisherForm,
             publisherModalError,
             publisherFormErrors,
+            subjectModalOpen,
+            subjectModalMode,
+            subjectForm,
+            subjectModalError,
+            subjectFormErrors,
+            authorModalOpen,
+            authorModalMode,
+            authorForm,
+            authorModalError,
+            authorFormErrors,
         },
         actions: {
             setBookSearch,
@@ -1693,10 +2436,14 @@ export function useAdminController() {
             setUserSearch,
             setLibrarySearch,
             setPublisherSearch,
+            setSubjectSearch,
+            setAuthorSearch,
             clearBookFieldError,
             clearUserFieldError,
             clearLibraryFieldError,
             clearPublisherFieldError,
+            clearSubjectFieldError,
+            clearAuthorFieldError,
             setActiveTab,
             applyBookFilters,
             clearBookFilters,
@@ -1706,11 +2453,17 @@ export function useAdminController() {
             clearLibrarySearch,
             applyPublisherSearch,
             clearPublisherSearch,
+            applySubjectSearch,
+            clearSubjectSearch,
+            applyAuthorSearch,
+            clearAuthorSearch,
             loadBooks,
             loadMoreBooks,
             loadUsers,
             loadLibraryRows,
             loadPublisherRows,
+            loadSubjectRows,
+            loadAuthorRows,
             refreshCurrentTab,
             openCreateBookModal,
             openEditBookModal,
@@ -1737,6 +2490,18 @@ export function useAdminController() {
             setPublisherForm,
             savePublisher,
             removePublisher,
+            openCreateSubjectModal,
+            openEditSubjectModal,
+            closeSubjectModal,
+            setSubjectForm,
+            saveSubject,
+            removeSubject,
+            openCreateAuthorModal,
+            openEditAuthorModal,
+            closeAuthorModal,
+            setAuthorForm,
+            saveAuthor,
+            removeAuthor,
         },
     };
 }

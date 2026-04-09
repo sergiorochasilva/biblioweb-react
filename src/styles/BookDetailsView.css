@@ -37,12 +37,29 @@
     color: rgba(15, 23, 42, 0.7);
 }
 
+.marc-chip {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(15, 23, 42, 0.6);
+    background: rgba(15, 23, 42, 0.08);
+}
+
 .book-details-cover {
     border-radius: 18px;
     padding: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.book-details-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .book-details-cover .ant-image,
@@ -52,7 +69,36 @@
 }
 
 .book-details-ler {
-    margin-top: 18px;
+    width: 100%;
+}
+
+.book-details-secondary {
+    width: 100%;
+}
+
+.book-details-marc-content {
+    margin: 0;
+    padding: 14px;
+    max-height: 52vh;
+    overflow: auto;
+    border-radius: 12px;
+    background: var(--glass-input-bg);
+    border: 1px solid var(--glass-border);
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-strong);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.book-details-reference-format {
+    margin: 0;
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--glass-input-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-strong);
 }
 
 .details-review {

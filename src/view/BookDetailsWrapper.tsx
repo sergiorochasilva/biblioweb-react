@@ -85,14 +85,25 @@ export default function BookDetailsWrapper() {
     return <BookDetailsView
         id={book.id}
         title={book.title}
+        subtitle={book.subtitle}
+        title_variant={book.title_variant}
         author={book.author}
+        authors={book.authors}
         edition={book.edition}
         publisher={book.publisher}
+        publication_place={book.publication_place}
+        dewey_decimal={book.dewey_decimal}
         year={book.year}
         isbn={book.isbn}
         pages={book.pages}
         language={book.language}
-        review={book.review}
+        summary={book.summary}
+        general_note={book.general_note}
+        bibliography_note={book.bibliography_note}
+        content_type={book.content_type}
+        media_type={book.media_type}
+        carrier_type={book.carrier_type}
+        subjects={book.subjects}
         type={book.type}
         external_url={book.external_url}
         external_source={book.external_source}

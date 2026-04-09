@@ -63,6 +63,9 @@ A rota `"/publisher-admin"` continua disponível para o fluxo legado da editora.
   - **Publicações recentes**;
   - **Mais acessados** (baseado em `book.access_count`).
 - Clique em **Ler agora** registra acesso via `POST /books/:id/access`.
+- Tela de detalhes do livro com ações secundárias:
+  - **Exportar MARC21** abre modal com payload MARC21 e ação de cópia;
+  - **Referência Bibliográfica** gera referência dinâmica em **APA** e **ABNT** usando apenas campos presentes.
 
 ## React + TypeScript + Vite
 

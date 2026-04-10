@@ -627,18 +627,21 @@ export default function BookDetailsView({
                     <Divider />
                     <Typography.Title level={4} className="section-details-title">
                         Resumo
+                        <span className="marc-chip">[520$a]</span>
                     </Typography.Title>
                     <Typography.Paragraph className="details-review">
                         {summary || "-"}
                     </Typography.Paragraph>
                     <Typography.Title level={4} className="section-details-title">
                         Nota Geral
+                        <span className="marc-chip">[500$a]</span>
                     </Typography.Title>
                     <Typography.Paragraph className="details-review">
                         {general_note || "-"}
                     </Typography.Paragraph>
                     <Typography.Title level={4} className="section-details-title">
                         Nota de Bibliografia
+                        <span className="marc-chip">[504$a]</span>
                     </Typography.Title>
                     <Typography.Paragraph className="details-review">
                         {bibliography_note || "-"}

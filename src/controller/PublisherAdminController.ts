@@ -801,8 +801,8 @@ export function usePublisherAdminController() {
                 publisher: purchasePublisherId,
                 book_id: purchaseBookId,
                 user_email: purchaseEmail,
-                pass_hint: purchaseHint,
-                pass_hash: passHash,
+                reading_pass_hint: purchaseHint,
+                reading_pass_hash: passHash,
             };
 
             const data = await generatePurchaseLink(accessToken, payload);

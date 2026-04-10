@@ -61,8 +61,8 @@ export type PurchaseLinkPayload = {
     publisher: string;
     book_id: string;
     user_email: string;
-    pass_hint: string;
-    pass_hash: string;
+    reading_pass_hint: string;
+    reading_pass_hash: string;
 };
 
 export type PurchaseLinkResponse = {

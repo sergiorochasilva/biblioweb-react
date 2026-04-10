@@ -362,7 +362,7 @@ export default function AdminView() {
                                                             title={user.email}
                                                             description={
                                                                 <div className="admin-item-meta">
-                                                                    <span>Dica: {user.pass_hint || "-"}</span>
+                                                                    <span>Dica: {user.reading_pass_hint || "-"}</span>
                                                                     <span>
                                                                         Perfil: {user.admin ? "Administrador" : "Usuário comum"}
                                                                     </span>

@@ -17,6 +17,23 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-04-09 - contrato de usuário/admin com `reading_pass_hint`
+- Descoberta:
+  - O front administrativo precisa tolerar transição de contrato (`pass_hint` legado vs `reading_pass_hint` novo) para não quebrar edição/listagem.
+  - O fluxo de geração de link de venda deve enviar os campos canônicos de leitura (`reading_pass_hint`/`reading_pass_hash`).
+- Evidencias:
+  - src/service/AdminService.ts
+  - src/controller/AdminController.ts
+  - src/service/PublisherAdminService.ts
+  - src/controller/PublisherAdminController.ts
+  - src/view/AdminView.tsx
+- Acao aplicada:
+  - `AdminUser` foi atualizado para `reading_pass_hint`, com fallback de normalização para `pass_hint`.
+  - Listagem/edição de usuário no admin passou a usar `reading_pass_hint`.
+  - Payload de `books-purchase-links` passou a enviar `reading_pass_hint` e `reading_pass_hash`.
+- Impacto esperado:
+  - Compatibilidade com backend atualizado sem regressão visual/funcional no painel admin.
+
 ### 2026-04-08 - CRUD admin com endpoints que retornam corpo vazio em create/update
 - Descoberta:
   - Em manutenção administrativa (`libraries`, `publishers`, `authors`), alguns ambientes retornam sucesso sem body (`202/204` ou `{}`), e validar estrutura do objeto no front gera falso negativo ("Resposta inválida ...").

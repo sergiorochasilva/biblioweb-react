@@ -48,7 +48,7 @@ export type PaginatedAdminBooksResponse = {
 export type AdminUser = {
     id: string;
     email: string;
-    pass_hint: string;
+    reading_pass_hint: string;
     admin: boolean;
     libraries: number[];
     publishers: string[];
@@ -611,7 +611,12 @@ function normalizeAdminUser(entry: unknown): AdminUser | null {
     return {
         id,
         email,
-        pass_hint: typeof raw.pass_hint === "string" ? raw.pass_hint : "",
+        reading_pass_hint:
+            typeof raw.reading_pass_hint === "string"
+                ? raw.reading_pass_hint
+                : typeof raw.pass_hint === "string"
+                    ? raw.pass_hint
+                    : "",
         admin: Boolean(raw.admin),
         libraries,
         publishers,

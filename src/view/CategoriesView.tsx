@@ -209,7 +209,7 @@ export default function CategoriesView() {
                 <section className="page-section">
                     <div className="section-header">
                         <Typography.Title level={3} className="section-title">
-                            Categorias
+                            Assuntos
                         </Typography.Title>
                     </div>
 

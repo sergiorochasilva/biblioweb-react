@@ -24,7 +24,7 @@ export default function App() {
             <Route path="/book/:id" element={<BookDetailsWrapper />} />
             <Route path="/search" element={<SearchView />} />
             <Route path="/advanced-search" element={<AdvancedSearchView />} />
-            <Route path="/categories" element={<CategoriesView />} />
+            <Route path="/subjects" element={<CategoriesView />} />
             <Route path="/authors" element={<AuthorsView />} />
 
             <Route element={<ProtectedRoute />}>

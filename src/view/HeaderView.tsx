@@ -245,7 +245,7 @@ export default function HeaderView() {
                             <Button
                                 className="categories-button"
                                 type="text"
-                                onClick={() => navigate("/categories")}
+                                onClick={() => navigate("/subjects")}
                             >
                                 Assuntos
                             </Button>

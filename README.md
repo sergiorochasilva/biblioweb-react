@@ -56,7 +56,7 @@ A rota `"/publisher-admin"` continua disponível para o fluxo legado da editora.
 ## Navegação pública e descoberta
 
 - Header público com:
-  - botão central **Categorias** (`/categories`);
+  - botão central **Assuntos** (`/subjects`);
   - botão de perfil com iniciais do usuário autenticado (menu com **Meu perfil** e **Administração** para administradores).
 - Nova rota protegida `"/profile"` para visualização de contexto do usuário (email, vínculo admin, libraries e editoras).
 - Home com dois carrosséis:

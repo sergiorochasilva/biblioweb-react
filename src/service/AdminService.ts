@@ -57,7 +57,8 @@ export type AdminUser = {
 export type BookFormPayload = {
     title: string | null;
     subtitle?: string | null;
-    title_variant?: string | null;
+    original_title?: string | null;
+    corporate_author?: string | null;
     publisher: string | null;
     publication_place?: string | null;
     dewey_decimal?: string | null;

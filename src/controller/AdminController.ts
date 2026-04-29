@@ -46,7 +46,8 @@ type BookFormState = {
     id?: string;
     title: string;
     subtitle: string;
-    title_variant: string;
+    original_title: string;
+    corporate_author: string;
     publisher: string;
     publication_place: string;
     authors: string[];
@@ -145,7 +146,8 @@ const ADMIN_BOOKS_PAGE_SIZE = 20;
 const emptyBookForm: BookFormState = {
     title: "",
     subtitle: "",
-    title_variant: "",
+    original_title: "",
+    corporate_author: "",
     publisher: "",
     publication_place: "",
     authors: [],
@@ -241,7 +243,8 @@ function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormS
         id: book.book_id || book.id,
         title: book.title || "",
         subtitle: book.subtitle || "",
-        title_variant: book.title_variant || "",
+        original_title: book.original_title || "",
+        corporate_author: book.corporate_author || "",
         publisher: book.publisher_name || book.publisher || "",
         publication_place: book.publication_place || "",
         authors: rawAuthors
@@ -1669,7 +1672,8 @@ export function useAdminController() {
             const payload = {
                 title: toNullableField(bookForm.title),
                 subtitle: toNullableField(bookForm.subtitle),
-                title_variant: toNullableField(bookForm.title_variant),
+                original_title: toNullableField(bookForm.original_title),
+                corporate_author: toNullableField(bookForm.corporate_author),
                 publisher: toNullableField(bookForm.publisher),
                 publication_place: toNullableField(bookForm.publication_place),
                 dewey_decimal: toNullableField(bookForm.dewey_decimal),

@@ -718,7 +718,7 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Subtítulo <span className="marc-tag">[245$b]</span></label>
+                            <label className="field-label">Subtítulo <span className="marc-tag">[246$a]</span></label>
                             <Input
                                 className="admin-input"
                                 value={state.bookForm.subtitle}
@@ -728,17 +728,30 @@ export default function AdminView() {
                             />
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Título variante <span className="marc-tag">[246$a]</span></label>
+                            <label className="field-label">Título original <span className="marc-tag">[240$a]</span></label>
                             <Input
                                 className="admin-input"
-                                value={state.bookForm.title_variant}
+                                value={state.bookForm.original_title}
                                 onChange={(event) =>
-                                    actions.setBookForm((previous) => ({ ...previous, title_variant: event.target.value }))
+                                    actions.setBookForm((previous) => ({ ...previous, original_title: event.target.value }))
                                 }
                             />
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Autores (*) <span className="marc-tag">[100$a/700$a]</span></label>
+                            <label className="field-label">Autor Pessoa Jurídica <span className="marc-tag">[110$a]</span></label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.corporate_author}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        corporate_author: event.target.value,
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Autores (*) <span className="marc-tag">[100$a]</span></label>
                             <Select
                                 mode="multiple"
                                 className="admin-select"
@@ -758,7 +771,7 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Editora (*) <span className="marc-tag">[264$b]</span></label>
+                            <label className="field-label">Editora (*) <span className="marc-tag">[260$b]</span></label>
                             <Select
                                 className="admin-select"
                                 status={state.bookFormErrors.publisher ? "error" : undefined}
@@ -777,7 +790,7 @@ export default function AdminView() {
                             )}
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Local de publicação <span className="marc-tag">[264$a]</span></label>
+                            <label className="field-label">Local de publicação <span className="marc-tag">[260$a]</span></label>
                             <Input
                                 className="admin-input"
                                 value={state.bookForm.publication_place}
@@ -787,7 +800,7 @@ export default function AdminView() {
                             />
                         </div>
                         <div className="form-field">
-                            <label className="field-label">Ano <span className="marc-tag">[264$c]</span></label>
+                            <label className="field-label">Ano <span className="marc-tag">[260$c]</span></label>
                             <Input
                                 className="admin-input"
                                 value={state.bookForm.year}

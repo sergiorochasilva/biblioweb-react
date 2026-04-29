@@ -17,6 +17,18 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-04-28 - manual de leitura com entrada unica e deteccao de ambiente
+- Descoberta:
+  - O manual de leitura fica mais util como ponto de entrada unico, desde que detecte o ambiente automaticamente e permita override manual quando a heuristica falhar.
+  - A versão estática publicada em `public/` pode concentrar todos os fluxos sem depender de subpáginas separadas por SO.
+- Evidencias:
+  - public/pos-download/manual.html
+- Acao aplicada:
+  - `manual.html` passou a detectar `windows`, `linux`, `mac`, `android` e `ios` via `navigator.userAgent`, `navigator.platform` e `userAgentData`, com fallback de seleção manual.
+  - O conteúdo visível é trocado no próprio ponto de entrada, sem precisar publicar múltiplos HTMLs.
+- Impacto esperado:
+  - Menos superfície estática para manter e menor chance de link quebrado entre páginas auxiliares de ajuda.
+
 ### 2026-04-09 - contrato de usuário/admin com `reading_pass_hint`
 - Descoberta:
   - O front administrativo precisa tolerar transição de contrato (`pass_hint` legado vs `reading_pass_hint` novo) para não quebrar edição/listagem.

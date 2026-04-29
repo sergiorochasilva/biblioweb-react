@@ -1,6 +1,7 @@
 import { Card, Typography } from "antd";
 import book_icon from "../assets/book_icon.png";
 import { Book, getBookAuthorsText } from "../model/Book";
+import BookTypeTag from "./BookTypeTag";
 
 interface BookCardProps {
     book: Book;
@@ -18,6 +19,7 @@ export default function BookCard({ book, onClick, className = "" }: BookCardProp
             onClick={onClick}
             cover={
                 <div className="book-card-cover">
+                    <BookTypeTag type={book.type} className="book-card-type-tag" />
                     <img
                         src={book.image_url ? book.image_url : book_icon}
                         alt={`Capa do livro ${book.title}`}

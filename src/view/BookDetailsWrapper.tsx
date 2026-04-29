@@ -86,7 +86,8 @@ export default function BookDetailsWrapper() {
         id={book.id}
         title={book.title}
         subtitle={book.subtitle}
-        title_variant={book.title_variant}
+        original_title={book.original_title}
+        corporate_author={book.corporate_author}
         author={book.author}
         authors={book.authors}
         edition={book.edition}

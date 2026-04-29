@@ -14,7 +14,8 @@ export interface Book {
     id: string;
     title: string;
     subtitle?: string;
-    title_variant?: string;
+    original_title?: string;
+    corporate_author?: string;
     author?: string;
     authors?: BookAuthorLink[];
     publisher: string;

@@ -103,7 +103,7 @@ export const api = {
      * @param token Token JWT opcional.
      * @returns Payload tipado da resposta.
      */
-    post: async <T>(endpoint: string, body: any, token?: string): Promise<T> => {
+    post: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: "POST",
             headers: buildHeaders(token, true),
@@ -121,7 +121,7 @@ export const api = {
      * @param token Token JWT opcional.
      * @returns Payload tipado da resposta.
      */
-    put: async <T>(endpoint: string, body: any, token?: string): Promise<T> => {
+    put: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: "PUT",
             headers: buildHeaders(token, true),
@@ -139,7 +139,7 @@ export const api = {
      * @param token Token JWT opcional.
      * @returns Payload tipado da resposta.
      */
-    patch: async <T>(endpoint: string, body: any, token?: string): Promise<T> => {
+    patch: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: "PATCH",
             headers: buildHeaders(token, true),

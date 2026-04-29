@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import {
     App as AntdApp,
     Button,
@@ -18,10 +18,12 @@ import book_icon from "../assets/book_icon.png";
 import {
     DEFAULT_PUBLIC_LIBRARY_ID,
     fetchBookMarc21,
+    formatMarc21Record,
     lendBook,
     registerBookAccess,
 } from "../service/BookService";
 import { getBookAuthorsText } from "../model/Book";
+import BookTypeTag from "../components/BookTypeTag";
 import "../styles/BookDetailsView.css";
 import { useAuth } from "../contexts/AuthContext";
 import { savePendingLendAction } from "../service/postLoginAction";
@@ -31,7 +33,8 @@ interface BookDetailsViewProps {
     id: string;
     title: string;
     subtitle?: string;
-    title_variant?: string;
+    original_title?: string;
+    corporate_author?: string;
     author?: string;
     authors?: Array<{ author: number; author_name?: string }>;
     edition: string;
@@ -297,7 +300,8 @@ export default function BookDetailsView({
     id,
     title,
     subtitle,
-    title_variant,
+    original_title,
+    corporate_author,
     author,
     authors,
     edition,
@@ -332,6 +336,7 @@ export default function BookDetailsView({
     const { Content } = Layout;
     const { token, library, getAccessToken } = useAuth();
     const { message } = AntdApp.useApp();
+    const resolvedType = (bookType || "protected").toLowerCase();
     const freeBooksBaseUrl = (import.meta.env.VITE_BOOKS_BASE_URL || "https://storage.googleapis.com/fronesis_bucket/").trim();
     const normalizedFreeBooksBaseUrl = freeBooksBaseUrl.endsWith("/")
         ? freeBooksBaseUrl
@@ -381,13 +386,8 @@ export default function BookDetailsView({
     async function openMarcModal(): Promise<void> {
         setLoadingMarcExport(true);
         try {
-            let accessToken: string | undefined = token || undefined;
-            if (token) {
-                const refreshedToken = await getAccessToken({ redirectOnFail: false });
-                accessToken = refreshedToken || token;
-            }
-            const marcRecord = await fetchBookMarc21(id, accessToken);
-            setMarcContent(marcRecord);
+            const marcRecord = await fetchBookMarc21(id);
+            setMarcContent(formatMarc21Record(marcRecord));
             setIsMarcModalOpen(true);
         } catch (error: unknown) {
             const messageText =
@@ -485,15 +485,25 @@ export default function BookDetailsView({
                                 className="book-details-info"
                                 labelStyle={{ fontWeight: 600 }}
                             >
-                                <Descriptions.Item label={<>Autor <span className="marc-chip">100$a/700$a</span></>}>
+                                <Descriptions.Item label={<>Título <span className="marc-chip">245$a</span></>}>
+                                    {title || "-"}
+                                </Descriptions.Item>
+                                <Descriptions.Item label={<>Subtítulo <span className="marc-chip">246$a</span></>}>
+                                    {subtitle || "-"}
+                                </Descriptions.Item>
+                                <Descriptions.Item label={<>Título original <span className="marc-chip">240$a</span></>}>
+                                    {original_title || "-"}
+                                </Descriptions.Item>
+                                <Descriptions.Item label={<>Autor <span className="marc-chip">100$a</span></>}>
                                     {authorsText || "-"}
                                 </Descriptions.Item>
-                                <Descriptions.Item label={<>Subtítulo <span className="marc-chip">245$b</span></>}>{subtitle || "-"}</Descriptions.Item>
-                                <Descriptions.Item label={<>Título Variante <span className="marc-chip">246$a</span></>}>{title_variant || "-"}</Descriptions.Item>
+                                <Descriptions.Item label={<>Autor Pessoa Jurídica <span className="marc-chip">110$a</span></>}>
+                                    {corporate_author || "-"}
+                                </Descriptions.Item>
                                 <Descriptions.Item label={<>Edição <span className="marc-chip">250$a</span></>}>{edition}</Descriptions.Item>
-                                <Descriptions.Item label={<>Editora <span className="marc-chip">264$b</span></>}>{publisher}</Descriptions.Item>
-                                <Descriptions.Item label={<>Local de Publicação <span className="marc-chip">264$a</span></>}>{publication_place || "-"}</Descriptions.Item>
-                                <Descriptions.Item label={<>Ano <span className="marc-chip">264$c</span></>}>{year}</Descriptions.Item>
+                                <Descriptions.Item label={<>Editora <span className="marc-chip">260$b</span></>}>{publisher}</Descriptions.Item>
+                                <Descriptions.Item label={<>Local de Publicação <span className="marc-chip">260$a</span></>}>{publication_place || "-"}</Descriptions.Item>
+                                <Descriptions.Item label={<>Data de publicação <span className="marc-chip">260$c</span></>}>{year}</Descriptions.Item>
                                 <Descriptions.Item label={<>ISBN <span className="marc-chip">020$a</span></>}>{isbn}</Descriptions.Item>
                                 <Descriptions.Item label="Páginas">{pages}</Descriptions.Item>
                                 <Descriptions.Item label={<>Idioma <span className="marc-chip">041$a</span></>}>{language}</Descriptions.Item>
@@ -520,63 +530,50 @@ export default function BookDetailsView({
                         <Col xs={24} lg={8}>
                             <div className="book-details-sidebar">
                                 <div className="book-details-cover glass-panel">
+                                    <BookTypeTag type={bookType} className="book-details-type-tag" />
                                     <Image
                                         src={image_url || book_icon}
                                         alt="Capa do livro"
                                         preview={false}
                                     />
                                 </div>
-                                <Button
-                                    type="primary"
-                                    size="large"
-                                    className="book-details-ler"
-                                    loading={loadingLendBook}
-                                    onClick={async () => {
-                                        const resolvedType = (bookType || "protected").toLowerCase();
-                                        let accessToken: string | undefined = token || undefined;
-                                        if (token) {
-                                            const refreshedToken = await getAccessToken({ redirectOnFail: false });
-                                            accessToken = refreshedToken || token;
-                                        }
+                                <div className="book-details-actions">
+                                    <Button
+                                        type="primary"
+                                        size="large"
+                                        className="book-details-ler"
+                                        loading={loadingLendBook}
+                                        onClick={async () => {
+                                            let accessToken: string | undefined = token || undefined;
+                                            if (token) {
+                                                const refreshedToken = await getAccessToken({ redirectOnFail: false });
+                                                accessToken = refreshedToken || token;
+                                            }
 
-                                        try {
-                                            await registerBookAccess(id, accessToken);
-                                        } catch (error) {
-                                            console.warn("Failed to register book access", error);
-                                        }
+                                            try {
+                                                await registerBookAccess(id, accessToken);
+                                            } catch (error) {
+                                                console.warn("Failed to register book access", error);
+                                            }
 
-                                        if (resolvedType === "external") {
-                                            if (!external_url) {
-                                                message.error("URL externa não cadastrada para este livro.");
+                                            if (resolvedType === "external") {
+                                                if (!external_url) {
+                                                    message.error("URL externa não cadastrada para este livro.");
+                                                    return;
+                                                }
+                                                openInNewTab(external_url);
                                                 return;
                                             }
-                                            openInNewTab(external_url);
-                                            return;
-                                        }
-                                        if (resolvedType === "free") {
-                                            if (!file_name) {
-                                                message.error("Arquivo não cadastrado para este livro.");
+                                            if (resolvedType === "free") {
+                                                if (!file_name) {
+                                                    message.error("Arquivo não cadastrado para este livro.");
+                                                    return;
+                                                }
+                                                openInNewTab(`${normalizedFreeBooksBaseUrl}${file_name}`);
                                                 return;
                                             }
-                                            openInNewTab(`${normalizedFreeBooksBaseUrl}${file_name}`);
-                                            return;
-                                        }
-                                        const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
-                                        if (!token) {
-                                            const returnTo = `${location.pathname}${location.search}`;
-                                            savePendingLendAction({
-                                                type: "lend",
-                                                bookId: id,
-                                                libraryId,
-                                                returnTo,
-                                            });
-                                            navigate(`/login?next=${encodeURIComponent(returnTo)}`);
-                                            return;
-                                        }
-                                        setLoadingLendBook(true);
-                                        try {
-                                            const lendingToken = await getAccessToken({ redirectOnFail: false });
-                                            if (!lendingToken) {
+                                            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+                                            if (!token) {
                                                 const returnTo = `${location.pathname}${location.search}`;
                                                 savePendingLendAction({
                                                     type: "lend",
@@ -587,20 +584,47 @@ export default function BookDetailsView({
                                                 navigate(`/login?next=${encodeURIComponent(returnTo)}`);
                                                 return;
                                             }
-                                            await lendBook(id, libraryId, lendingToken);
-                                        } catch (error: unknown) {
-                                            const messageText =
-                                                error instanceof Error && error.message
-                                                    ? error.message
-                                                    : "Erro ao solicitar empréstimo.";
-                                            message.error(messageText);
-                                        } finally {
-                                            setLoadingLendBook(false);
-                                        }
-                                    }}
-                                >
-                                    Ler agora
-                                </Button>
+                                            setLoadingLendBook(true);
+                                            try {
+                                                const lendingToken = await getAccessToken({ redirectOnFail: false });
+                                                if (!lendingToken) {
+                                                    const returnTo = `${location.pathname}${location.search}`;
+                                                    savePendingLendAction({
+                                                        type: "lend",
+                                                        bookId: id,
+                                                        libraryId,
+                                                        returnTo,
+                                                    });
+                                                    navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                                                    return;
+                                                }
+                                                await lendBook(id, libraryId, lendingToken);
+                                            } catch (error: unknown) {
+                                                const messageText =
+                                                    error instanceof Error && error.message
+                                                        ? error.message
+                                                        : "Erro ao solicitar empréstimo.";
+                                                message.error(messageText);
+                                            } finally {
+                                                setLoadingLendBook(false);
+                                            }
+                                        }}
+                                    >
+                                        Ler agora
+                                    </Button>
+                                    {resolvedType === "protected" && (
+                                        <Button
+                                            type="default"
+                                            size="large"
+                                            className="book-details-help"
+                                            icon={<QuestionCircleOutlined />}
+                                            onClick={() => {
+                                                openInNewTab("/pos-download/manual.html");
+                                            }}
+                                            aria-label="Abrir instruções de leitura"
+                                        />
+                                    )}
+                                </div>
                                 <Button
                                     size="large"
                                     className="book-details-secondary"

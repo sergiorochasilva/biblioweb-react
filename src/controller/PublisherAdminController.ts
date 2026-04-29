@@ -49,7 +49,8 @@ type BookFormState = {
     id?: string;
     title: string;
     subtitle: string;
-    title_variant: string;
+    original_title: string;
+    corporate_author: string;
     publisher: string;
     publication_place: string;
     authors: string[];
@@ -74,7 +75,8 @@ type BookFormState = {
 const emptyBookForm: BookFormState = {
     title: "",
     subtitle: "",
-    title_variant: "",
+    original_title: "",
+    corporate_author: "",
     publisher: "",
     publication_place: "",
     authors: [],
@@ -249,7 +251,8 @@ function mapBookToForm(
         id: book.id,
         title: book.title || "",
         subtitle: book.subtitle || "",
-        title_variant: book.title_variant || "",
+        original_title: book.original_title || "",
+        corporate_author: book.corporate_author || "",
         publisher: resolveAllowedPublisher(
             book.publisher || "",
             allowedPublishers,
@@ -690,7 +693,8 @@ export function usePublisherAdminController() {
             const payload: UpdateBookPayload = {
                 title: toNullableField(bookForm.title),
                 subtitle: toNullableField(bookForm.subtitle),
-                title_variant: toNullableField(bookForm.title_variant),
+                original_title: toNullableField(bookForm.original_title),
+                corporate_author: toNullableField(bookForm.corporate_author),
                 publisher: toNullableField(bookForm.publisher),
                 publication_place: toNullableField(bookForm.publication_place),
                 dewey_decimal: toNullableField(bookForm.dewey_decimal),

@@ -1,9 +1,9 @@
 import { Book } from "../model/Book";
-import { api, API_BASE_URL, buildAuthHeaders, type ApiError } from "./api";
+import { api, API_BASE_URL, buildAuthHeaders } from "./api";
 
 export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
 const DEFAULT_BOOK_FIELDS =
-    "subtitle,title_variant,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
+    "subtitle,original_title,corporate_author,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
     "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type," +
     "external_url,external_source,file_name,image_url,subjects(subject,subject_name)," +
     "authors(author,author_name)";
@@ -16,12 +16,12 @@ const MOST_ACCESSED_ORDER = "access_count desc";
  * @param data Resposta crua da API.
  * @returns Lista de livros normalizada.
  */
-function normalizeBooksResponse(data: any): Book[] {
+function normalizeBooksResponse(data: unknown): Book[] {
     if (Array.isArray(data)) {
         return data as Book[];
     }
-    if (data && Array.isArray(data.result)) {
-        return data.result as Book[];
+    if (data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)) {
+        return (data as { result: Book[] }).result;
     }
     return [];
 }
@@ -50,6 +50,40 @@ function normalizeSingleObjectPayload(data: unknown): Record<string, unknown> | 
         return data as Record<string, unknown>;
     }
     return null;
+}
+
+/**
+ * Normaliza um possível registro MARC21 recebido da API.
+ *
+ * @param data Resposta crua da API.
+ * @returns Registro MARC21 pronto para formatação ou `null`.
+ */
+function normalizeMarcRecord(data: unknown): Record<string, unknown> | null {
+    if (typeof data === "string") {
+        const trimmed = data.trim();
+        if (!trimmed) {
+            return null;
+        }
+        try {
+            return normalizeMarcRecord(JSON.parse(trimmed));
+        } catch {
+            return null;
+        }
+    }
+
+    if (!data || typeof data !== "object") {
+        return null;
+    }
+
+    const payload = data as Record<string, unknown>;
+    if (Array.isArray(payload.result) && payload.result.length > 0) {
+        return normalizeMarcRecord(payload.result[0]);
+    }
+    if (payload.record && typeof payload.record === "object") {
+        return payload.record as Record<string, unknown>;
+    }
+
+    return payload;
 }
 
 /**
@@ -125,6 +159,188 @@ function normalizeStringListResponse(data: unknown): string[] {
 }
 
 /**
+ * Normaliza um indicador MARC21 para duas posições visíveis.
+ *
+ * @param value Valor bruto do indicador.
+ * @returns Indicador textual com fallback visual.
+ */
+function normalizeMarcIndicator(value: unknown): string {
+    if (typeof value !== "string") {
+        return "_";
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return "_";
+    }
+
+    return trimmed[0];
+}
+
+/**
+ * Extrai subcampos de uma ocorrência MARC21 preservando a ordem recebida.
+ *
+ * @param item Ocorrência bruta do campo.
+ * @returns Lista de pares subcampo/valor normalizados.
+ */
+function extractMarcSubfields(item: unknown): Array<[string, string]> {
+    if (typeof item === "string") {
+        const trimmed = item.trim();
+        return trimmed ? [["a", trimmed]] : [];
+    }
+
+    if (!item || typeof item !== "object") {
+        return [];
+    }
+
+    const entry = item as Record<string, unknown>;
+    const directEntries = Object.entries(entry).filter(([key, value]) => {
+        if (key === "ind1" || key === "ind2" || key === "indicator1" || key === "indicator2") {
+            return false;
+        }
+        if (key === "subfields" || key === "tag") {
+            return false;
+        }
+        return typeof value === "string" && value.trim().length > 0;
+    });
+
+    if (Array.isArray(entry.subfields)) {
+        const nestedEntries: Array<[string, string]> = [];
+        for (const subfield of entry.subfields) {
+            if (!subfield || typeof subfield !== "object") {
+                continue;
+            }
+            for (const [key, value] of Object.entries(subfield as Record<string, unknown>)) {
+                if (typeof value === "string" && value.trim()) {
+                    nestedEntries.push([key, value.trim()]);
+                }
+            }
+        }
+        if (nestedEntries.length > 0) {
+            return nestedEntries;
+        }
+    }
+
+    return directEntries.map(([key, value]) => [key, (value as string).trim()]);
+}
+
+/**
+ * Formata uma ocorrência MARC21 como linha textual.
+ *
+ * @param tag Tag MARC21.
+ * @param item Ocorrência do campo.
+ * @returns Linha textual ou vazio quando o conteúdo não existe.
+ */
+function formatMarcOccurrence(tag: string, item: unknown): string {
+    if (typeof item === "string") {
+        const trimmed = item.trim();
+        return trimmed ? `${tag} __ |a ${trimmed}` : "";
+    }
+
+    if (!item || typeof item !== "object") {
+        return "";
+    }
+
+    const entry = item as Record<string, unknown>;
+    const ind1 = normalizeMarcIndicator(entry.ind1 ?? entry.indicator1);
+    const ind2 = normalizeMarcIndicator(entry.ind2 ?? entry.indicator2);
+    const subfields = extractMarcSubfields(entry);
+    if (subfields.length === 0) {
+        return "";
+    }
+
+    if (tag === "260") {
+        const place = typeof entry.a === "string" ? entry.a.trim() : "";
+        const publisher = typeof entry.b === "string" ? entry.b.trim() : "";
+        const year = typeof entry.c === "string" ? entry.c.trim() : "";
+        const renderedSegments: string[] = [];
+
+        if (place) {
+            renderedSegments.push(`|a ${place}${publisher || year ? " :" : ""}`);
+        }
+        if (publisher) {
+            renderedSegments.push(`|b ${publisher}${year ? "," : ""}`);
+        }
+        if (year) {
+            renderedSegments.push(`|c ${year}`);
+        }
+
+        if (renderedSegments.length > 0) {
+            return `${tag} ${ind1}${ind2} ${renderedSegments.join(" ")}`.trim();
+        }
+    }
+
+    const subfieldText = subfields
+        .map(([key, value]) => `|${key} ${value}`)
+        .join(" ");
+    return `${tag} ${ind1}${ind2} ${subfieldText}`.trim();
+}
+
+/**
+ * Formata um registro MARC21 completo para exibição textual.
+ *
+ * @param data Registro bruto retornado pela API.
+ * @returns Texto legível do MARC21.
+ */
+export function formatMarc21Record(data: unknown): string {
+    const record = normalizeMarcRecord(data);
+    if (!record) {
+        return "";
+    }
+
+    const preferredOrder = [
+        "001",
+        "020",
+        "041",
+        "082",
+        "100",
+        "110",
+        "240",
+        "245",
+        "246",
+        "250",
+        "260",
+        "264",
+        "336",
+        "337",
+        "338",
+        "500",
+        "504",
+        "520",
+        "650",
+        "700",
+        "856",
+    ];
+    const seen = new Set<string>();
+    const lines: string[] = [];
+
+    const appendTag = (tag: string) => {
+        if (seen.has(tag) || !(tag in record)) {
+            return;
+        }
+        seen.add(tag);
+        const rawValue = record[tag];
+        const occurrences = Array.isArray(rawValue) ? rawValue : [rawValue];
+        for (const occurrence of occurrences) {
+            const line = formatMarcOccurrence(tag, occurrence);
+            if (line) {
+                lines.push(line);
+            }
+        }
+    };
+
+    for (const tag of preferredOrder) {
+        appendTag(tag);
+    }
+
+    for (const tag of Object.keys(record)) {
+        appendTag(tag);
+    }
+
+    return lines.join("\n");
+}
+
+/**
  * Busca publicações recentes de uma biblioteca.
  *
  * @param libraryId ID da biblioteca usada na consulta.
@@ -136,7 +352,7 @@ export async function fetchRecentPublications(
     token?: string
 ): Promise<Book[]> {
     const endpoint = `/libraries_books?library=${libraryId}&fields=${DEFAULT_BOOK_FIELDS}`;
-    const data = await api.get<any>(endpoint, token);
+    const data = await api.get<unknown>(endpoint, token);
     return normalizeBooksResponse(data);
 }
 
@@ -184,17 +400,13 @@ export async function fetchBookDetails(
  * Busca o registro MARC21 de um livro por ID.
  *
  * @param id ID do livro (ou vínculo `libraries_books`) na tela de detalhe.
- * @param token Token JWT opcional para endpoints protegidos.
- * @returns Conteúdo MARC21 serializado em texto.
+ * @returns Registro MARC21 bruto para formatação no front-end.
  */
-export async function fetchBookMarc21(id: string, token?: string): Promise<string> {
+export async function fetchBookMarc21(id: string): Promise<unknown> {
     const candidates = collectBookIdCandidates(id);
 
     try {
-        const libraryBookData = await api.get<unknown>(
-            `/libraries_books/${encodeURIComponent(id)}`,
-            token
-        );
+        const libraryBookData = await api.get<unknown>(`/libraries_books/${encodeURIComponent(id)}`);
         const payload = normalizeSingleObjectPayload(libraryBookData);
         if (payload) {
             const resolved = collectBookIdCandidates(payload.book_id, payload.book, payload.id);
@@ -211,26 +423,10 @@ export async function fetchBookMarc21(id: string, token?: string): Promise<strin
     let lastError: unknown = null;
     for (const candidate of candidates) {
         try {
-            const marcData = await api.get<unknown>(
-                `/books-marc/${encodeURIComponent(candidate)}`,
-                token
-            );
-            if (typeof marcData === "string") {
-                return marcData;
-            }
-            return JSON.stringify(marcData, null, 2);
+            return await api.get<unknown>(`/books-marc/${encodeURIComponent(candidate)}`);
         } catch (error) {
             lastError = error;
         }
-    }
-
-    if (
-        lastError &&
-        typeof lastError === "object" &&
-        "status" in lastError &&
-        ((lastError as ApiError).status === 401 || (lastError as ApiError).status === 403)
-    ) {
-        throw new Error("Faça login para exportar o MARC21 deste livro.");
     }
 
     if (lastError instanceof Error && lastError.message) {
@@ -258,7 +454,7 @@ export async function fetchSearchResults(
         `&search=${encodeURIComponent(query)}` +
         `&fields=${encodeURIComponent(DEFAULT_BOOK_FIELDS)}` +
         `&order=${encodeURIComponent(MOST_ACCESSED_ORDER)}&limit=80`;
-    const data = await api.get<any>(endpoint, token);
+    const data = await api.get<unknown>(endpoint, token);
     return normalizeBooksResponse(data);
 }
 
@@ -268,7 +464,7 @@ export type AdvancedSearchFieldKey =
     | "id"
     | "title"
     | "subtitle"
-    | "title_variant"
+    | "original_title"
     | "authors.author_name"
     | "publisher"
     | "publication_place"
@@ -342,7 +538,7 @@ export type AdvancedSearchFilters = {
 export const ADVANCED_SEARCH_FIELDS: AdvancedSearchFieldDefinition[] = [
     { key: "title", label: "Título", type: "text", defaultOperator: "contains" },
     { key: "subtitle", label: "Subtítulo", type: "text", defaultOperator: "contains" },
-    { key: "title_variant", label: "Título variante", type: "text", defaultOperator: "contains" },
+    { key: "original_title", label: "Título original", type: "text", defaultOperator: "contains" },
     { key: "authors.author_name", label: "Autor", type: "text", defaultOperator: "contains" },
     { key: "publisher", label: "Editora", type: "text", defaultOperator: "contains" },
     {
@@ -584,7 +780,7 @@ export async function fetchAdvancedSearchResults(
     query.set("order", MOST_ACCESSED_ORDER);
 
     const endpoint = `/libraries_books?${query.toString()}`;
-    const data = await api.get<any>(endpoint, token);
+    const data = await api.get<unknown>(endpoint, token);
     return normalizeBooksResponse(data);
 }
 

@@ -6,7 +6,7 @@ import { Book } from "../model/Book";
 import HeaderView from "./HeaderView";
 import BookCard from "../components/BookCard";
 import "../styles/SearchView.css";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 
 export default function SearchView() {
     const navigate = useNavigate();

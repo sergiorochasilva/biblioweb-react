@@ -16,7 +16,7 @@ import {
     getAdvancedSearchOperationsByFieldType,
 } from "../service/BookService";
 import { Book } from "../model/Book";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import "../styles/AdvancedSearchView.css";
 
 type RuleRow = AdvancedSearchRule & {

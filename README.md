@@ -22,6 +22,9 @@ no servidor (stateless).
 O envio do código de login continua em `POST /login` (apenas `email`).
 A troca do código por tokens ocorre em `POST /token` com
 `{ "type": "code", "code": "<login_code>" }`.
+O acesso por senha segue pelo front em `"/login-password"` e troca as credenciais
+por token em `POST /token` com
+`{ "type": "credentials", "credentials": { "email": "<email>", "password": "<senha>" } }`.
 
 ### Revogacao total
 

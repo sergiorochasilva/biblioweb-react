@@ -18,8 +18,10 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
 - Home, busca e detalhes de livro devem funcionar sem login.
 - Fluxo de login:
   - `"/login"`: informar e-mail.
+  - `"/login-password"`: informar senha após capturar o e-mail na etapa anterior.
   - `"/verify-code"`: informar codigo.
   - `"/selection"`: escolher editora/biblioteca quando houver mais de uma opcao.
+- `POST /token` deve aceitar `type: "credentials"` com `credentials.email` e `credentials.password` para login direto por senha, preservando `next` e o retorno ao contexto apos autenticação.
 - Emprestimo (download licenciado):
   - Se usuario nao autenticado, redirecionar para login.
   - Apos login bem-sucedido, voltar ao contexto e disparar download automaticamente.

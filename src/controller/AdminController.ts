@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { message } from "antd";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import {
     AdminAuthor,
     AdminBook,
@@ -40,7 +40,9 @@ import {
     updatePublisher,
     updateSubject,
     updateUser,
+    updateUserPassword,
 } from "../service/AdminService";
+import { validateStrongPassword } from "../service/passwordPolicy";
 
 type BookFormState = {
     id?: string;
@@ -80,6 +82,13 @@ type UserFormState = {
     admin: boolean;
     libraries: string[];
     publishers: string[];
+};
+
+type UserPasswordFormState = {
+    id?: string;
+    email: string;
+    senha_acesso: string;
+    confirmacao_senha: string;
 };
 
 type LibraryFormState = {
@@ -131,6 +140,7 @@ type BookFieldErrorKey =
     | "file";
 
 type UserFieldErrorKey = "email" | "senha" | "dica_senha";
+type UserPasswordFieldErrorKey = "senha_acesso" | "confirmacao_senha";
 type LibraryFieldErrorKey = "cnpj" | "nome";
 type PublisherFieldErrorKey = "id" | "name";
 type SubjectFieldErrorKey = "name";
@@ -179,6 +189,12 @@ const emptyUserForm: UserFormState = {
     admin: false,
     libraries: [],
     publishers: [],
+};
+
+const emptyUserPasswordForm: UserPasswordFormState = {
+    email: "",
+    senha_acesso: "",
+    confirmacao_senha: "",
 };
 
 const emptyLibraryForm: LibraryFormState = {
@@ -372,8 +388,55 @@ function validateUserForm(
         fieldErrors.dica_senha = "Dica de senha obrigatória.";
     }
 
-    if (mode === "create" && !form.senha.trim()) {
-        fieldErrors.senha = "Senha obrigatória no cadastro.";
+    const password = form.senha.trim();
+    if (mode === "create" && !password) {
+        fieldErrors.senha = "Senha de leitura obrigatória no cadastro.";
+    } else if (password) {
+        const strongPasswordError = validateStrongPassword(password);
+        if (strongPasswordError) {
+            fieldErrors.senha = strongPasswordError;
+        }
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
+/**
+ * Valida a senha de acesso antes de enviar a troca ao backend.
+ *
+ * @param form Estado atual do formulário de troca de senha.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateUserPasswordForm(
+    form: UserPasswordFormState
+): ValidationResult<UserPasswordFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<UserPasswordFieldErrorKey, string>> = {};
+
+    const senhaAcesso = form.senha_acesso.trim();
+    const confirmacao = form.confirmacao_senha.trim();
+
+    if (!senhaAcesso) {
+        fieldErrors.senha_acesso = "Nova senha de acesso obrigatória.";
+    } else {
+        const strongPasswordError = validateStrongPassword(senhaAcesso);
+        if (strongPasswordError) {
+            fieldErrors.senha_acesso = strongPasswordError;
+        }
+    }
+
+    if (!confirmacao) {
+        fieldErrors.confirmacao_senha = "Confirmação de senha obrigatória.";
+    }
+
+    if (senhaAcesso && confirmacao && senhaAcesso !== confirmacao) {
+        fieldErrors.confirmacao_senha = "As senhas precisam ser iguais.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -730,6 +793,14 @@ export function useAdminController() {
     const [userModalError, setUserModalError] = useState("");
     const [userFormErrors, setUserFormErrors] =
         useState<Partial<Record<UserFieldErrorKey, string>>>({});
+
+    const [userPasswordModalOpen, setUserPasswordModalOpen] = useState(false);
+    const [userPasswordForm, setUserPasswordForm] =
+        useState<UserPasswordFormState>(emptyUserPasswordForm);
+    const [userPasswordModalError, setUserPasswordModalError] = useState("");
+    const [userPasswordFormErrors, setUserPasswordFormErrors] =
+        useState<Partial<Record<UserPasswordFieldErrorKey, string>>>({});
+    const [isSavingUserPassword, setIsSavingUserPassword] = useState(false);
 
     const [libraryModalOpen, setLibraryModalOpen] = useState(false);
     const [libraryModalMode, setLibraryModalMode] = useState<"create" | "edit">("create");
@@ -1129,6 +1200,24 @@ export function useAdminController() {
     function clearUserFieldError(field: UserFieldErrorKey): void {
         setUserModalError("");
         setUserFormErrors((previous) => {
+            if (!previous[field]) {
+                return previous;
+            }
+            const next = { ...previous };
+            delete next[field];
+            return next;
+        });
+    }
+
+    /**
+     * Remove erro de um campo do formulário de troca de senha.
+     *
+     * @param field Campo a ser limpo.
+     * @returns void.
+     */
+    function clearUserPasswordFieldError(field: UserPasswordFieldErrorKey): void {
+        setUserPasswordModalError("");
+        setUserPasswordFormErrors((previous) => {
             if (!previous[field]) {
                 return previous;
             }
@@ -1889,6 +1978,83 @@ export function useAdminController() {
     }
 
     /**
+     * Abre modal para troca de senha de acesso de um usuário.
+     *
+     * @param user Usuário selecionado.
+     * @returns void.
+     */
+    function openChangePasswordModal(user: AdminUser): void {
+        setUserPasswordForm({
+            id: user.id,
+            email: user.email,
+            senha_acesso: "",
+            confirmacao_senha: "",
+        });
+        setUserPasswordModalError("");
+        setUserPasswordFormErrors({});
+        setUserPasswordModalOpen(true);
+    }
+
+    /**
+     * Fecha modal de troca de senha de acesso.
+     *
+     * @returns void.
+     */
+    function closeUserPasswordModal(): void {
+        setUserPasswordModalOpen(false);
+        setUserPasswordModalError("");
+        setUserPasswordFormErrors({});
+        setUserPasswordForm(emptyUserPasswordForm);
+    }
+
+    /**
+     * Salva a nova senha de acesso do usuário selecionado.
+     *
+     * @param event Evento de submit.
+     * @returns Promise<void>.
+     */
+    async function saveUserPassword(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setError("");
+        setUserPasswordModalError("");
+        setUserPasswordFormErrors({});
+
+        const validationError = validateUserPasswordForm(userPasswordForm);
+        if (validationError) {
+            setUserPasswordModalError(validationError.message);
+            setUserPasswordFormErrors(validationError.fieldErrors);
+            return;
+        }
+
+        if (!userPasswordForm.id) {
+            setUserPasswordModalError("Usuário inválido para troca de senha.");
+            return;
+        }
+
+        setIsSavingUserPassword(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setUserPasswordModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await updateUserPassword(token, userPasswordForm.id, {
+                senha_acesso: userPasswordForm.senha_acesso.trim(),
+            });
+
+            closeUserPasswordModal();
+            await loadUsers();
+        } catch (err) {
+            setUserPasswordModalError(
+                normalizeErrorMessage(err, "Erro ao atualizar a senha de acesso.")
+            );
+        } finally {
+            setIsSavingUserPassword(false);
+        }
+    }
+
+    /**
      * Remove usuário administrativo.
      *
      * @param userId Identificador do usuário.
@@ -2412,6 +2578,11 @@ export function useAdminController() {
             userForm,
             userModalError,
             userFormErrors,
+            userPasswordModalOpen,
+            userPasswordForm,
+            userPasswordModalError,
+            userPasswordFormErrors,
+            isSavingUserPassword,
             libraryModalOpen,
             libraryModalMode,
             libraryForm,
@@ -2444,6 +2615,7 @@ export function useAdminController() {
             setAuthorSearch,
             clearBookFieldError,
             clearUserFieldError,
+            clearUserPasswordFieldError,
             clearLibraryFieldError,
             clearPublisherFieldError,
             clearSubjectFieldError,
@@ -2481,6 +2653,10 @@ export function useAdminController() {
             closeUserModal,
             setUserForm,
             saveUser,
+            openChangePasswordModal,
+            closeUserPasswordModal,
+            setUserPasswordForm,
+            saveUserPassword,
             removeUser,
             openCreateLibraryModal,
             openEditLibraryModal,

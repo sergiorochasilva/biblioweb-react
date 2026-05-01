@@ -1,35 +1,16 @@
 import React, {
-    createContext,
     useCallback,
-    useContext,
     useEffect,
     useRef,
     useState,
     ReactNode,
 } from "react";
 import { api } from "../service/api";
+import type { AuthTokenResponse } from "../service/authTypes";
+import { AuthContext, type AccessTokenOptions, type AuthSession } from "./authContext";
 import type { Library, ProfileData, Publisher } from "../types";
 
 const TOKEN_EXPIRY_BUFFER_MS = 30_000;
-
-type AuthTokenResponse = {
-    access_token?: string;
-    refresh_token?: string;
-    expires_at?: number | string;
-    expires_in?: number | string;
-    expires?: number | string;
-    exp?: number | string;
-};
-
-type AuthSession = {
-    accessToken: string | null;
-    refreshToken: string | null;
-    expiresAt: number | null;
-};
-
-type AccessTokenOptions = {
-    redirectOnFail?: boolean;
-};
 
 /**
  * Converte timestamps de expiração para epoch em ms.
@@ -50,7 +31,7 @@ function normalizeExpiresAt(raw: unknown): number | null {
  * @param token JWT a ser decodificado.
  * @returns Objeto payload ou null quando inválido.
  */
-function parseJwtPayload(token: string): Record<string, any> | null {
+function parseJwtPayload(token: string): Record<string, unknown> | null {
     const parts = token.split(".");
     if (parts.length < 2) return null;
     const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
@@ -126,7 +107,11 @@ function resolveNextPath(): string {
  */
 function redirectToLogin(): void {
     const nextPath = resolveNextPath();
-    if (nextPath.startsWith("/login") || nextPath.startsWith("/verify-code")) {
+    if (
+        nextPath.startsWith("/login") ||
+        nextPath.startsWith("/verify-code") ||
+        nextPath.startsWith("/login-password")
+    ) {
         return;
     }
 
@@ -135,29 +120,6 @@ function redirectToLogin(): void {
     const target = `${basePrefix}/login?next=${encodeURIComponent(nextPath)}`;
     window.location.assign(target);
 }
-
-/**
- * Contrato do contexto global de autenticação e seleção de ambiente.
- */
-interface AuthContextType {
-    token: string | null;
-    refreshToken: string | null;
-    tokenExpiresAt: number | null;
-    publisher: Publisher | null;
-    library: Library | null;
-    profile: ProfileData | null;
-    setToken: (token: string | null) => void;
-    setSession: (session: AuthSession) => void;
-    setSessionFromResponse: (response: AuthTokenResponse) => string | null;
-    getAccessToken: (options?: AccessTokenOptions) => Promise<string | null>;
-    setPublisher: (publisher: Publisher | null) => void;
-    setLibrary: (library: Library | null) => void;
-    setProfile: (profile: ProfileData | null) => void;
-    logout: () => void;
-    isAuthenticated: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
  * Provider que mantém sessão autenticada e dados de perfil sincronizados
@@ -451,18 +413,4 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             {children}
         </AuthContext.Provider>
     );
-};
-
-export const useAuth = () => {
-    /**
-     * Hook de acesso ao contexto de autenticação.
-     *
-     * @returns Objeto com estado e ações de autenticação.
-     * @throws Error Quando utilizado fora de ``AuthProvider``.
-     */
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
 };

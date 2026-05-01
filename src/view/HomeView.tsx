@@ -12,7 +12,7 @@ import { Book } from "../model/Book";
 import HeaderView from "../view/HeaderView";
 import BookCard from "../components/BookCard";
 import "../styles/HomeView.css";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 
 export default function HomeView() {
     const { handleScroll } = useCarousel();

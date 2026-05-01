@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { App as AntdApp, Button, Card, Descriptions, Layout, Space, Spin, Tag, Typography } from "antd";
+import { Alert, App as AntdApp, Button, Card, Descriptions, Input, Layout, Modal, Space, Spin, Tag, Typography } from "antd";
 import HeaderView from "./HeaderView";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import type { ProfileData } from "../types";
 import { api } from "../service/api";
+import { validateStrongPassword } from "../service/passwordPolicy";
+import "../styles/AdminView.css";
 import "../styles/ProfileView.css";
 
 /**
@@ -17,6 +19,100 @@ function formatYesNo(value: boolean): string {
     return value ? "Sim" : "Não";
 }
 
+function getTokenPayload(token: string | null): Record<string, unknown> | null {
+    if (!token) {
+        return null;
+    }
+
+    const parts = token.split(".");
+    if (parts.length < 2) {
+        return null;
+    }
+
+    const payloadPart = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = payloadPart.padEnd(
+        payloadPart.length + ((4 - (payloadPart.length % 4)) % 4),
+        "="
+    );
+
+    try {
+        return JSON.parse(atob(paddedPayload)) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
+function getUserIdFromToken(token: string | null): string | null {
+    const payload = getTokenPayload(token);
+    const value = payload?.sub;
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+type SelfPasswordFormState = {
+    senha_atual: string;
+    nova_senha: string;
+    confirmacao_senha: string;
+};
+
+type SelfPasswordFieldErrorKey = keyof SelfPasswordFormState;
+
+type ValidationResult<TField extends string> = {
+    message: string;
+    fieldErrors: Partial<Record<TField, string>>;
+};
+
+const emptySelfPasswordForm: SelfPasswordFormState = {
+    senha_atual: "",
+    nova_senha: "",
+    confirmacao_senha: "",
+};
+
+/**
+ * Valida o formulário de troca de senha do próprio usuário.
+ *
+ * @param form Estado atual do formulário.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateSelfPasswordForm(
+    form: SelfPasswordFormState
+): ValidationResult<SelfPasswordFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<SelfPasswordFieldErrorKey, string>> = {};
+
+    const currentPassword = form.senha_atual.trim();
+    const newPassword = form.nova_senha.trim();
+    const confirmPassword = form.confirmacao_senha.trim();
+
+    if (!currentPassword) {
+        fieldErrors.senha_atual = "Senha atual obrigatória.";
+    }
+
+    if (!newPassword) {
+        fieldErrors.nova_senha = "Nova senha obrigatória.";
+    } else {
+        const strongPasswordError = validateStrongPassword(newPassword);
+        if (strongPasswordError) {
+            fieldErrors.nova_senha = strongPasswordError;
+        }
+    }
+
+    if (!confirmPassword) {
+        fieldErrors.confirmacao_senha = "Confirmação de senha obrigatória.";
+    }
+
+    if (newPassword && confirmPassword && newPassword !== confirmPassword) {
+        fieldErrors.confirmacao_senha = "As senhas precisam ser iguais.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
 export default function ProfileView() {
     const navigate = useNavigate();
     const { message } = AntdApp.useApp();
@@ -25,6 +121,79 @@ export default function ProfileView() {
 
     const [isLoading, setIsLoading] = useState(false);
     const [currentProfile, setCurrentProfile] = useState<ProfileData | null>(profile);
+    const [selfPasswordModalOpen, setSelfPasswordModalOpen] = useState(false);
+    const [selfPasswordForm, setSelfPasswordForm] = useState<SelfPasswordFormState>(
+        emptySelfPasswordForm
+    );
+    const [selfPasswordModalError, setSelfPasswordModalError] = useState("");
+    const [selfPasswordFormErrors, setSelfPasswordFormErrors] = useState<
+        Partial<Record<SelfPasswordFieldErrorKey, string>>
+    >({});
+    const [isSavingSelfPassword, setIsSavingSelfPassword] = useState(false);
+
+    function openSelfPasswordModal(): void {
+        setSelfPasswordForm(emptySelfPasswordForm);
+        setSelfPasswordFormErrors({});
+        setSelfPasswordModalError("");
+        setSelfPasswordModalOpen(true);
+    }
+
+    function closeSelfPasswordModal(): void {
+        setSelfPasswordModalOpen(false);
+        setSelfPasswordForm(emptySelfPasswordForm);
+        setSelfPasswordFormErrors({});
+        setSelfPasswordModalError("");
+    }
+
+    async function saveSelfPassword(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+
+        const validationError = validateSelfPasswordForm(selfPasswordForm);
+        if (validationError) {
+            setSelfPasswordModalError(validationError.message);
+            setSelfPasswordFormErrors(validationError.fieldErrors);
+            return;
+        }
+
+        setIsSavingSelfPassword(true);
+        setSelfPasswordModalError("");
+
+        try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                navigate(`/login?next=${encodeURIComponent("/profile")}`);
+                return;
+            }
+
+            const userId = getUserIdFromToken(accessToken);
+            if (!userId) {
+                message.error("Não foi possível identificar o usuário autenticado.");
+                return;
+            }
+
+            await api.patch(
+                `/users/${userId}`,
+                {
+                    senha_atual: selfPasswordForm.senha_atual,
+                    nova_senha: selfPasswordForm.nova_senha,
+                    confirmacao_senha: selfPasswordForm.confirmacao_senha,
+                },
+                accessToken
+            );
+
+            message.success("Senha atualizada com sucesso.");
+            closeSelfPasswordModal();
+        } catch (error) {
+            console.error("Failed to update self password", error);
+            message.error(
+                error instanceof Error && error.message
+                    ? error.message
+                    : "Não foi possível atualizar sua senha."
+            );
+        } finally {
+            setIsSavingSelfPassword(false);
+        }
+    }
 
     useEffect(() => {
         let isActive = true;
@@ -146,20 +315,129 @@ export default function ProfileView() {
                                     </div>
                                 </div>
 
-                                {hasMultipleContexts && (
-                                    <Button
-                                        type="default"
-                                        className="profile-switch-context-button"
-                                        onClick={() => navigate("/selection")}
-                                    >
-                                        Trocar ambiente
+                                <div className="profile-actions">
+                                    <Button type="primary" onClick={openSelfPasswordModal}>
+                                        Alterar minha senha
                                     </Button>
-                                )}
+                                    {hasMultipleContexts && (
+                                        <Button
+                                            type="default"
+                                            className="profile-switch-context-button"
+                                            onClick={() => navigate("/selection")}
+                                        >
+                                            Trocar ambiente
+                                        </Button>
+                                    )}
+                                </div>
                             </Space>
                         )}
                     </Card>
                 </section>
             </Content>
+
+            <Modal
+                title="Alterar minha senha"
+                open={selfPasswordModalOpen}
+                onCancel={closeSelfPasswordModal}
+                footer={null}
+                width={560}
+                destroyOnClose
+            >
+                <form className="admin-form" onSubmit={(event) => void saveSelfPassword(event)}>
+                    {selfPasswordModalError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={selfPasswordModalError}
+                            className="admin-modal-alert"
+                        />
+                    )}
+                    <Alert
+                        type="info"
+                        showIcon
+                        message="Informe sua senha atual para confirmar a identidade. A nova senha precisa ter no mínimo 12 caracteres e conter letras maiúsculas, minúsculas, números e símbolos. A confirmação deve ser igual à nova senha."
+                        className="admin-modal-alert"
+                    />
+                    <div className="form-field">
+                        <label className="field-label">Senha atual (*)</label>
+                        <Input.Password
+                            className="admin-input"
+                            status={selfPasswordFormErrors.senha_atual ? "error" : undefined}
+                            value={selfPasswordForm.senha_atual}
+                            onChange={(event) => {
+                                setSelfPasswordForm((previous) => ({
+                                    ...previous,
+                                    senha_atual: event.target.value,
+                                }));
+                                setSelfPasswordFormErrors((previous) => ({
+                                    ...previous,
+                                    senha_atual: undefined,
+                                }));
+                                setSelfPasswordModalError("");
+                            }}
+                        />
+                        {selfPasswordFormErrors.senha_atual && (
+                            <span className="form-field-error">
+                                {selfPasswordFormErrors.senha_atual}
+                            </span>
+                        )}
+                    </div>
+                    <div className="form-field">
+                        <label className="field-label">Nova senha (*)</label>
+                        <Input.Password
+                            className="admin-input"
+                            status={selfPasswordFormErrors.nova_senha ? "error" : undefined}
+                            value={selfPasswordForm.nova_senha}
+                            onChange={(event) => {
+                                setSelfPasswordForm((previous) => ({
+                                    ...previous,
+                                    nova_senha: event.target.value,
+                                }));
+                                setSelfPasswordFormErrors((previous) => ({
+                                    ...previous,
+                                    nova_senha: undefined,
+                                }));
+                                setSelfPasswordModalError("");
+                            }}
+                        />
+                        {selfPasswordFormErrors.nova_senha && (
+                            <span className="form-field-error">
+                                {selfPasswordFormErrors.nova_senha}
+                            </span>
+                        )}
+                    </div>
+                    <div className="form-field">
+                        <label className="field-label">Confirmação de senha (*)</label>
+                        <Input.Password
+                            className="admin-input"
+                            status={selfPasswordFormErrors.confirmacao_senha ? "error" : undefined}
+                            value={selfPasswordForm.confirmacao_senha}
+                            onChange={(event) => {
+                                setSelfPasswordForm((previous) => ({
+                                    ...previous,
+                                    confirmacao_senha: event.target.value,
+                                }));
+                                setSelfPasswordFormErrors((previous) => ({
+                                    ...previous,
+                                    confirmacao_senha: undefined,
+                                }));
+                                setSelfPasswordModalError("");
+                            }}
+                        />
+                        {selfPasswordFormErrors.confirmacao_senha && (
+                            <span className="form-field-error">
+                                {selfPasswordFormErrors.confirmacao_senha}
+                            </span>
+                        )}
+                    </div>
+                    <div className="modal-actions">
+                        <Button onClick={closeSelfPasswordModal}>Cancelar</Button>
+                        <Button type="primary" htmlType="submit" loading={isSavingSelfPassword}>
+                            Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
         </Layout>
     );
 }

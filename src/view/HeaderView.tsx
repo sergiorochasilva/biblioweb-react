@@ -4,7 +4,7 @@ import { Button, Dropdown, Input, Layout, type MenuProps } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import logo from "../assets/logo.png";
 import "../styles/HeaderView.css";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { api } from "../service/api";
 import {
     hasGlobalAdminPermission,

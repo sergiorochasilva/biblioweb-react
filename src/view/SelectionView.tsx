@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { App as AntdApp, Button, Form, Select, Spin, Typography } from "antd";
 import AuthLayout from "../components/AuthLayout";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { api } from "../service/api";
+import { getErrorMessage } from "../service/errorMessage";
 import type { ProfileData } from "../types";
 
 /**
@@ -90,9 +91,9 @@ export default function SelectionView() {
                     navigate("/");
                     return;
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
                 if (isActive) {
-                    message.error(err.message || "Erro ao carregar perfil.");
+                    message.error(getErrorMessage(err, "Erro ao carregar perfil."));
                 }
             } finally {
                 if (isActive) {

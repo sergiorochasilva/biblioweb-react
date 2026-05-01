@@ -10,7 +10,7 @@ import {
 import { Book } from "../model/Book";
 import HeaderView from "./HeaderView";
 import BookCard from "../components/BookCard";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import "../styles/CategoriesView.css";
 
 const MAX_SUBJECTS = 5;

@@ -7,6 +7,7 @@ import PublisherAdminView from "./view/PublisherAdminView";
 import AdminView from "./view/AdminView";
 import LoginView from "./view/LoginView";
 import CodeVerificationView from "./view/CodeVerificationView";
+import PasswordLoginView from "./view/PasswordLoginView";
 import SelectionView from "./view/SelectionView";
 import CategoriesView from "./view/CategoriesView";
 import AuthorsView from "./view/AuthorsView";
@@ -18,6 +19,7 @@ export default function App() {
     return (
         <Routes>
             <Route path="/login" element={<LoginView />} />
+            <Route path="/login-password" element={<PasswordLoginView />} />
             <Route path="/verify-code" element={<CodeVerificationView />} />
             <Route path="/selection" element={<SelectionView />} />
             <Route path="/" element={<HomeView />} />

@@ -9,11 +9,12 @@ import { useAuth } from "../contexts/useAuth";
 import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
 
 /**
- * Tela de validação do código recebido por e-mail.
+ * Tela de autenticação por senha.
  *
- * @returns Componente que finaliza login e executa ação pendente pós-login.
+ * @returns Componente que finaliza login por credenciais e executa ação
+ * pendente pós-login quando existir.
  */
-export default function CodeVerificationView() {
+export default function PasswordLoginView() {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -33,7 +34,7 @@ export default function CodeVerificationView() {
     }, [email, navigate, nextPath]);
 
     /**
-     * Retorna para a tela inicial de login preservando o `next`, quando existir.
+     * Redireciona para a tela inicial de login preservando o parâmetro `next`.
      *
      * @returns void
      */
@@ -46,39 +47,47 @@ export default function CodeVerificationView() {
     };
 
     /**
-     * Valida código informado, salva token e executa redirecionamento pós-login.
+     * Valida a senha e troca as credenciais por um access token.
      *
-     * @param values Objeto do formulário contendo o código de acesso.
+     * @param values Objeto do formulário contendo a senha informada.
      * @returns Promise<void>
      */
-    const handleSubmit = async (values: { code: string }): Promise<void> => {
+    const handleSubmit = async (values: { password: string }): Promise<void> => {
+        if (!email) {
+            navigateBackToLogin();
+            return;
+        }
+
         setIsLoading(true);
         try {
             const response = await api.post<AuthTokenResponse>("/token", {
-                type: "code",
-                code: values.code,
+                type: "credentials",
+                credentials: {
+                    email,
+                    password: values.password,
+                },
             });
             const accessToken = setSessionFromResponse(response);
-            if (accessToken) {
-                const handledPendingAction = await handlePendingLendActionAfterLogin(
-                    accessToken,
-                    navigate,
-                    (errorMessage) => message.error(errorMessage)
-                );
-                if (handledPendingAction) {
-                    return;
-                }
-
-                if (nextPath) {
-                    navigate(nextPath);
-                } else {
-                    navigate("/selection");
-                }
-            } else {
+            if (!accessToken) {
                 throw new Error("Token não recebido da API.");
             }
+
+            const handledPendingAction = await handlePendingLendActionAfterLogin(
+                accessToken,
+                navigate,
+                (errorMessage) => message.error(errorMessage)
+            );
+            if (handledPendingAction) {
+                return;
+            }
+
+            if (nextPath) {
+                navigate(nextPath);
+            } else {
+                navigate("/selection");
+            }
         } catch (err: unknown) {
-            message.error(getErrorMessage(err, "Código inválido. Tente novamente."));
+            message.error(getErrorMessage(err, "Senha inválida. Tente novamente."));
         } finally {
             setIsLoading(false);
         }
@@ -86,22 +95,16 @@ export default function CodeVerificationView() {
 
     return (
         <AuthLayout
-            title="Verificação"
-            subtitle={
-                <>
-                    Um código de acesso foi enviado para o e-mail cadastrado.
-                    <br />
-                    Por favor, verifique seu e-mail e digite o código abaixo.
-                </>
-            }
+            title="Digite sua senha"
+            subtitle="Digite a senha de acesso cadastrada para seu usuário"
         >
             <Form layout="vertical" onFinish={handleSubmit} autoComplete="off">
                 <Form.Item
-                    label="Código de Acesso"
-                    name="code"
-                    rules={[{ required: true, message: "Informe o código." }]}
+                    label="Senha"
+                    name="password"
+                    rules={[{ required: true, message: "Informe a senha." }]}
                 >
-                    <Input placeholder="Digite o código" autoFocus />
+                    <Input.Password placeholder="Digite sua senha" autoFocus />
                 </Form.Item>
 
                 <Form.Item style={{ marginTop: 16 }}>

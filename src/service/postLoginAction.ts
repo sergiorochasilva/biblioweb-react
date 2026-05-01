@@ -1,3 +1,6 @@
+import { lendBook } from "./BookService";
+import { getErrorMessage } from "./errorMessage";
+
 export type PendingLendAction = {
     type: "lend";
     bookId: string;
@@ -46,4 +49,41 @@ export function getPendingLendAction(): PendingLendAction | null {
  */
 export function clearPendingLendAction() {
     sessionStorage.removeItem(PENDING_ACTION_KEY);
+}
+
+/**
+ * Executa o empréstimo pendente após o login e redireciona para a tela de origem.
+ *
+ * @param accessToken Token de acesso recém-obtido.
+ * @param navigate Função de navegação da rota atual.
+ * @param onError Callback opcional para exibir falhas no empréstimo.
+ * @returns `true` quando havia ação pendente e ela foi encaminhada.
+ */
+export async function handlePendingLendActionAfterLogin(
+    accessToken: string,
+    navigate: (path: string) => void,
+    onError?: (message: string) => void
+): Promise<boolean> {
+    const pendingLendAction = getPendingLendAction();
+    if (!pendingLendAction) {
+        return false;
+    }
+
+    clearPendingLendAction();
+    navigate(pendingLendAction.returnTo);
+
+    // Deixa a rota renderizar antes de disparar o download licenciado.
+    setTimeout(async () => {
+        try {
+            await lendBook(
+                pendingLendAction.bookId,
+                pendingLendAction.libraryId,
+                accessToken
+            );
+        } catch (error: unknown) {
+            onError?.(getErrorMessage(error, "Não foi possível finalizar o empréstimo."));
+        }
+    }, 0);
+
+    return true;
 }

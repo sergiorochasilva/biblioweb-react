@@ -4,7 +4,7 @@ import { Button, Card, Layout, Result, Spin, Typography } from "antd";
 import { DEFAULT_PUBLIC_LIBRARY_ID, fetchBookDetails } from "../service/BookService";
 import BookDetailsView from "./BookDetailsView";
 import { Book } from "../model/Book";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import HeaderView from "./HeaderView";
 
 export default function BookDetailsWrapper() {

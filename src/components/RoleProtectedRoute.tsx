@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Layout, Result, Spin, Typography } from "antd";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { api } from "../service/api";
 import {
     hasGlobalAdminPermission,

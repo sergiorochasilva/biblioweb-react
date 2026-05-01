@@ -25,7 +25,7 @@ import {
 import { getBookAuthorsText } from "../model/Book";
 import BookTypeTag from "../components/BookTypeTag";
 import "../styles/BookDetailsView.css";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { savePendingLendAction } from "../service/postLoginAction";
 import HeaderView from "./HeaderView";
 

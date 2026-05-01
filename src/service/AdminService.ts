@@ -100,6 +100,10 @@ export type AdminUserPayload = {
     publishers?: string[];
 };
 
+export type AdminUserPasswordPayload = {
+    senha_acesso: string;
+};
+
 export type AdminLibraryPayload = {
     cnpj: string;
     nome: string;
@@ -1207,6 +1211,23 @@ export async function updateUser(
     payload: AdminUserPayload
 ): Promise<AdminUser> {
     const data = await api.put<unknown>(`/users/${id}`, payload, token);
+    return normalizeUserResponse(data);
+}
+
+/**
+ * Atualiza apenas a senha de acesso de um usuário.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do usuário.
+ * @param payload Nova senha de acesso.
+ * @returns Usuário atualizado.
+ */
+export async function updateUserPassword(
+    token: string,
+    id: string,
+    payload: AdminUserPasswordPayload
+): Promise<AdminUser> {
+    const data = await api.patch<unknown>(`/users/${id}`, payload, token);
     return normalizeUserResponse(data);
 }
 

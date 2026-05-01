@@ -18,6 +18,7 @@ import {
 import {
     DeleteOutlined,
     EditOutlined,
+    LockOutlined,
     PlusOutlined,
     ReloadOutlined,
     UploadOutlined,
@@ -341,6 +342,15 @@ export default function AdminView() {
                                                                 }}
                                                             >
                                                                 Editar
+                                                            </Button>,
+                                                            <Button
+                                                                key="password"
+                                                                icon={<LockOutlined />}
+                                                                onClick={() => {
+                                                                    actions.openChangePasswordModal(user);
+                                                                }}
+                                                            >
+                                                                Mudar senha
                                                             </Button>,
                                                             <Popconfirm
                                                                 key="delete"
@@ -1125,7 +1135,9 @@ export default function AdminView() {
                     </div>
                     <div className="form-field">
                         <label className="field-label">
-                            {state.userModalMode === "create" ? "Senha (*)" : "Nova senha (opcional)"}
+                            {state.userModalMode === "create"
+                                ? "Senha de leitura (*)"
+                                : "Nova senha de leitura (opcional)"}
                         </label>
                         <Input.Password
                             className="admin-input"
@@ -1141,7 +1153,7 @@ export default function AdminView() {
                         )}
                     </div>
                     <div className="form-field">
-                        <label className="field-label">Dica de senha (*)</label>
+                        <label className="field-label">Dica de senha de leitura (*)</label>
                         <Input
                             className="admin-input"
                             status={state.userFormErrors.dica_senha ? "error" : undefined}
@@ -1195,6 +1207,84 @@ export default function AdminView() {
                     <div className="modal-actions">
                         <Button onClick={actions.closeUserModal}>Cancelar</Button>
                         <Button type="primary" htmlType="submit" loading={state.isSavingUser}>
+                            Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                title={
+                    state.userPasswordForm.email
+                        ? `Mudar senha de acesso - ${state.userPasswordForm.email}`
+                        : "Mudar senha de acesso"
+                }
+                open={state.userPasswordModalOpen}
+                onCancel={actions.closeUserPasswordModal}
+                footer={null}
+                width={560}
+                destroyOnClose
+            >
+                <form className="admin-form" onSubmit={(event) => void actions.saveUserPassword(event)}>
+                    {state.userPasswordModalError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={state.userPasswordModalError}
+                            className="admin-modal-alert"
+                        />
+                    )}
+                    <Alert
+                        type="info"
+                        showIcon
+                        message="A senha de acesso precisa ter no mínimo 12 caracteres e conter letras maiúsculas, minúsculas, números e símbolos. A confirmação deve ser igual à nova senha."
+                        className="admin-modal-alert"
+                    />
+                    <div className="form-field">
+                        <label className="field-label">Nova senha de acesso (*)</label>
+                        <Input.Password
+                            className="admin-input"
+                            status={state.userPasswordFormErrors.senha_acesso ? "error" : undefined}
+                            value={state.userPasswordForm.senha_acesso}
+                            onChange={(event) => {
+                                actions.setUserPasswordForm((previous) => ({
+                                    ...previous,
+                                    senha_acesso: event.target.value,
+                                }));
+                                actions.clearUserPasswordFieldError("senha_acesso");
+                            }}
+                        />
+                        {state.userPasswordFormErrors.senha_acesso && (
+                            <span className="form-field-error">
+                                {state.userPasswordFormErrors.senha_acesso}
+                            </span>
+                        )}
+                    </div>
+                    <div className="form-field">
+                        <label className="field-label">Confirmação de senha (*)</label>
+                        <Input.Password
+                            className="admin-input"
+                            status={
+                                state.userPasswordFormErrors.confirmacao_senha ? "error" : undefined
+                            }
+                            value={state.userPasswordForm.confirmacao_senha}
+                            onChange={(event) => {
+                                actions.setUserPasswordForm((previous) => ({
+                                    ...previous,
+                                    confirmacao_senha: event.target.value,
+                                }));
+                                actions.clearUserPasswordFieldError("confirmacao_senha");
+                            }}
+                        />
+                        {state.userPasswordFormErrors.confirmacao_senha && (
+                            <span className="form-field-error">
+                                {state.userPasswordFormErrors.confirmacao_senha}
+                            </span>
+                        )}
+                    </div>
+                    <div className="modal-actions">
+                        <Button onClick={actions.closeUserPasswordModal}>Cancelar</Button>
+                        <Button type="primary" htmlType="submit" loading={state.isSavingUserPassword}>
                             Salvar
                         </Button>
                     </div>

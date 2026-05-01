@@ -28,6 +28,13 @@
     gap: 8px;
 }
 
+.profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+}
+
 .profile-switch-context-button {
     align-self: flex-start;
 }

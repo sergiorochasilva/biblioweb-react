@@ -108,6 +108,7 @@ export default function BookDetailsWrapper() {
         type={book.type}
         external_url={book.external_url}
         external_source={book.external_source}
+        html_version_url={book.html_version_url}
         file_name={book.file_name}
         image_url={book.image_url}
     />;

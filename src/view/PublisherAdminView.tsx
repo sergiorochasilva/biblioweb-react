@@ -539,6 +539,19 @@ export default function PublisherAdminView() {
                             />
                         </div>
                         <div className="form-field">
+                            <label className="field-label">URL Versão HTML</label>
+                            <Input
+                                className="admin-input"
+                                value={state.bookForm.html_version_url}
+                                onChange={(event) =>
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        html_version_url: event.target.value,
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="form-field">
                             <label className="field-label">Edição (*) <span className="marc-tag">[250$a]</span></label>
                             <Input
                                 className="admin-input"

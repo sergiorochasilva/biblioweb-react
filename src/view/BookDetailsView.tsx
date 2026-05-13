@@ -55,6 +55,7 @@ interface BookDetailsViewProps {
     type?: string;
     external_url?: string;
     external_source?: string;
+    html_version_url?: string;
     file_name?: string;
     image_url?: string | null;
 }
@@ -322,6 +323,7 @@ export default function BookDetailsView({
     type: bookType,
     external_url,
     external_source,
+    html_version_url,
     file_name,
     image_url,
 }: BookDetailsViewProps) {
@@ -341,6 +343,7 @@ export default function BookDetailsView({
     const normalizedFreeBooksBaseUrl = freeBooksBaseUrl.endsWith("/")
         ? freeBooksBaseUrl
         : `${freeBooksBaseUrl}/`;
+    const normalizedHtmlVersionUrl = typeof html_version_url === "string" ? html_version_url.trim() : "";
     const resolvedSubjects = Array.isArray(subjects)
         ? subjects
               .map((item) => (typeof item?.subject_name === "string" ? item.subject_name.trim() : ""))
@@ -625,6 +628,21 @@ export default function BookDetailsView({
                                         />
                                     )}
                                 </div>
+                                {(resolvedType === "external" || resolvedType === "free") && normalizedHtmlVersionUrl && (
+                                    <Button
+                                        size="large"
+                                        className="book-details-secondary"
+                                        onClick={() => {
+                                            if (!normalizedHtmlVersionUrl) {
+                                                message.error("URL da versão HTML não cadastrada para este livro.");
+                                                return;
+                                            }
+                                            openInNewTab(normalizedHtmlVersionUrl);
+                                        }}
+                                    >
+                                        Ler Versão Web
+                                    </Button>
+                                )}
                                 <Button
                                     size="large"
                                     className="book-details-secondary"

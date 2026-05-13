@@ -58,6 +58,7 @@ type BookFormState = {
     type: string;
     external_url: string;
     external_source: string;
+    html_version_url: string;
     file_name: string;
     edition: string;
     year: string;
@@ -166,6 +167,7 @@ const emptyBookForm: BookFormState = {
     type: "protected",
     external_url: "",
     external_source: "",
+    html_version_url: "",
     file_name: "",
     edition: "",
     year: "",
@@ -273,6 +275,7 @@ function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormS
         type: book.type || "protected",
         external_url: book.external_url || "",
         external_source: book.external_source || "",
+        html_version_url: book.html_version_url || "",
         file_name: book.file_name || "",
         edition: book.edition || "",
         year: book.year || "",
@@ -1770,6 +1773,7 @@ export function useAdminController() {
                 type: normalizeBookType(bookForm.type),
                 external_url: toNullableField(bookForm.external_url),
                 external_source: toNullableField(bookForm.external_source),
+                html_version_url: toNullableField(bookForm.html_version_url),
                 file_name: toNullableField(bookForm.file_name),
                 image_url: toNullableField(bookForm.image_url),
                 edition: toNullableField(bookForm.edition),

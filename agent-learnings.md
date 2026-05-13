@@ -17,6 +17,25 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-05-12 - book html_version_url propagated across details and admin forms
+- Descoberta:
+  - The book details flow needs `html_version_url` in the `fields` list and in the book model so the web-version button can open the stored public URL.
+  - The admin and publisher admin book modals need the same field so manual maintenance stays possible when the HTML mirror changes.
+- Evidencias:
+  - src/service/BookService.ts
+  - src/model/Book.ts
+  - src/view/BookDetailsView.tsx
+  - src/view/BookDetailsWrapper.tsx
+  - src/controller/AdminController.ts
+  - src/controller/PublisherAdminController.ts
+  - src/view/AdminView.tsx
+  - src/view/PublisherAdminView.tsx
+- Acao aplicada:
+  - Added `html_version_url` to the shared book model and the detail page request fields.
+  - Added the `Ler Versão Web` action for external/free books and exposed a manual `URL Versão HTML` input in both admin modals.
+- Impacto esperado:
+  - The public detail page and both admin UIs stay aligned with the new HTML mirror pipeline without requiring a separate data path.
+
 ### 2026-05-01 - login alternativo por senha coexistindo com login por e-mail
 - Descoberta:
   - O endpoint `/token` já aceita `type: "credentials"` com `credentials.email` e `credentials.password`, então o front pode oferecer um segundo caminho sem mexer no backend.

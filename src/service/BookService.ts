@@ -5,7 +5,7 @@ export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
 const DEFAULT_BOOK_FIELDS =
     "subtitle,original_title,corporate_author,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
     "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type," +
-    "external_url,external_source,file_name,image_url,subjects(subject,subject_name)," +
+    "external_url,external_source,html_version_url,file_name,image_url,subjects(subject,subject_name)," +
     "authors(author,author_name)";
 const MOST_ACCESSED_ORDER = "access_count desc";
 

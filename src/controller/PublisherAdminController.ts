@@ -56,6 +56,7 @@ type BookFormState = {
     authors: string[];
     dewey_decimal: string;
     subjects: string[];
+    html_version_url: string;
     file_name: string;
     edition: string;
     year: string;
@@ -82,6 +83,7 @@ const emptyBookForm: BookFormState = {
     authors: [],
     dewey_decimal: "",
     subjects: [],
+    html_version_url: "",
     file_name: "",
     edition: "",
     year: "",
@@ -266,6 +268,7 @@ function mapBookToForm(
         subjects: rawSubjects
             .map((item) => (item && typeof item.subject === "number" ? String(item.subject) : ""))
             .filter((item) => Boolean(item)),
+        html_version_url: book.html_version_url || "",
         file_name: book.file_name || "",
         edition: book.edition || "",
         year: book.year || "",
@@ -701,6 +704,7 @@ export function usePublisherAdminController() {
                 type: "protected",
                 external_url: null,
                 external_source: null,
+                html_version_url: toNullableField(bookForm.html_version_url),
                 file_name: toNullableField(bookForm.file_name),
                 image_url: toNullableField(bookForm.image_url),
                 edition: toNullableField(bookForm.edition),

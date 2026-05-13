@@ -67,6 +67,7 @@ export type BookFormPayload = {
     type?: string | null;
     external_url?: string | null;
     external_source?: string | null;
+    html_version_url?: string | null;
     file_name?: string | null;
     image_url?: string | null;
     edition: string | null;

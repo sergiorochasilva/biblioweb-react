@@ -24,6 +24,7 @@ export interface Book {
     type?: string;
     external_url?: string;
     external_source?: string;
+    html_version_url?: string;
     file_name?: string;
     edition: string;
     year: string;

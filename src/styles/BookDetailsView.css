@@ -8,6 +8,39 @@
     gap: 12px;
 }
 
+.book-details-shell--loaned,
+.book-details-shell--recent {
+    background:
+        radial-gradient(circle at top left, rgba(27, 120, 214, 0.18), transparent 42%),
+        linear-gradient(135deg, #d5eaff, #eaf4ff 60%, #dcecff 100%);
+}
+
+.book-details-shell--unavailable {
+    background:
+        radial-gradient(circle at top left, rgba(75, 85, 99, 0.18), transparent 42%),
+        linear-gradient(135deg, #e6ebf1, #f1f5f9 60%, #e5e7eb 100%);
+}
+
+.book-details-shell--loaned .details-hero,
+.book-details-shell--recent .details-hero {
+    background: linear-gradient(135deg, rgba(13, 71, 161, 0.28), rgba(27, 120, 214, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.42);
+}
+
+.book-details-shell--loaned .details-card,
+.book-details-shell--recent .details-card {
+    background: rgba(235, 245, 255, 0.76) !important;
+}
+
+.book-details-shell--unavailable .details-hero {
+    background: linear-gradient(135deg, rgba(55, 65, 81, 0.3), rgba(75, 85, 99, 0.18));
+    border: 1px solid rgba(255, 255, 255, 0.34);
+}
+
+.book-details-shell--unavailable .details-card {
+    background: rgba(241, 245, 249, 0.88) !important;
+}
+
 .details-title {
     margin: 0;
     font-family: "Sora", "Manrope", sans-serif;
@@ -59,6 +92,18 @@
     gap: 12px;
 }
 
+.book-details-cover--loaned {
+    background: linear-gradient(180deg, rgba(27, 120, 214, 0.16), rgba(255, 255, 255, 0.2));
+}
+
+.book-details-cover--recent {
+    background: linear-gradient(180deg, rgba(27, 120, 214, 0.12), rgba(255, 255, 255, 0.18));
+}
+
+.book-details-cover--unavailable {
+    background: linear-gradient(180deg, rgba(100, 116, 139, 0.16), rgba(255, 255, 255, 0.18));
+}
+
 .book-details-sidebar {
     display: flex;
     flex-direction: column;
@@ -77,6 +122,19 @@
     left: 12px;
     z-index: 1;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.book-details-expiry-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.book-details-last-access {
+    display: block;
+    text-align: center;
 }
 
 .book-details-actions {
@@ -99,6 +157,10 @@
 }
 
 .book-details-secondary {
+    width: 100%;
+}
+
+.book-details-return {
     width: 100%;
 }
 

@@ -230,6 +230,28 @@ a {
     pointer-events: none;
 }
 
+.loaned-book-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.loaned-book-card-cover {
+    min-height: 190px;
+}
+
+.loaned-book-expiry-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.loaned-book-return-button {
+    width: 100%;
+}
+
 .book-card-type-tag {
     position: absolute;
     top: 12px;

@@ -18,6 +18,9 @@ export interface ProfileData {
     role?: string;
     profile?: string;
     user_role?: string;
+    max_concurrent_loans?: number;
     publishers: Publisher[];
     libraries: Library[];
+    recent_reads?: import("../model/Book").Book[];
+    loaned_books?: import("../model/Book").Book[];
 }

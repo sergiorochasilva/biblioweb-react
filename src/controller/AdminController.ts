@@ -2,6 +2,14 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { message } from "antd";
 import { useAuth } from "../contexts/useAuth";
 import {
+    BookLibraryForm,
+    BOOK_LIBRARY_DEFAULT_POLICY,
+    buildBookLibraryForms,
+    buildBookLibraryPayloads,
+    extractBookLibraryIds,
+    syncBookLibrarySelection,
+} from "../model/BookLibrary";
+import {
     AdminAuthor,
     AdminBook,
     AdminLibrary,
@@ -22,7 +30,7 @@ import {
     deleteSubject,
     deleteUser,
     fetchBookById,
-    fetchBookLibraryIds,
+    fetchBookLibraryLinks,
     fetchBooksPage,
     fetchBooksPageByNext,
     fetchAuthors,
@@ -72,7 +80,12 @@ type BookFormState = {
     media_type: string;
     carrier_type: string;
     image_url: string;
-    libraries: string[];
+    libraries: BookLibraryForm[];
+};
+
+type UserLibraryLimitForm = {
+    library: string;
+    max_concurrent_loans: string;
 };
 
 type UserFormState = {
@@ -81,7 +94,7 @@ type UserFormState = {
     senha: string;
     dica_senha: string;
     admin: boolean;
-    libraries: string[];
+    library_limits: UserLibraryLimitForm[];
     publishers: string[];
 };
 
@@ -138,9 +151,14 @@ type BookFieldErrorKey =
     | "external_url"
     | "external_source"
     | "libraries"
+    | "library_policy"
     | "file";
 
-type UserFieldErrorKey = "email" | "senha" | "dica_senha";
+type UserFieldErrorKey =
+    | "email"
+    | "senha"
+    | "dica_senha"
+    | "library_limits";
 type UserPasswordFieldErrorKey = "senha_acesso" | "confirmacao_senha";
 type LibraryFieldErrorKey = "cnpj" | "nome";
 type PublisherFieldErrorKey = "id" | "name";
@@ -189,7 +207,7 @@ const emptyUserForm: UserFormState = {
     senha: "",
     dica_senha: "",
     admin: false,
-    libraries: [],
+    library_limits: [],
     publishers: [],
 };
 
@@ -224,24 +242,54 @@ const emptyFilters: AppliedBookFilters = {
 };
 
 /**
- * Extrai IDs de acervo de um livro administrativo.
+ * Normaliza os limites por acervo do formulário de usuário.
  *
- * @param book Livro retornado pela API administrativa.
- * @returns IDs únicos de acervo em formato textual.
+ * @param limits Limites já selecionados no formulário.
+ * @returns Lista sem duplicidades e com valores válidos.
  */
-function extractBookLibraries(book: AdminBook): string[] {
-    const unique = new Set<string>();
+function normalizeUserLibraryLimits(limits: UserLibraryLimitForm[]): UserLibraryLimitForm[] {
+    const unique = new Map<string, UserLibraryLimitForm>();
 
-    if (Array.isArray(book.libraries)) {
-        for (const libraryId of book.libraries) {
-            const parsed = Number(libraryId);
-            if (Number.isFinite(parsed) && parsed > 0) {
-                unique.add(String(parsed));
-            }
+    for (const item of limits) {
+        const library = item.library.trim();
+        const maxConcurrentLoans = toNullableIntegerField(item.max_concurrent_loans);
+        if (!library || maxConcurrentLoans === null || maxConcurrentLoans <= 0) {
+            continue;
         }
+
+        unique.set(library, {
+            library,
+            max_concurrent_loans: String(maxConcurrentLoans),
+        });
     }
 
-    return Array.from(unique);
+    return Array.from(unique.values());
+}
+
+/**
+ * Constrói o formulário de limites por biblioteca a partir do payload do usuário.
+ *
+ * @param user Usuário retornado pela API.
+ * @returns Limites prontos para edição.
+ */
+function mapUserLibraryLimitsToForm(user: AdminUser): UserLibraryLimitForm[] {
+    const rawLimits = Array.isArray(user.library_limits) ? user.library_limits : [];
+    const normalizedLimits = rawLimits
+        .map((item) => {
+            const library = String(item.library || "").trim();
+            const maxConcurrentLoans = Number(item.max_concurrent_loans);
+            if (!library || !Number.isFinite(maxConcurrentLoans) || maxConcurrentLoans <= 0) {
+                return null;
+            }
+
+            return {
+                library,
+                max_concurrent_loans: String(Math.floor(maxConcurrentLoans)),
+            };
+        })
+        .filter((item): item is UserLibraryLimitForm => Boolean(item));
+
+    return normalizeUserLibraryLimits(normalizedLimits);
 }
 
 /**
@@ -254,8 +302,11 @@ function extractBookLibraries(book: AdminBook): string[] {
 function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormState {
     const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
     const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
-    const parsedLibraries = extractBookLibraries(book);
-    const libraries = parsedLibraries.length > 0 ? parsedLibraries : fallbackLibraryIds;
+    const libraries = buildBookLibraryForms(
+        book.libraries,
+        BOOK_LIBRARY_DEFAULT_POLICY,
+        fallbackLibraryIds
+    );
 
     return {
         id: book.book_id || book.id,
@@ -336,6 +387,21 @@ function validateBookForm(
         fieldErrors.libraries = "Selecione ao menos um acervo.";
     }
 
+    const invalidLibraryPolicy = form.libraries.some((item) => {
+        const availableLicenses = toNullableIntegerField(item.available_licenses);
+        const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
+        return (
+            availableLicenses === null ||
+            availableLicenses < 0 ||
+            maxUsesPerLicense === null ||
+            maxUsesPerLicense <= 0
+        );
+    });
+
+    if (invalidLibraryPolicy) {
+        fieldErrors.library_policy = "Preencha a política de cada acervo selecionado.";
+    }
+
     if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
         fieldErrors.file_name = "Nome do arquivo obrigatório.";
     }
@@ -398,6 +464,14 @@ function validateUserForm(
         const strongPasswordError = validateStrongPassword(password);
         if (strongPasswordError) {
             fieldErrors.senha = strongPasswordError;
+        }
+    }
+
+    if (form.library_limits.length > 0) {
+        const normalizedLibraryLimits = normalizeUserLibraryLimits(form.library_limits);
+        if (normalizedLibraryLimits.length !== form.library_limits.length) {
+            fieldErrors.library_limits =
+                "Preencha um limite válido para cada acervo selecionado.";
         }
     }
 
@@ -574,6 +648,26 @@ function toNullableField(value: string): string | null {
 }
 
 /**
+ * Converte texto numérico para inteiro opcional.
+ *
+ * @param value Texto bruto do campo.
+ * @returns Inteiro ou ``null`` quando vazio/inválido.
+ */
+function toNullableIntegerField(value: string): number | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+        return null;
+    }
+
+    return Math.trunc(parsed);
+}
+
+/**
  * Normaliza o tipo do livro para o formato esperado pela API.
  *
  * @param value Valor bruto do campo ``type``.
@@ -606,18 +700,6 @@ function isExternalType(value: string): boolean {
  * @param value Valor bruto do campo/filtro.
  * @returns ID numérico da biblioteca ou ``undefined`` quando inválido.
  */
-function parseLibraryId(value: string): number | undefined {
-    const trimmed = value.trim();
-    if (!trimmed) {
-        return undefined;
-    }
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return undefined;
-    }
-    return parsed;
-}
-
 /**
  * Converte lista textual para IDs numéricos únicos de assunto.
  *
@@ -653,44 +735,6 @@ function parseBookAuthorIds(values: string[]): number[] {
             continue;
         }
         unique.add(parsed);
-    }
-
-    return Array.from(unique.values());
-}
-
-/**
- * Converte lista textual para IDs numéricos únicos de acervo.
- *
- * @param values IDs em formato textual.
- * @returns IDs numéricos únicos.
- */
-function parseBookLibraryIds(values: string[]): number[] {
-    const unique = new Set<number>();
-
-    for (const value of values) {
-        const parsed = parseLibraryId(value);
-        if (parsed) {
-            unique.add(parsed);
-        }
-    }
-
-    return Array.from(unique.values());
-}
-
-/**
- * Converte lista textual para IDs numéricos únicos de biblioteca.
- *
- * @param values IDs em formato textual.
- * @returns IDs numéricos únicos.
- */
-function parseUserLibraryIds(values: string[]): number[] {
-    const unique = new Set<number>();
-
-    for (const value of values) {
-        const parsed = parseLibraryId(value);
-        if (parsed) {
-            unique.add(parsed);
-        }
     }
 
     return Array.from(unique.values());
@@ -1599,7 +1643,11 @@ export function useAdminController() {
         setBookModalMode("create");
         setBookForm({
             ...emptyBookForm,
-            libraries: [defaultLibrary],
+            libraries: buildBookLibraryForms(
+                undefined,
+                BOOK_LIBRARY_DEFAULT_POLICY,
+                [defaultLibrary]
+            ),
             publisher: publishers[0]?.id || "",
         });
         setBookFile(null);
@@ -1620,7 +1668,11 @@ export function useAdminController() {
         setBookModalError("");
         setBookFormErrors({});
 
-        const fallbackLibraries = extractBookLibraries(book);
+        const fallbackLibraries = Array.isArray(book.libraries) && book.libraries.length > 0
+            ? extractBookLibraryIds(
+                  buildBookLibraryForms(book.libraries, BOOK_LIBRARY_DEFAULT_POLICY)
+              )
+            : [];
         if (fallbackLibraries.length <= 0) {
             const fallbackLibrary =
                 libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
@@ -1639,12 +1691,17 @@ export function useAdminController() {
         try {
             const selected = await fetchBookById(token, book.book_id || book.id);
             const resolvedBookId = selected.book_id || selected.id;
-            let librariesFromLink = extractBookLibraries(selected);
+            let selectedLibraries = Array.isArray(selected.libraries) ? selected.libraries : [];
+            const selectedLibraryId =
+                selected.library ?? book.library ?? fallbackLibraries[0] ?? null;
             if (resolvedBookId) {
                 try {
-                    const linkedLibraries = await fetchBookLibraryIds(token, resolvedBookId);
-                    if (linkedLibraries.length > 0) {
-                        librariesFromLink = linkedLibraries.map((item) => String(item));
+                    if (selectedLibraries.length <= 0 && selectedLibraryId !== null) {
+                        selectedLibraries = await fetchBookLibraryLinks(
+                            token,
+                            resolvedBookId,
+                            selectedLibraryId
+                        );
                     }
                 } catch {
                     // Mantém fallback de bibliotecas já conhecidas no DTO principal.
@@ -1655,7 +1712,7 @@ export function useAdminController() {
                 mapBookToForm(
                     {
                         ...selected,
-                        libraries: parseBookLibraryIds(librariesFromLink),
+                        libraries: selectedLibraries,
                     },
                     fallbackLibraries
                 )
@@ -1663,11 +1720,25 @@ export function useAdminController() {
             setBookFile(null);
             setBookModalOpen(true);
         } catch (err) {
-            const resolvedByLibraryBook = await resolveBookIdByLibraryBookId(token, book.id);
+            const lookupLibraryId = book.library ?? fallbackLibraries[0] ?? null;
+            const resolvedByLibraryBook = await resolveBookIdByLibraryBookId(
+                token,
+                book.id,
+                lookupLibraryId !== null ? lookupLibraryId : 1
+            );
             if (resolvedByLibraryBook) {
                 try {
                     const selected = await fetchBookById(token, resolvedByLibraryBook);
-                    const linkedLibraries = await fetchBookLibraryIds(token, resolvedByLibraryBook);
+                    const linkedLibraryId =
+                        selected.library ?? book.library ?? fallbackLibraries[0] ?? null;
+                    const linkedLibraries =
+                        linkedLibraryId !== null
+                            ? await fetchBookLibraryLinks(
+                                  token,
+                                  resolvedByLibraryBook,
+                                  linkedLibraryId
+                              )
+                            : [];
                     setBookForm(
                         mapBookToForm(
                             {
@@ -1675,7 +1746,7 @@ export function useAdminController() {
                                 libraries:
                                     linkedLibraries.length > 0
                                         ? linkedLibraries
-                                        : selected.libraries,
+                                        : (Array.isArray(selected.libraries) ? selected.libraries : []),
                             },
                             fallbackLibraries
                         )
@@ -1713,6 +1784,38 @@ export function useAdminController() {
     }
 
     /**
+     * Atualiza a seleção de acervos do formulário de livro.
+     *
+     * @param values IDs de acervo em formato textual.
+     * @returns void.
+     */
+    function setBookLibrarySelection(values: string[]): void {
+        setBookForm((previous) => {
+            return {
+                ...previous,
+                libraries: syncBookLibrarySelection(
+                    previous.libraries,
+                    values,
+                    BOOK_LIBRARY_DEFAULT_POLICY
+                ),
+            };
+        });
+    }
+
+    /**
+     * Atualiza diretamente a lista de vínculos do formulário de livro.
+     *
+     * @param libraries Lista de vínculos já editada.
+     * @returns void.
+     */
+    function setBookLibraries(libraries: BookLibraryForm[]): void {
+        setBookForm((previous) => ({
+            ...previous,
+            libraries,
+        }));
+    }
+
+    /**
      * Salva dados do modal de livro (criação ou edição).
      *
      * @param event Evento de submit.
@@ -1738,7 +1841,7 @@ export function useAdminController() {
                 return;
             }
 
-            const libraryIds = parseBookLibraryIds(bookForm.libraries);
+            const libraryIds = extractBookLibraryIds(bookForm.libraries);
             if (libraryIds.length <= 0) {
                 showBookModalError("Selecione ao menos um acervo.", {
                     libraries: "Selecione ao menos um acervo.",
@@ -1769,7 +1872,6 @@ export function useAdminController() {
                 publisher: toNullableField(bookForm.publisher),
                 publication_place: toNullableField(bookForm.publication_place),
                 dewey_decimal: toNullableField(bookForm.dewey_decimal),
-                libraries: libraryIds,
                 type: normalizeBookType(bookForm.type),
                 external_url: toNullableField(bookForm.external_url),
                 external_source: toNullableField(bookForm.external_source),
@@ -1789,6 +1891,7 @@ export function useAdminController() {
                 carrier_type: toNullableField(bookForm.carrier_type),
                 authors: authorIds.map((authorId) => ({ author: authorId })),
                 subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
+                libraries: buildBookLibraryPayloads(bookForm.libraries),
             };
 
             if (bookModalMode === "edit" && bookForm.id) {
@@ -1882,7 +1985,7 @@ export function useAdminController() {
                 senha: "",
                 dica_senha: detailed.reading_pass_hint,
                 admin: Boolean(detailed.admin),
-                libraries: detailed.libraries.map((value) => String(value)),
+                library_limits: mapUserLibraryLimitsToForm(detailed),
                 publishers: detailed.publishers,
             });
             setUserModalOpen(true);
@@ -1893,7 +1996,7 @@ export function useAdminController() {
                 senha: "",
                 dica_senha: user.reading_pass_hint,
                 admin: Boolean(user.admin),
-                libraries: user.libraries.map((value) => String(value)),
+                library_limits: mapUserLibraryLimitsToForm(user),
                 publishers: user.publishers,
             });
             setUserModalOpen(true);
@@ -1946,7 +2049,7 @@ export function useAdminController() {
             const email = userForm.email.trim();
             const dicaSenha = userForm.dica_senha.trim();
             const senha = userForm.senha.trim();
-            const userLibraries = parseUserLibraryIds(userForm.libraries);
+            const userLibraryLimits = normalizeUserLibraryLimits(userForm.library_limits);
             const userPublishers = parseUserPublisherIds(userForm.publishers);
 
             if (userModalMode === "edit" && userForm.id) {
@@ -1954,7 +2057,10 @@ export function useAdminController() {
                     email,
                     dica_senha: dicaSenha,
                     admin: userForm.admin,
-                    libraries: userLibraries,
+                    library_limits: userLibraryLimits.map((item) => ({
+                        library: Number(item.library),
+                        max_concurrent_loans: Number(item.max_concurrent_loans),
+                    })),
                     publishers: userPublishers,
                     ...(senha ? { senha } : {}),
                 });
@@ -1964,7 +2070,10 @@ export function useAdminController() {
                     dica_senha: dicaSenha,
                     admin: userForm.admin,
                     senha,
-                    libraries: userLibraries,
+                    library_limits: userLibraryLimits.map((item) => ({
+                        library: Number(item.library),
+                        max_concurrent_loans: Number(item.max_concurrent_loans),
+                    })),
                     publishers: userPublishers,
                 });
             }
@@ -2649,6 +2758,8 @@ export function useAdminController() {
             openEditBookModal,
             closeBookModal,
             setBookForm,
+            setBookLibrarySelection,
+            setBookLibraries,
             setBookFile,
             saveBook,
             removeBook,

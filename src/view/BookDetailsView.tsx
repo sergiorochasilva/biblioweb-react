@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeftOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import {
     App as AntdApp,
@@ -12,6 +12,7 @@ import {
     Layout,
     Modal,
     Row,
+    Tag,
     Typography,
 } from "antd";
 import book_icon from "../assets/book_icon.png";
@@ -20,7 +21,8 @@ import {
     fetchBookMarc21,
     formatMarc21Record,
     lendBook,
-    registerBookAccess,
+    registerBookAccessWithType,
+    returnBookLoan,
 } from "../service/BookService";
 import { getBookAuthorsText } from "../model/Book";
 import BookTypeTag from "../components/BookTypeTag";
@@ -58,6 +60,15 @@ interface BookDetailsViewProps {
     html_version_url?: string;
     file_name?: string;
     image_url?: string | null;
+    loan_state?: string;
+    loan_expires_at?: string;
+    last_access_at?: string;
+    current_book_active_licenses?: number;
+    available_licenses?: number;
+    current_user_active_loans?: number;
+    max_concurrent_loans?: number;
+    unavailable_users_count?: number;
+    onReloadBook?: () => void | Promise<void>;
 }
 
 type ReferenceFormat = "apa" | "abnt";
@@ -297,6 +308,26 @@ function formatBibliographicReference(
     return segments.join(" ").trim();
 }
 
+/**
+ * Formata data textual para exibição na interface.
+ *
+ * @param value Valor bruto da data.
+ * @returns Data no formato local ou texto original.
+ */
+function formatDisplayDate(value?: string): string {
+    const rawValue = typeof value === "string" ? value.trim() : "";
+    if (!rawValue) {
+        return "";
+    }
+
+    const parsedDate = new Date(rawValue);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return rawValue;
+    }
+
+    return parsedDate.toLocaleDateString("pt-BR");
+}
+
 export default function BookDetailsView({
     id,
     title,
@@ -326,24 +357,45 @@ export default function BookDetailsView({
     html_version_url,
     file_name,
     image_url,
+    loan_state,
+    loan_expires_at,
+    last_access_at,
+    current_book_active_licenses,
+    available_licenses,
+    current_user_active_loans,
+    max_concurrent_loans,
+    unavailable_users_count,
+    onReloadBook,
 }: BookDetailsViewProps) {
     const navigate = useNavigate();
     const location = useLocation();
     const [loadingLendBook, setLoadingLendBook] = useState(false);
+    const [loadingReturnBook, setLoadingReturnBook] = useState(false);
     const [loadingMarcExport, setLoadingMarcExport] = useState(false);
     const [isMarcModalOpen, setIsMarcModalOpen] = useState(false);
     const [marcContent, setMarcContent] = useState("");
     const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
     const [referenceFormat, setReferenceFormat] = useState<ReferenceFormat>("apa");
+    const unavailableModalShownRef = useRef(false);
     const { Content } = Layout;
     const { token, library, getAccessToken } = useAuth();
     const { message } = AntdApp.useApp();
     const resolvedType = (bookType || "protected").toLowerCase();
+    const resolvedLoanState = (loan_state || "default").toLowerCase();
+    const isLoanedBook = resolvedLoanState === "loaned";
+    const isRecentBook = resolvedLoanState === "recent";
+    const isUnavailableBook = resolvedLoanState === "unavailable";
     const freeBooksBaseUrl = (import.meta.env.VITE_BOOKS_BASE_URL || "https://storage.googleapis.com/fronesis_bucket/").trim();
     const normalizedFreeBooksBaseUrl = freeBooksBaseUrl.endsWith("/")
         ? freeBooksBaseUrl
         : `${freeBooksBaseUrl}/`;
     const normalizedHtmlVersionUrl = typeof html_version_url === "string" ? html_version_url.trim() : "";
+    const formattedLoanExpiresAt = formatDisplayDate(loan_expires_at);
+    const formattedLastAccessAt = formatDisplayDate(last_access_at);
+    const formattedBookLoanCount = formatActiveLoanCount(
+        current_book_active_licenses,
+        available_licenses
+    );
     const resolvedSubjects = Array.isArray(subjects)
         ? subjects
               .map((item) => (typeof item?.subject_name === "string" ? item.subject_name.trim() : ""))
@@ -370,6 +422,38 @@ export default function BookDetailsView({
         },
         referenceFormat
     );
+    const primaryButtonLabel = isLoanedBook
+        ? "Baixar novamente"
+        : isRecentBook
+        ? "Continuar lendo"
+        : "Ler agora";
+    const secondaryWebButtonLabel =
+        isRecentBook && normalizedHtmlVersionUrl
+            ? "Continuar lendo versão web"
+            : "Ler versão web";
+
+    useEffect(() => {
+        unavailableModalShownRef.current = false;
+    }, [id]);
+
+    useEffect(() => {
+        if (!isUnavailableBook || unavailableModalShownRef.current) {
+            return;
+        }
+
+        unavailableModalShownRef.current = true;
+        Modal.info({
+            title: "Licença indisponível",
+            content: (
+                <span>
+                    Não temos licença disponível para emprestime desse livro, pois o mesmo se
+                    encontra emprestado com {unavailable_users_count || 0} outros usuários no
+                    momento. Por favor, tente acessá-lo novamente no futuro.
+                </span>
+            ),
+            okText: "Ok",
+        });
+    }, [isUnavailableBook, unavailable_users_count]);
 
     /**
      * Abre links externos do livro em nova aba com proteção de opener.
@@ -389,7 +473,8 @@ export default function BookDetailsView({
     async function openMarcModal(): Promise<void> {
         setLoadingMarcExport(true);
         try {
-            const marcRecord = await fetchBookMarc21(id);
+            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+            const marcRecord = await fetchBookMarc21(id, libraryId);
             setMarcContent(formatMarc21Record(marcRecord));
             setIsMarcModalOpen(true);
         } catch (error: unknown) {
@@ -457,10 +542,191 @@ export default function BookDetailsView({
         }
     }
 
+    /**
+     * Registra um acesso e abre um recurso em nova aba.
+     *
+     * @param actionType Tipo da ação de leitura.
+     * @param url URL a ser aberta.
+     */
+    async function registerAccessAndOpen(
+        actionType: "read_now" | "read_web",
+        url?: string
+    ): Promise<void> {
+        if (!url) {
+            message.error("URL não cadastrada para este livro.");
+            return;
+        }
+
+        let accessToken: string | undefined = token || undefined;
+        if (token) {
+            const refreshedToken = await getAccessToken({ redirectOnFail: false });
+            accessToken = refreshedToken || token;
+        }
+
+        try {
+            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+            await registerBookAccessWithType(id, actionType, libraryId, accessToken);
+        } catch (error) {
+            console.warn("Failed to register book access", error);
+        }
+
+        openInNewTab(url);
+    }
+
+    /**
+     * Solicita o download ou a leitura principal, respeitando o estado do livro.
+     */
+    async function handlePrimaryAction(): Promise<void> {
+        if (isUnavailableBook) {
+            return;
+        }
+
+        if (isLoanedBook && resolvedType === "protected") {
+            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+            if (!token) {
+                const returnTo = `${location.pathname}${location.search}`;
+                savePendingLendAction({
+                    type: "lend",
+                    bookId: id,
+                    libraryId,
+                    returnTo,
+                });
+                navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                return;
+            }
+
+            setLoadingLendBook(true);
+            try {
+                const lendingToken = await getAccessToken({ redirectOnFail: false });
+                if (!lendingToken) {
+                    const returnTo = `${location.pathname}${location.search}`;
+                    savePendingLendAction({
+                        type: "lend",
+                        bookId: id,
+                        libraryId,
+                        returnTo,
+                    });
+                    navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                    return;
+                }
+
+                await lendBook(id, libraryId, lendingToken);
+            } catch (error: unknown) {
+                const messageText =
+                    error instanceof Error && error.message
+                        ? error.message
+                        : "Erro ao solicitar empréstimo.";
+                message.error(messageText);
+            } finally {
+                setLoadingLendBook(false);
+            }
+            return;
+        }
+
+        if (resolvedType === "external") {
+            await registerAccessAndOpen("read_now", external_url);
+            return;
+        }
+
+        if (resolvedType === "free") {
+            const freeUrl = file_name ? `${normalizedFreeBooksBaseUrl}${file_name}` : "";
+            await registerAccessAndOpen("read_now", freeUrl);
+            return;
+        }
+
+        const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+        if (!token) {
+            const returnTo = `${location.pathname}${location.search}`;
+            savePendingLendAction({
+                type: "lend",
+                bookId: id,
+                libraryId,
+                returnTo,
+            });
+            navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+            return;
+        }
+
+        setLoadingLendBook(true);
+        try {
+            const lendingToken = await getAccessToken({ redirectOnFail: false });
+            if (!lendingToken) {
+                const returnTo = `${location.pathname}${location.search}`;
+                savePendingLendAction({
+                    type: "lend",
+                    bookId: id,
+                    libraryId,
+                    returnTo,
+                });
+                navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                return;
+            }
+            await lendBook(id, libraryId, lendingToken);
+        } catch (error: unknown) {
+            const messageText =
+                error instanceof Error && error.message
+                    ? error.message
+                    : "Erro ao solicitar empréstimo.";
+            message.error(messageText);
+        } finally {
+            setLoadingLendBook(false);
+        }
+    }
+
+    /**
+     * Abre a versão web do livro quando disponível.
+     */
+    async function handleWebVersionAction(): Promise<void> {
+        if (!normalizedHtmlVersionUrl) {
+            message.error("URL da versão HTML não cadastrada para este livro.");
+            return;
+        }
+
+        const actionType = isRecentBook ? "read_web" : "read_web";
+        await registerAccessAndOpen(actionType, normalizedHtmlVersionUrl);
+    }
+
+    /**
+     * Solicita a devolução do empréstimo protegido ativo.
+     */
+    function confirmReturnBook(): void {
+        const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+
+        Modal.confirm({
+            title: "Devolver livro",
+            content: "Tem certeza de que deseja devolver este livro?",
+            okText: "Devolver",
+            cancelText: "Cancelar",
+            onOk: async () => {
+                setLoadingReturnBook(true);
+                try {
+                    const accessToken = await getAccessToken({ redirectOnFail: false });
+                    if (!accessToken) {
+                        const returnTo = `${location.pathname}${location.search}`;
+                        navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                        return;
+                    }
+
+                    await returnBookLoan(id, libraryId, accessToken);
+                    message.success("Livro devolvido com sucesso.");
+                    await onReloadBook?.();
+                } catch (error: unknown) {
+                    const messageText =
+                        error instanceof Error && error.message
+                            ? error.message
+                            : "Erro ao devolver o livro.";
+                    message.error(messageText);
+                } finally {
+                    setLoadingReturnBook(false);
+                }
+            },
+        });
+    }
+
     return (
-        <Layout className="page-shell">
+        <Layout className={`page-shell book-details-shell book-details-shell--${resolvedLoanState}`}>
             <HeaderView />
-            <div className="details-hero glass-panel">
+            <div className={`details-hero glass-panel book-details-hero--${resolvedLoanState}`}>
                 <Button
                     className="back-button"
                     type="text"
@@ -473,7 +739,7 @@ export default function BookDetailsView({
                 </Typography.Title>
             </div>
             <Content className="page-content">
-                <Card className="glass-card details-card">
+                <Card className={`glass-card details-card book-details-card--${resolvedLoanState}`}>
                     <Typography.Title level={4} className="section-details-title">
                         Sobre o livro
                     </Typography.Title>
@@ -515,6 +781,12 @@ export default function BookDetailsView({
                                 <Descriptions.Item label={<>Tipo de conteúdo <span className="marc-chip">336$a</span></>}>{content_type || "-"}</Descriptions.Item>
                                 <Descriptions.Item label={<>Tipo de mídia <span className="marc-chip">337$a</span></>}>{media_type || "-"}</Descriptions.Item>
                                 <Descriptions.Item label={<>Tipo de suporte <span className="marc-chip">338$a</span></>}>{carrier_type || "-"}</Descriptions.Item>
+                                <Descriptions.Item label="Empréstimos ativos no livro">
+                                    {formattedBookLoanCount}
+                                </Descriptions.Item>
+                                <Descriptions.Item label="Empréstimos ativos do usuário">
+                                    {`${current_user_active_loans ?? 0}/${max_concurrent_loans ?? 3}`}
+                                </Descriptions.Item>
                                 <Descriptions.Item label={<>Fonte Externa <span className="marc-chip">500$a</span></>}>
                                     {external_source ? (
                                         <Typography.Link
@@ -532,89 +804,52 @@ export default function BookDetailsView({
                         </Col>
                         <Col xs={24} lg={8}>
                             <div className="book-details-sidebar">
-                                <div className="book-details-cover glass-panel">
+                                <div
+                                    className={`book-details-cover glass-panel book-details-cover--${resolvedLoanState}`}
+                                >
                                     <BookTypeTag type={bookType} className="book-details-type-tag" />
+                                    {isLoanedBook && formattedLoanExpiresAt && (
+                                        <Tag color="blue" className="book-details-expiry-tag">
+                                            Expira em: {formattedLoanExpiresAt}
+                                        </Tag>
+                                    )}
                                     <Image
                                         src={image_url || book_icon}
                                         alt="Capa do livro"
                                         preview={false}
                                     />
                                 </div>
+                                {isRecentBook && formattedLastAccessAt && (
+                                    <Typography.Text className="book-details-last-access" type="secondary">
+                                        Último acesso: {formattedLastAccessAt}
+                                    </Typography.Text>
+                                )}
                                 <div className="book-details-actions">
                                     <Button
                                         type="primary"
                                         size="large"
                                         className="book-details-ler"
                                         loading={loadingLendBook}
-                                        onClick={async () => {
-                                            let accessToken: string | undefined = token || undefined;
-                                            if (token) {
-                                                const refreshedToken = await getAccessToken({ redirectOnFail: false });
-                                                accessToken = refreshedToken || token;
-                                            }
-
-                                            try {
-                                                await registerBookAccess(id, accessToken);
-                                            } catch (error) {
-                                                console.warn("Failed to register book access", error);
-                                            }
-
-                                            if (resolvedType === "external") {
-                                                if (!external_url) {
-                                                    message.error("URL externa não cadastrada para este livro.");
-                                                    return;
-                                                }
-                                                openInNewTab(external_url);
-                                                return;
-                                            }
-                                            if (resolvedType === "free") {
-                                                if (!file_name) {
-                                                    message.error("Arquivo não cadastrado para este livro.");
-                                                    return;
-                                                }
-                                                openInNewTab(`${normalizedFreeBooksBaseUrl}${file_name}`);
-                                                return;
-                                            }
-                                            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
-                                            if (!token) {
-                                                const returnTo = `${location.pathname}${location.search}`;
-                                                savePendingLendAction({
-                                                    type: "lend",
-                                                    bookId: id,
-                                                    libraryId,
-                                                    returnTo,
-                                                });
-                                                navigate(`/login?next=${encodeURIComponent(returnTo)}`);
-                                                return;
-                                            }
-                                            setLoadingLendBook(true);
-                                            try {
-                                                const lendingToken = await getAccessToken({ redirectOnFail: false });
-                                                if (!lendingToken) {
-                                                    const returnTo = `${location.pathname}${location.search}`;
-                                                    savePendingLendAction({
-                                                        type: "lend",
-                                                        bookId: id,
-                                                        libraryId,
-                                                        returnTo,
-                                                    });
-                                                    navigate(`/login?next=${encodeURIComponent(returnTo)}`);
-                                                    return;
-                                                }
-                                                await lendBook(id, libraryId, lendingToken);
-                                            } catch (error: unknown) {
-                                                const messageText =
-                                                    error instanceof Error && error.message
-                                                        ? error.message
-                                                        : "Erro ao solicitar empréstimo.";
-                                                message.error(messageText);
-                                            } finally {
-                                                setLoadingLendBook(false);
-                                            }
+                                        disabled={isUnavailableBook}
+                                        onClick={() => {
+                                            void handlePrimaryAction();
                                         }}
                                     >
-                                        Ler agora
+                                        {primaryButtonLabel}
                                     </Button>
+                                    {isLoanedBook && resolvedType === "protected" && (
+                                        <Button
+                                            type="default"
+                                            size="large"
+                                            className="book-details-return"
+                                            loading={loadingReturnBook}
+                                            onClick={() => {
+                                                confirmReturnBook();
+                                            }}
+                                        >
+                                            Devolver
+                                        </Button>
+                                    )}
                                     {resolvedType === "protected" && (
                                         <Button
                                             type="default"
@@ -633,14 +868,10 @@ export default function BookDetailsView({
                                         size="large"
                                         className="book-details-secondary"
                                         onClick={() => {
-                                            if (!normalizedHtmlVersionUrl) {
-                                                message.error("URL da versão HTML não cadastrada para este livro.");
-                                                return;
-                                            }
-                                            openInNewTab(normalizedHtmlVersionUrl);
+                                            void handleWebVersionAction();
                                         }}
                                     >
-                                        Ler Versão Web
+                                        {secondaryWebButtonLabel}
                                     </Button>
                                 )}
                                 <Button
@@ -751,4 +982,20 @@ export default function BookDetailsView({
             </Modal>
         </Layout>
     );
+}
+
+/**
+ * Formata a contagem de empréstimos ativos do livro.
+ *
+ * @param activeCount Quantidade de empréstimos ativos.
+ * @param totalCount Quantidade total de licenças do livro.
+ * @returns Texto amigável no formato `ativos/total` quando o total existe.
+ */
+function formatActiveLoanCount(activeCount?: number, totalCount?: number): string {
+    const resolvedActiveCount = Number(activeCount ?? 0);
+    const resolvedTotalCount = Number(totalCount ?? 0);
+    if (resolvedTotalCount > 0) {
+        return `${resolvedActiveCount}/${resolvedTotalCount}`;
+    }
+    return String(resolvedActiveCount);
 }

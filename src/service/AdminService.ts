@@ -1,4 +1,6 @@
 import { Book } from "../model/Book";
+import type { BookLibraryLink, BookLibraryPayload } from "../model/BookLibrary";
+import { normalizeBookLibraryLinks } from "../model/BookLibrary";
 import { api, ApiError, buildAuthHeaders } from "./api";
 
 export type AdminBook = Omit<Book, "publisher"> & {
@@ -8,8 +10,15 @@ export type AdminBook = Omit<Book, "publisher"> & {
     publisher_name?: string | null;
     library?: number | null;
     library_name?: string | null;
-    libraries?: number[];
+    libraries?: BookLibraryLink[];
 };
+
+type BookLibraryLinkRef = {
+    bookId: string;
+    library: BookLibraryLink;
+};
+
+export type { BookLibraryPayload } from "../model/BookLibrary";
 
 export type AdminLibrary = {
     id: number;
@@ -51,7 +60,13 @@ export type AdminUser = {
     reading_pass_hint: string;
     admin: boolean;
     libraries: number[];
+    library_limits?: AdminUserLibraryLimit[];
     publishers: string[];
+};
+
+export type AdminUserLibraryLimit = {
+    library: number;
+    max_concurrent_loans: number;
 };
 
 export type BookFormPayload = {
@@ -62,8 +77,6 @@ export type BookFormPayload = {
     publisher: string | null;
     publication_place?: string | null;
     dewey_decimal?: string | null;
-    library?: number;
-    libraries?: number[];
     type?: string | null;
     external_url?: string | null;
     external_source?: string | null;
@@ -83,11 +96,10 @@ export type BookFormPayload = {
     carrier_type?: string | null;
     authors?: Array<{ id?: number; author: number }>;
     subjects?: Array<{ id?: number; subject: number }>;
+    libraries?: BookLibraryPayload[];
 };
 
 export type CreateBookPayload = BookFormPayload & {
-    library?: number;
-    libraries?: number[];
     base64_content?: string | null;
     file_extension?: string | null;
 };
@@ -97,7 +109,7 @@ export type AdminUserPayload = {
     senha?: string;
     dica_senha: string;
     admin: boolean;
-    libraries?: number[];
+    library_limits?: AdminUserLibraryLimit[];
     publishers?: string[];
 };
 
@@ -172,34 +184,77 @@ function normalizeLibraryId(value: unknown): number | null {
 }
 
 /**
- * Normaliza uma lista bruta de IDs de acervo.
+ * Normaliza limites por biblioteca no formato usado pela administração.
  *
- * @param value Valor potencialmente contendo IDs de acervo.
- * @returns IDs únicos de acervo.
+ * @param value Valor bruto potencialmente contendo limites por acervo.
+ * @returns Lista de limites válidos.
  */
-function normalizeLibraryIds(value: unknown): number[] {
+function normalizeLibraryLimits(value: unknown): AdminUserLibraryLimit[] {
     if (!Array.isArray(value)) {
         return [];
     }
 
-    const unique = new Set<number>();
+    const unique = new Map<number, number>();
     for (const item of value) {
-        const rawValue =
-            item && typeof item === "object"
-                ? (item as Record<string, unknown>).library
-                : item;
-        const normalized = normalizeLibraryId(rawValue);
-        if (normalized !== null) {
-            unique.add(normalized);
+        if (!item || typeof item !== "object") {
+            continue;
         }
+
+        const raw = item as Record<string, unknown>;
+        const library = normalizeLibraryId(raw.library);
+        const maxConcurrentLoans = Number(raw.max_concurrent_loans);
+        if (library === null || !Number.isFinite(maxConcurrentLoans) || maxConcurrentLoans <= 0) {
+            continue;
+        }
+
+        unique.set(library, Math.floor(maxConcurrentLoans));
     }
-    return Array.from(unique);
+
+    return Array.from(unique.entries()).map(([library, max_concurrent_loans]) => ({
+        library,
+        max_concurrent_loans,
+    }));
 }
 
-type BookLibraryLink = {
-    bookId: string;
-    libraryId: number;
+type UserPublisherPayload = {
+    publisher: string;
 };
+
+/**
+ * Normaliza a lista de editoras usada no cadastro de usuário.
+ *
+ * @param value Valor bruto recebido do formulário ou da API.
+ * @returns Lista única de editoras no formato esperado pelo backend.
+ */
+function normalizeUserPublishers(value: unknown): UserPublisherPayload[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    const unique = new Set<string>();
+    for (const item of value) {
+        const rawPublisher =
+            item && typeof item === "object"
+                ? (item as Record<string, unknown>).publisher ??
+                  (item as Record<string, unknown>).id ??
+                  (item as Record<string, unknown>).name ??
+                  (item as Record<string, unknown>).nome
+                : item;
+
+        const publisher =
+            typeof rawPublisher === "string" || typeof rawPublisher === "number"
+                ? String(rawPublisher).trim()
+                : "";
+
+        if (publisher) {
+            unique.add(publisher);
+        }
+    }
+
+    return Array.from(unique.values()).map((publisher) => ({
+        publisher,
+    }));
+}
 
 /**
  * Coleta IDs candidatos de um valor bruto sem alterar formato recebido.
@@ -345,9 +400,8 @@ function normalizeAdminBook(entry: unknown): AdminBook | null {
             : typeof publisherRaw === "number"
                 ? String(publisherRaw)
                 : null;
-    const relatedLibraries = normalizeLibraryIds(raw.libraries);
-    const primaryLibrary =
-        raw.library === null ? null : normalizeLibraryId(raw.library);
+    const relatedLibraries = normalizeBookLibraryLinks(raw.libraries);
+    const primaryLibrary = Number(raw.library);
 
     if (!resolvedId) {
         return null;
@@ -363,28 +417,26 @@ function normalizeAdminBook(entry: unknown): AdminBook | null {
                 ? raw.publisher_id
                 : null,
         publisher_name: publisherName,
-        library: primaryLibrary === null || typeof primaryLibrary === "number"
-            ? primaryLibrary
-            : undefined,
+        library: Number.isFinite(primaryLibrary) && primaryLibrary > 0 ? primaryLibrary : undefined,
         library_name: typeof raw.library_name === "string" ? raw.library_name : null,
         libraries: relatedLibraries,
     };
 }
 
 /**
- * Normaliza payload de ``/libraries_books`` para pares ``bookId`` x ``libraryId``.
+ * Normaliza payload de ``/libraries_books`` para vínculos de acervo.
  *
  * @param data Payload bruto retornado pela API.
- * @returns Lista normalizada de vínculos de acervo por livro.
+ * @returns Lista normalizada de vínculos de acervo com referência ao livro.
  */
-function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLink[] {
+function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLinkRef[] {
     const source = Array.isArray(data)
         ? data
         : data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)
             ? (data as { result: unknown[] }).result
             : [];
 
-    const links: BookLibraryLink[] = [];
+    const links: BookLibraryLinkRef[] = [];
     for (const item of source) {
         if (!item || typeof item !== "object") {
             continue;
@@ -392,15 +444,15 @@ function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLink[] {
 
         const raw = item as Record<string, unknown>;
         const bookId = buildBookIdCandidates(raw.id, raw.book_id, raw.book)[0];
-        const libraryId = normalizeLibraryId(raw.library);
+        const normalizedLibrary = normalizeBookLibraryLinks([raw])[0];
 
-        if (!bookId || libraryId === null) {
+        if (!bookId || !normalizedLibrary) {
             continue;
         }
 
         links.push({
             bookId,
-            libraryId,
+            library: normalizedLibrary,
         });
     }
 
@@ -416,8 +468,9 @@ function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLink[] {
  */
 async function fetchLibrariesMapByBooks(
     token: string,
-    books: AdminBook[]
-): Promise<Map<string, number[]>> {
+    books: AdminBook[],
+    libraryId?: string
+): Promise<Map<string, BookLibraryLink[]>> {
     const targetBookIds = Array.from(
         new Set(
             books
@@ -426,28 +479,35 @@ async function fetchLibrariesMapByBooks(
         )
     );
 
-    const librariesByBook = new Map<string, Set<number>>();
+    const librariesByBook = new Map<string, Map<number, BookLibraryLink>>();
     if (targetBookIds.length <= 0) {
+        return new Map();
+    }
+
+    const resolvedLibraryId =
+        typeof libraryId === "string" && libraryId.trim() ? libraryId.trim() : "";
+    if (!resolvedLibraryId) {
         return new Map();
     }
 
     const query = new URLSearchParams({
         id: targetBookIds.join(","),
-        fields: "library",
+        library: resolvedLibraryId,
+        fields: "library,access_count,available_licenses,max_uses_per_license,license_uses_count",
         limit: "1000",
     });
     const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
     const normalizedLinks = normalizeBookLibraryLinksResponse(data);
 
     for (const item of normalizedLinks) {
-        const knownLibraries = librariesByBook.get(item.bookId) || new Set<number>();
-        knownLibraries.add(item.libraryId);
+        const knownLibraries = librariesByBook.get(item.bookId) || new Map<number, BookLibraryLink>();
+        knownLibraries.set(item.library.library, item.library);
         librariesByBook.set(item.bookId, knownLibraries);
     }
 
-    const result = new Map<string, number[]>();
+    const result = new Map<string, BookLibraryLink[]>();
     for (const [bookId, librarySet] of librariesByBook.entries()) {
-        result.set(bookId, Array.from(librarySet));
+        result.set(bookId, Array.from(librarySet.values()));
     }
 
     return result;
@@ -462,13 +522,14 @@ async function fetchLibrariesMapByBooks(
  */
 async function enrichBooksWithLibraries(
     token: string,
-    books: AdminBook[]
+    books: AdminBook[],
+    libraryId?: string
 ): Promise<AdminBook[]> {
     if (books.length <= 0) {
         return books;
     }
 
-    const librariesByBook = await fetchLibrariesMapByBooks(token, books);
+    const librariesByBook = await fetchLibrariesMapByBooks(token, books, libraryId);
 
     return books.map((book) => {
         const resolvedBookId = buildBookIdCandidates(book.book_id, book.id)[0];
@@ -551,36 +612,6 @@ function normalizeSingleBookResponse(data: unknown): AdminBook {
 }
 
 /**
- * Normaliza payload bruto de vínculos ``book_library`` para IDs de acervo.
- *
- * @param data Payload bruto do endpoint ``/libraries_books``.
- * @returns IDs únicos de acervo.
- */
-function normalizeBookLibraryIdsResponse(data: unknown): number[] {
-    const source = Array.isArray(data)
-        ? data
-        : data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)
-            ? (data as { result: unknown[] }).result
-            : [];
-
-    const unique = new Set<number>();
-    for (const item of source) {
-        if (!item || typeof item !== "object") {
-            continue;
-        }
-
-        const normalized = normalizeLibraryId(
-            (item as Record<string, unknown>).library
-        );
-        if (normalized !== null) {
-            unique.add(normalized);
-        }
-    }
-
-    return Array.from(unique);
-}
-
-/**
  * Normaliza um item de usuário da API.
  *
  * @param entry Registro bruto de usuário.
@@ -602,29 +633,24 @@ function normalizeAdminUser(entry: unknown): AdminUser | null {
         return null;
     }
 
-    const libraries = Array.isArray(raw.libraries)
-        ? raw.libraries
-              .map((item) => Number(item))
-              .filter((item) => Number.isFinite(item) && item > 0)
-        : [];
-
-    const publishers = Array.isArray(raw.publishers)
-        ? raw.publishers
-              .map((item) => (item === null || item === undefined ? "" : String(item).trim()))
-              .filter((item) => Boolean(item))
-        : [];
+    const libraryLimits = normalizeLibraryLimits(raw.library_limits);
+    const libraries = libraryLimits.map((item) => item.library);
+    const publishers = normalizeUserPublishers(raw.publishers).map((item) => item.publisher);
 
     return {
         id,
         email,
         reading_pass_hint:
-            typeof raw.reading_pass_hint === "string"
-                ? raw.reading_pass_hint
-                : typeof raw.pass_hint === "string"
-                    ? raw.pass_hint
-                    : "",
+            typeof raw.dica_senha === "string"
+                ? raw.dica_senha
+                : typeof raw.reading_pass_hint === "string"
+                    ? raw.reading_pass_hint
+                    : typeof raw.pass_hint === "string"
+                        ? raw.pass_hint
+                        : "",
         admin: Boolean(raw.admin),
         libraries,
+        library_limits: libraryLimits,
         publishers,
     };
 }
@@ -965,7 +991,7 @@ export async function fetchBooksPage(
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const data = await api.get<unknown>(`/libraries_books${suffix}`, token);
     const page = normalizePaginatedBooksResponse(data);
-    const enrichedBooks = await enrichBooksWithLibraries(token, page.result);
+    const enrichedBooks = await enrichBooksWithLibraries(token, page.result, filters.library);
     return {
         ...page,
         result: enrichedBooks,
@@ -983,6 +1009,8 @@ export async function fetchBooksPageByNext(
     token: string,
     nextUrl: string
 ): Promise<PaginatedAdminBooksResponse> {
+    const parsedUrl = new URL(nextUrl, window.location.origin);
+    const nextLibraryId = parsedUrl.searchParams.get("library") || undefined;
     const response = await fetch(nextUrl, {
         method: "GET",
         headers: buildAuthHeaders(token),
@@ -1003,7 +1031,7 @@ export async function fetchBooksPageByNext(
 
     const data = (await response.json()) as unknown;
     const page = normalizePaginatedBooksResponse(data);
-    const enrichedBooks = await enrichBooksWithLibraries(token, page.result);
+    const enrichedBooks = await enrichBooksWithLibraries(token, page.result, nextLibraryId);
     return {
         ...page,
         result: enrichedBooks,
@@ -1030,16 +1058,18 @@ export async function fetchBookById(token: string, id: string): Promise<AdminBoo
 }
 
 /**
- * Lista IDs de acervos associados a um livro.
+ * Lista vínculos de acervo associados a um livro.
  *
  * @param token Token JWT.
  * @param bookId Identificador do livro.
- * @returns Lista de IDs de acervo.
+ * @param libraryId Identificador do acervo que particiona a relação.
+ * @returns Lista de vínculos de acervo.
  */
-export async function fetchBookLibraryIds(
+export async function fetchBookLibraryLinks(
     token: string,
-    bookId: string
-): Promise<number[]> {
+    bookId: string,
+    libraryId: string | number
+): Promise<BookLibraryLink[]> {
     const candidates = buildBookIdCandidates(bookId);
     if (candidates.length === 0) {
         return [];
@@ -1048,11 +1078,12 @@ export async function fetchBookLibraryIds(
     return runBookRequestWithCandidates(candidates, async (candidate) => {
         const query = new URLSearchParams({
             id: candidate,
-            fields: "library",
+            library: String(libraryId),
+            fields: "library,access_count,available_licenses,max_uses_per_license,license_uses_count",
             limit: "200",
         });
         const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
-        return normalizeBookLibraryIdsResponse(data);
+        return normalizeBookLibraryLinksResponse(data).map((item) => item.library);
     });
 }
 
@@ -1061,11 +1092,13 @@ export async function fetchBookLibraryIds(
  *
  * @param token Token JWT.
  * @param libraryBookId ID do vínculo em ``libraries_books``.
+ * @param libraryId Identificador do acervo que particiona a relação.
  * @returns ID do livro principal quando encontrado.
  */
 export async function resolveBookIdByLibraryBookId(
     token: string,
-    libraryBookId: string
+    libraryBookId: string,
+    libraryId: string | number
 ): Promise<string | null> {
     const candidates = buildBookIdCandidates(libraryBookId);
     if (candidates.length === 0) {
@@ -1075,7 +1108,9 @@ export async function resolveBookIdByLibraryBookId(
     for (const candidate of candidates) {
         try {
             const data = await api.get<unknown>(
-                `/libraries_books/${encodeURIComponent(candidate)}`,
+                `/libraries_books/${encodeURIComponent(candidate)}?library=${encodeURIComponent(
+                    String(libraryId)
+                )}`,
                 token
             );
             const payload = normalizeSingleObjectPayload(data);
@@ -1194,7 +1229,18 @@ export async function createUser(
     token: string,
     payload: AdminUserPayload & { senha: string }
 ): Promise<AdminUser> {
-    const data = await api.post<unknown>("/users", payload, token);
+    const data = await api.post<unknown>(
+        "/users",
+        {
+            email: payload.email,
+            senha: payload.senha,
+            dica_senha: payload.dica_senha,
+            admin: payload.admin,
+            library_limits: Array.isArray(payload.library_limits) ? payload.library_limits : [],
+            publishers: normalizeUserPublishers(payload.publishers),
+        },
+        token
+    );
     return normalizeUserResponse(data);
 }
 
@@ -1211,7 +1257,17 @@ export async function updateUser(
     id: string,
     payload: AdminUserPayload
 ): Promise<AdminUser> {
-    const data = await api.put<unknown>(`/users/${id}`, payload, token);
+    const data = await api.put<unknown>(
+        `/users/${id}`,
+        {
+            email: payload.email,
+            dica_senha: payload.dica_senha,
+            admin: payload.admin,
+            library_limits: Array.isArray(payload.library_limits) ? payload.library_limits : [],
+            publishers: normalizeUserPublishers(payload.publishers),
+        },
+        token
+    );
     return normalizeUserResponse(data);
 }
 

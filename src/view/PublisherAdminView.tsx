@@ -21,6 +21,7 @@ import {
     UploadOutlined,
 } from "@ant-design/icons";
 import HeaderView from "./HeaderView";
+import BookLibraryPolicyGrid from "../components/BookLibraryPolicyGrid";
 import { usePublisherAdminController } from "../controller/PublisherAdminController";
 import { getBookAuthorsText } from "../model/Book";
 import "../styles/AdminView.css";
@@ -510,6 +511,17 @@ export default function PublisherAdminView() {
                                 }
                             />
                         </div>
+                        <BookLibraryPolicyGrid
+                            label="Política por acervo"
+                            helperText="Licenças disponíveis e máximo de usos são editáveis. Progresso da licença atual é apenas leitura."
+                            error={state.bookFormErrors.library_policy}
+                            value={state.bookForm.libraries}
+                            emptyDescription="A política será criada junto com o acervo vinculado."
+                            onChange={(libraries) => {
+                                actions.setBookLibraries(libraries);
+                                actions.clearBookFieldError("library_policy");
+                            }}
+                        />
                         <div className="form-field">
                             <label className="field-label">Nome do arquivo (*)</label>
                             <Input

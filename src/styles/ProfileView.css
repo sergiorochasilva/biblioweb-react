@@ -22,6 +22,10 @@
     color: var(--text-strong);
 }
 
+.profile-book-grid {
+    width: 100%;
+}
+
 .profile-tag-list {
     display: flex;
     flex-wrap: wrap;

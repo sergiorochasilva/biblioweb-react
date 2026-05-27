@@ -132,6 +132,219 @@
     gap: 6px;
 }
 
+.library-grid-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.library-grid-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.library-grid-count {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.library-grid-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.library-grid-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.78);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease,
+        background 0.18s ease;
+}
+
+.library-grid-card:hover,
+.library-grid-card:focus-visible {
+    border-color: rgba(27, 120, 214, 0.42);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.library-grid-card.is-selected {
+    border-color: rgba(27, 120, 214, 0.8);
+    background: rgba(27, 120, 214, 0.08);
+    box-shadow: 0 10px 24px rgba(27, 120, 214, 0.12);
+}
+
+.library-grid-card-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    font-size: 18px;
+    color: var(--accent);
+}
+
+.library-grid-card-body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.library-grid-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.library-grid-card-status,
+.library-grid-card-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.library-grid-empty {
+    padding-top: 4px;
+}
+
+.library-limit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.library-limit-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.library-limit-count {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.library-limit-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.library-limit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.library-limit-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.78);
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease,
+        background 0.18s ease;
+}
+
+.library-limit-card:hover,
+.library-limit-card:focus-within {
+    border-color: rgba(27, 120, 214, 0.42);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+.library-limit-card.is-selected {
+    border-color: rgba(27, 120, 214, 0.8);
+    background: rgba(27, 120, 214, 0.08);
+    box-shadow: 0 10px 24px rgba(27, 120, 214, 0.12);
+}
+
+.library-limit-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.library-limit-card-title-wrap {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.library-limit-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.library-limit-card-status,
+.library-limit-card-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.library-limit-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.book-library-policy-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.library-limit-input {
+    width: 100%;
+}
+
+.book-library-policy-readonly {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 1px solid rgba(15, 23, 42, 0.16);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.82);
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.library-limit-empty {
+    padding-top: 4px;
+}
+
 .field-label {
     font-size: 12px;
     font-weight: 600;
@@ -192,5 +405,15 @@
 
     .form-field-full {
         grid-column: span 1;
+    }
+
+    .library-grid-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .library-limit-header {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }

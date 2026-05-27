@@ -5,8 +5,10 @@ export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
 const DEFAULT_BOOK_FIELDS =
     "subtitle,original_title,corporate_author,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
     "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type," +
-    "external_url,external_source,html_version_url,file_name,image_url,subjects(subject,subject_name)," +
-    "authors(author,author_name)";
+    "library,external_url,external_source,html_version_url,file_name,image_url,subjects(subject,subject_name)," +
+    "authors(author,author_name),available_licenses,max_uses_per_license,license_uses_count,loan_state," +
+    "loan_expires_at,last_access_at,current_book_active_licenses,current_user_active_loans," +
+    "max_concurrent_loans,unavailable_users_count";
 const MOST_ACCESSED_ORDER = "access_count desc";
 
 /**
@@ -33,9 +35,19 @@ function normalizeBooksResponse(data: unknown): Book[] {
  * @returns Livro ou null quando payload inválido.
  */
 function normalizeBookResponse(data: unknown): Book | null {
-    if (data && typeof data === "object" && !Array.isArray(data) && "id" in data) {
-        return data as Book;
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return null;
     }
+
+    const payload = data as Record<string, unknown>;
+    if (payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)) {
+        return normalizeBookResponse(payload.result);
+    }
+
+    if ("id" in payload) {
+        return payload as unknown as Book;
+    }
+
     return null;
 }
 
@@ -50,6 +62,52 @@ function normalizeSingleObjectPayload(data: unknown): Record<string, unknown> | 
         return data as Record<string, unknown>;
     }
     return null;
+}
+
+/**
+ * Extrai uma mensagem legível de uma resposta HTTP de erro.
+ *
+ * @param response Resposta bruta do servidor.
+ * @param fallback Mensagem padrão quando o corpo não ajuda.
+ * @returns Mensagem humana extraída do payload.
+ */
+async function extractErrorMessage(
+    response: Response,
+    fallback: string
+): Promise<string> {
+    try {
+        const rawBody = await response.text();
+        if (!rawBody.trim()) {
+            return fallback;
+        }
+
+        const parsedBody = JSON.parse(rawBody) as unknown;
+        if (Array.isArray(parsedBody)) {
+            const firstMessage = parsedBody.find(
+                (item) =>
+                    item &&
+                    typeof item === "object" &&
+                    "message" in item &&
+                    typeof (item as { message?: unknown }).message === "string"
+            ) as { message?: string } | undefined;
+            if (firstMessage?.message) {
+                return firstMessage.message;
+            }
+        }
+
+        if (
+            parsedBody &&
+            typeof parsedBody === "object" &&
+            "message" in parsedBody &&
+            typeof (parsedBody as { message?: unknown }).message === "string"
+        ) {
+            return (parsedBody as { message: string }).message;
+        }
+    } catch {
+        // Mantém fallback quando o corpo não é JSON.
+    }
+
+    return fallback;
 }
 
 /**
@@ -378,16 +436,16 @@ export async function fetchMostAccessedPublications(
  * Busca detalhes de um livro por ID.
  *
  * @param id ID do livro.
- * @param _libraryId Parâmetro mantido por compatibilidade com chamadas existentes.
+ * @param libraryId ID da biblioteca usada para contextualizar o detalhe.
  * @param token Token JWT opcional para cenários autenticados.
  * @returns Livro encontrado ou null quando não existir na resposta.
  */
 export async function fetchBookDetails(
     id: string,
-    _libraryId: number,
+    libraryId: number,
     token?: string
 ): Promise<Book | null> {
-    const endpoint = `/libraries_books/${id}?fields=${DEFAULT_BOOK_FIELDS}`;
+    const endpoint = `/libraries_books/${id}?library=${libraryId}&fields=${DEFAULT_BOOK_FIELDS}`;
     try {
         const data = await api.get<unknown>(endpoint, token);
         return normalizeBookResponse(data);
@@ -402,11 +460,17 @@ export async function fetchBookDetails(
  * @param id ID do livro (ou vínculo `libraries_books`) na tela de detalhe.
  * @returns Registro MARC21 bruto para formatação no front-end.
  */
-export async function fetchBookMarc21(id: string): Promise<unknown> {
+export async function fetchBookMarc21(id: string, libraryId?: number): Promise<unknown> {
     const candidates = collectBookIdCandidates(id);
 
     try {
-        const libraryBookData = await api.get<unknown>(`/libraries_books/${encodeURIComponent(id)}`);
+        const librarySuffix =
+            typeof libraryId === "number" && Number.isFinite(libraryId) && libraryId > 0
+                ? `?library=${libraryId}`
+                : "";
+        const libraryBookData = await api.get<unknown>(
+            `/libraries_books/${encodeURIComponent(id)}${librarySuffix}`
+        );
         const payload = normalizeSingleObjectPayload(libraryBookData);
         if (payload) {
             const resolved = collectBookIdCandidates(payload.book_id, payload.book, payload.id);
@@ -870,11 +934,42 @@ export async function fetchBooksByAuthor(
  * Registra um acesso ao livro (clique em "Ler agora").
  *
  * @param id ID do livro acessado.
+ * @param libraryId ID da biblioteca usada no registro.
  * @param token Token JWT opcional.
  * @returns Promise<void>.
  */
-export async function registerBookAccess(id: string, token?: string): Promise<void> {
-    await api.post(`/books/${encodeURIComponent(id)}/access`, {}, token);
+export async function registerBookAccess(
+    id: string,
+    libraryId: number,
+    token?: string
+): Promise<void> {
+    await api.post(
+        `/books/${encodeURIComponent(id)}/access`,
+        { action_type: "read_now", library: libraryId },
+        token
+    );
+}
+
+/**
+ * Registra um acesso a leitura com tipo explícito.
+ *
+ * @param id ID do livro acessado.
+ * @param actionType Tipo da ação, como ``read_now`` ou ``read_web``.
+ * @param libraryId ID da biblioteca usada no registro.
+ * @param token Token JWT opcional.
+ * @returns Promise<void>.
+ */
+export async function registerBookAccessWithType(
+    id: string,
+    actionType: "read_now" | "read_web" | "loan" = "read_now",
+    libraryId: number,
+    token?: string
+): Promise<void> {
+    await api.post(
+        `/books/${encodeURIComponent(id)}/access`,
+        { action_type: actionType, library: libraryId },
+        token
+    );
 }
 
 /**
@@ -893,7 +988,11 @@ export async function lendBook(id: string, libraryId: number, token: string): Pr
     });
 
     if (!response.ok) {
-        throw new Error("Falha ao realizar empréstimo do livro.");
+        const message = await extractErrorMessage(
+            response,
+            "Falha ao realizar empréstimo do livro."
+        );
+        throw new Error(message);
     }
 
     const disposition = response.headers.get("Content-Disposition");
@@ -909,4 +1008,20 @@ export async function lendBook(id: string, libraryId: number, token: string): Pr
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
+}
+
+/**
+ * Solicita a devolução de um empréstimo licenciado.
+ *
+ * @param id ID do livro.
+ * @param libraryId ID da biblioteca da sessão.
+ * @param token Token JWT obrigatório.
+ * @returns Promise<void>.
+ */
+export async function returnBookLoan(
+    id: string,
+    libraryId: number,
+    token: string
+): Promise<void> {
+    await api.post(`/books-loan/${encodeURIComponent(id)}/return`, { library: libraryId }, token);
 }

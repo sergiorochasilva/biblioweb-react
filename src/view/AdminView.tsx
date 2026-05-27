@@ -24,6 +24,8 @@ import {
     UploadOutlined,
 } from "@ant-design/icons";
 import HeaderView from "./HeaderView";
+import BookLibraryPolicyGrid from "../components/BookLibraryPolicyGrid";
+import LibraryLimitGrid from "../components/LibraryLimitGrid";
 import { useAdminController } from "../controller/AdminController";
 import { getBookAuthorsText } from "../model/Book";
 import "../styles/AdminView.css";
@@ -108,11 +110,7 @@ export default function AdminView() {
      * @returns Texto amigável para o acervo associado.
      */
     function getBookLibraryLabel(book: (typeof state.books)[number]): string {
-        const relatedLibraries = Array.isArray(book.libraries)
-            ? book.libraries
-                  .map((item) => Number(item))
-                  .filter((item) => Number.isFinite(item) && item > 0)
-            : [];
+        const relatedLibraries = Array.isArray(book.libraries) ? book.libraries : [];
         if (relatedLibraries.length > 0) {
             return `${relatedLibraries.length} ${
                 relatedLibraries.length === 1 ? "acervo" : "acervos"
@@ -377,7 +375,7 @@ export default function AdminView() {
                                                                         Perfil: {user.admin ? "Administrador" : "Usuário comum"}
                                                                     </span>
                                                                     <span>
-                                                                        Acervos: {user.libraries.length} | Editoras: {user.publishers.length}
+                                                                        Acervos: {user.library_limits?.length ?? user.libraries.length} | Editoras: {user.publishers.length}
                                                                     </span>
                                                                 </div>
                                                             }
@@ -1027,26 +1025,41 @@ export default function AdminView() {
                                 }
                             />
                         </div>
-                        <div className="form-field">
+                        <div className="form-field form-field-full">
                             <label className="field-label">Acervo (*)</label>
                             <Select
-                                className="admin-select"
                                 mode="multiple"
+                                className="admin-select"
                                 status={state.bookFormErrors.libraries ? "error" : undefined}
                                 placeholder="Selecione um ou mais acervos"
-                                value={state.bookForm.libraries}
+                                value={state.bookForm.libraries.map((item) => item.library)}
                                 options={libraryOptions}
                                 onChange={(values: string[]) => {
-                                    actions.setBookForm((previous) => ({ ...previous, libraries: values }));
+                                    actions.setBookLibrarySelection(values);
                                     actions.clearBookFieldError("libraries");
                                 }}
-                                showSearch
                                 optionFilterProp="label"
+                                showSearch
                             />
+                            <span className="form-field-helper">
+                                A política é editada abaixo, por acervo selecionado.
+                            </span>
                             {state.bookFormErrors.libraries && (
                                 <span className="form-field-error">{state.bookFormErrors.libraries}</span>
                             )}
                         </div>
+                        <BookLibraryPolicyGrid
+                            label="Política por acervo"
+                            helperText="Licenças disponíveis e máximo de usos são editáveis. Progresso da licença atual é apenas leitura."
+                            error={state.bookFormErrors.library_policy}
+                            value={state.bookForm.libraries}
+                            options={libraryOptions}
+                            emptyDescription="Selecione ao menos um acervo para editar a política."
+                            onChange={(libraries) => {
+                                actions.setBookLibraries(libraries);
+                                actions.clearBookFieldError("library_policy");
+                            }}
+                        />
                     </div>
                     <div className="form-field form-field-full">
                         <label className="field-label">Resumo <span className="marc-tag">[520$a]</span></label>
@@ -1180,20 +1193,21 @@ export default function AdminView() {
                             <span className="form-field-error">{state.userFormErrors.dica_senha}</span>
                         )}
                     </div>
-                    <div className="form-field">
-                        <label className="field-label">Acervos</label>
-                        <Select
-                            mode="multiple"
-                            className="admin-select"
-                            placeholder="Selecione um ou mais acervos"
-                            value={state.userForm.libraries}
-                            options={libraryOptions}
-                            onChange={(values: string[]) =>
-                                actions.setUserForm((previous) => ({ ...previous, libraries: values }))
-                            }
-                            optionFilterProp="label"
-                        />
-                    </div>
+                    <LibraryLimitGrid
+                        label="Acervos"
+                        helperText="Ative os acervos desejados e ajuste o limite de cada um separadamente."
+                        error={state.userFormErrors.library_limits}
+                        value={state.userForm.library_limits}
+                        options={libraryOptions}
+                        emptyDescription="Cadastre um acervo antes de vincular usuários."
+                        defaultLimit="3"
+                        onChange={(values) =>
+                            actions.setUserForm((previous) => ({
+                                ...previous,
+                                library_limits: values,
+                            }))
+                        }
+                    />
                     <div className="form-field">
                         <label className="field-label">Editoras</label>
                         <Select

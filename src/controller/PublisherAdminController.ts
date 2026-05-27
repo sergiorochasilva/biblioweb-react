@@ -2,10 +2,16 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import type { Publisher } from "../types";
 import { useAuth } from "../contexts/useAuth";
 import {
+    BookLibraryForm,
+    BOOK_LIBRARY_DEFAULT_POLICY,
+    buildBookLibraryForms,
+    buildBookLibraryPayloads,
+} from "../model/BookLibrary";
+import {
     CreateBookPayload,
     fetchAuthors,
     fetchBookById,
-    fetchBookLibraryIds,
+    fetchBookLibraryLinks,
     fetchBooks,
     fetchSubjects,
     generatePurchaseLink,
@@ -38,6 +44,7 @@ type BookFieldErrorKey =
     | "subjects"
     | "file_name"
     | "edition"
+    | "library_policy"
     | "file";
 
 type ValidationResult<TField extends string> = {
@@ -70,7 +77,7 @@ type BookFormState = {
     media_type: string;
     carrier_type: string;
     image_url: string;
-    libraries: string[];
+    libraries: BookLibraryForm[];
 };
 
 const emptyBookForm: BookFormState = {
@@ -126,6 +133,26 @@ function toNullableField(value: string): string | null {
 }
 
 /**
+ * Converte texto numérico para inteiro opcional.
+ *
+ * @param value Texto bruto do campo.
+ * @returns Inteiro ou ``null`` quando vazio/inválido.
+ */
+function toNullableIntegerField(value: string): number | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+        return null;
+    }
+
+    return Math.trunc(parsed);
+}
+
+/**
  * Converte lista textual para IDs numéricos únicos de assunto.
  *
  * @param values IDs em formato textual.
@@ -160,25 +187,6 @@ function parseBookAuthorIds(values: string[]): number[] {
             continue;
         }
         unique.add(parsed);
-    }
-
-    return Array.from(unique.values());
-}
-
-/**
- * Converte lista textual para IDs numéricos únicos de acervo.
- *
- * @param values IDs em formato textual.
- * @returns IDs numéricos únicos.
- */
-function parseBookLibraryIds(values: string[]): number[] {
-    const unique = new Set<number>();
-
-    for (const value of values) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed) && parsed > 0) {
-            unique.add(parsed);
-        }
     }
 
     return Array.from(unique.values());
@@ -229,25 +237,9 @@ function mapBookToForm(
 ): BookFormState {
     const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
     const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
-    const rawBook = book as unknown as Record<string, unknown>;
-
-    const rawLibraries = Array.isArray(rawBook.libraries)
-        ? rawBook.libraries
-              .map((item) => (item === null || item === undefined ? "" : String(item).trim()))
-              .filter((item) => Boolean(item))
-        : [];
-    const rawLibrary = rawBook.library;
-    const fallbackLibrary =
-        typeof rawLibrary === "number"
-            ? String(rawLibrary)
-            : typeof rawLibrary === "string"
-                ? rawLibrary.trim()
-                : "";
-    const resolvedLibraries = rawLibraries.length > 0
-        ? rawLibraries
-        : fallbackLibrary
-            ? [fallbackLibrary]
-            : [];
+    const resolvedLibraries = buildBookLibraryForms(book.libraries, BOOK_LIBRARY_DEFAULT_POLICY, [
+        typeof book.library === "number" && book.library > 0 ? String(book.library) : "",
+    ]);
 
     return {
         id: book.id,
@@ -319,6 +311,21 @@ function validateBookForm(
 
     if (!form.file_name.trim() && !(mode === "create" && hasBookFile)) {
         fieldErrors.file_name = "Nome do arquivo obrigatório.";
+    }
+
+    const invalidLibraryPolicy = form.libraries.some((item) => {
+        const availableLicenses = toNullableIntegerField(item.available_licenses);
+        const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
+        return (
+            availableLicenses === null ||
+            availableLicenses < 0 ||
+            maxUsesPerLicense === null ||
+            maxUsesPerLicense <= 0
+        );
+    });
+
+    if (invalidLibraryPolicy) {
+        fieldErrors.library_policy = "Preencha a política do acervo vinculado.";
     }
 
     if (!form.edition.trim()) {
@@ -598,6 +605,11 @@ export function usePublisherAdminController() {
         setBookForm({
             ...emptyBookForm,
             publisher: publisherFilter || defaultPublisherId,
+            libraries: buildBookLibraryForms(
+                undefined,
+                BOOK_LIBRARY_DEFAULT_POLICY,
+                ["1"]
+            ),
         });
         setBookModalOpen(true);
     }
@@ -622,7 +634,17 @@ export function usePublisherAdminController() {
             }
 
             const detailedBook = await fetchBookById(accessToken, book.id);
-            const relatedLibraries = await fetchBookLibraryIds(accessToken, detailedBook.id);
+            const selectedLibraryId = detailedBook.library ?? book.library ?? null;
+            const relatedLibraries =
+                Array.isArray(detailedBook.libraries) && detailedBook.libraries.length > 0
+                    ? detailedBook.libraries
+                    : selectedLibraryId !== null
+                        ? await fetchBookLibraryLinks(
+                              accessToken,
+                              detailedBook.id,
+                              selectedLibraryId
+                          )
+                        : [];
             const detailedBookWithLibraries: PublisherAdminBook = {
                 ...detailedBook,
                 libraries: relatedLibraries,
@@ -651,6 +673,19 @@ export function usePublisherAdminController() {
         setBookModalError("");
         setBookFormErrors({});
         setBookFile(null);
+    }
+
+    /**
+     * Atualiza diretamente a lista de vínculos do formulário de livro.
+     *
+     * @param libraries Lista de vínculos já editada.
+     * @returns void.
+     */
+    function setBookLibraries(libraries: BookLibraryForm[]): void {
+        setBookForm((previous) => ({
+            ...previous,
+            libraries,
+        }));
     }
 
     /**
@@ -692,7 +727,6 @@ export function usePublisherAdminController() {
 
             const subjectIds = parseBookSubjectIds(bookForm.subjects);
             const authorIds = parseBookAuthorIds(bookForm.authors);
-            const parsedLibraryIds = parseBookLibraryIds(bookForm.libraries);
             const payload: UpdateBookPayload = {
                 title: toNullableField(bookForm.title),
                 subtitle: toNullableField(bookForm.subtitle),
@@ -720,11 +754,8 @@ export function usePublisherAdminController() {
                 carrier_type: toNullableField(bookForm.carrier_type),
                 authors: authorIds.map((authorId) => ({ author: authorId })),
                 subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
+                libraries: buildBookLibraryPayloads(bookForm.libraries),
             };
-
-            if (bookModalMode === "edit" && parsedLibraryIds.length > 0) {
-                payload.libraries = parsedLibraryIds;
-            }
 
             if (bookModalMode === "create") {
                 const createPayload: CreateBookPayload = {
@@ -890,6 +921,7 @@ export function usePublisherAdminController() {
             closeBookModal,
             saveBook,
             setBookForm,
+            setBookLibraries,
             clearBookFieldError,
             setBookFile,
             setPurchasePublisherId,

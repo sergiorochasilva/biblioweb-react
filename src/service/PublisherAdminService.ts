@@ -1,4 +1,6 @@
 import { Book } from "../model/Book";
+import type { BookLibraryLink, BookLibraryPayload } from "../model/BookLibrary";
+import { normalizeBookLibraryLinks } from "../model/BookLibrary";
 import { api, buildAuthHeaders } from "./api";
 
 export type PublisherSubject = {
@@ -20,8 +22,10 @@ export type PublisherBookFilters = {
 export type PublisherAdminBook = Book & {
     book_id?: string | null;
     library?: number | null;
-    libraries?: number[];
+    libraries?: BookLibraryLink[];
 };
+
+export type { BookLibraryPayload } from "../model/BookLibrary";
 
 export type UpdateBookPayload = {
     title: string | null;
@@ -48,13 +52,12 @@ export type UpdateBookPayload = {
     content_type?: string | null;
     media_type?: string | null;
     carrier_type?: string | null;
-    libraries?: number[];
     authors?: Array<{ id?: number; author: number }>;
     subjects?: Array<{ id?: number; subject: number }>;
+    libraries?: BookLibraryPayload[];
 };
 
 export type CreateBookPayload = UpdateBookPayload & {
-    libraries?: number[];
     base64_content?: string | null;
     file_extension?: string | null;
 };
@@ -110,30 +113,28 @@ function deduplicateBooksById(books: PublisherAdminBook[]): PublisherAdminBook[]
             continue;
         }
 
-        const mergedLibraries = new Set<number>();
+        const mergedLibraries = new Map<number, BookLibraryLink>();
         const currentLibraries = Array.isArray(current.libraries) ? current.libraries : [];
         const itemLibraries = Array.isArray(item.libraries) ? item.libraries : [];
 
-        for (const libraryId of currentLibraries) {
-            const parsed = normalizeLibraryId(libraryId);
-            if (parsed !== null) {
-                mergedLibraries.add(parsed);
-            }
+        for (const link of currentLibraries) {
+            mergedLibraries.set(link.library, link);
         }
-        for (const libraryId of itemLibraries) {
-            const parsed = normalizeLibraryId(libraryId);
-            if (parsed !== null) {
-                mergedLibraries.add(parsed);
-            }
+        for (const link of itemLibraries) {
+            mergedLibraries.set(link.library, link);
         }
 
-        const currentLibrary = normalizeLibraryId(current.library);
-        if (currentLibrary !== null) {
-            mergedLibraries.add(currentLibrary);
+        const currentLibrary = Number(current.library);
+        if (Number.isFinite(currentLibrary) && currentLibrary > 0) {
+            mergedLibraries.set(currentLibrary, {
+                library: currentLibrary,
+            });
         }
-        const itemLibrary = normalizeLibraryId(item.library);
-        if (itemLibrary !== null) {
-            mergedLibraries.add(itemLibrary);
+        const itemLibrary = Number(item.library);
+        if (Number.isFinite(itemLibrary) && itemLibrary > 0) {
+            mergedLibraries.set(itemLibrary, {
+                library: itemLibrary,
+            });
         }
 
         byId.set(bookId, {
@@ -141,7 +142,7 @@ function deduplicateBooksById(books: PublisherAdminBook[]): PublisherAdminBook[]
             ...item,
             id: bookId,
             book_id: bookId,
-            libraries: Array.from(mergedLibraries),
+            libraries: Array.from(mergedLibraries.values()),
         });
     }
 
@@ -168,17 +169,31 @@ function buildBookIdCandidates(...values: unknown[]): string[] {
 }
 
 /**
- * Converte valor bruto para ID numérico de acervo.
+ * Normaliza um item bruto da API para o formato esperado de livro do Publisher Admin.
  *
- * @param value Valor bruto recebido.
- * @returns ID de acervo (> 0) ou ``null``.
+ * @param entry Registro bruto recebido da API.
+ * @returns Livro normalizado ou ``null`` quando inválido.
  */
-function normalizeLibraryId(value: unknown): number | null {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+function normalizePublisherAdminBook(entry: unknown): PublisherAdminBook | null {
+    if (!entry || typeof entry !== "object") {
         return null;
     }
-    return parsed;
+
+    const raw = entry as Record<string, unknown>;
+    const resolvedId = buildBookIdCandidates(raw.book_id, raw.id, raw.book)[0] || "";
+    if (!resolvedId) {
+        return null;
+    }
+
+    return {
+        ...(raw as Omit<PublisherAdminBook, "id" | "book_id" | "library" | "libraries">),
+        id: resolvedId,
+        book_id: resolvedId,
+        library: Number.isFinite(Number(raw.library)) && Number(raw.library) > 0
+            ? Number(raw.library)
+            : undefined,
+        libraries: normalizeBookLibraryLinks(raw.libraries),
+    };
 }
 
 /**
@@ -290,8 +305,17 @@ export function normalizeAuthorsResponse(data: unknown): PublisherAuthor[] {
  * @returns Lista de livros.
  */
 export function normalizeBooksResponse(data: unknown): PublisherAdminBook[] {
+    const normalizeList = (items: unknown[]): PublisherAdminBook[] =>
+        items.reduce<PublisherAdminBook[]>((acc, item) => {
+            const normalized = normalizePublisherAdminBook(item);
+            if (normalized) {
+                acc.push(normalized);
+            }
+            return acc;
+        }, []);
+
     if (Array.isArray(data)) {
-        return data as PublisherAdminBook[];
+        return normalizeList(data);
     }
     if (
         data &&
@@ -299,7 +323,7 @@ export function normalizeBooksResponse(data: unknown): PublisherAdminBook[] {
         "result" in data &&
         Array.isArray((data as { result?: unknown }).result)
     ) {
-        return (data as { result: PublisherAdminBook[] }).result;
+        return normalizeList((data as { result: unknown[] }).result);
     }
     return [];
 }
@@ -319,30 +343,30 @@ function normalizeSingleBookResponse(data: unknown): PublisherAdminBook | null {
     if ("result" in data) {
         const result = (data as { result?: unknown }).result;
         if (result && typeof result === "object" && !Array.isArray(result)) {
-            return result as PublisherAdminBook;
+            return normalizePublisherAdminBook(result);
         }
         return null;
     }
 
-    return data as PublisherAdminBook;
+    return normalizePublisherAdminBook(data);
 }
 
 /**
- * Normaliza payload de ``/libraries_books`` para pares ``bookId`` x ``libraryId``.
+ * Normaliza payload de ``/libraries_books`` para vínculos de acervo.
  *
  * @param data Payload bruto retornado pela API.
  * @returns Vínculos normalizados entre livro e acervo.
  */
 function normalizeBookLibraryLinksResponse(
     data: unknown
-): Array<{ bookId: string; libraryId: number }> {
+): Array<{ bookId: string; library: BookLibraryLink }> {
     const source = Array.isArray(data)
         ? data
         : data && typeof data === "object" && Array.isArray((data as { result?: unknown }).result)
             ? (data as { result: unknown[] }).result
             : [];
 
-    const links: Array<{ bookId: string; libraryId: number }> = [];
+    const links: Array<{ bookId: string; library: BookLibraryLink }> = [];
     for (const item of source) {
         if (!item || typeof item !== "object") {
             continue;
@@ -350,15 +374,15 @@ function normalizeBookLibraryLinksResponse(
 
         const raw = item as Record<string, unknown>;
         const bookId = buildBookIdCandidates(raw.id, raw.book_id, raw.book)[0];
-        const libraryId = normalizeLibraryId(raw.library);
+        const library = normalizeBookLibraryLinks([raw])[0];
 
-        if (!bookId || libraryId === null) {
+        if (!bookId || !library) {
             continue;
         }
 
         links.push({
             bookId,
-            libraryId,
+            library,
         });
     }
 
@@ -485,30 +509,26 @@ export async function fetchBookById(token: string, id: string): Promise<Book> {
 }
 
 /**
- * Lista IDs de acervos associados a um livro.
+ * Lista vínculos de acervos associados a um livro.
  *
  * @param token Token JWT do usuário autenticado.
  * @param bookId Identificador do livro.
- * @returns Lista de IDs de acervo associados.
+ * @param libraryId Identificador do acervo que particiona a relação.
+ * @returns Lista de vínculos de acervo associados.
  */
-export async function fetchBookLibraryIds(
+export async function fetchBookLibraryLinks(
     token: string,
-    bookId: string
-): Promise<number[]> {
+    bookId: string,
+    libraryId: string | number
+): Promise<BookLibraryLink[]> {
     const query = new URLSearchParams({
         id: bookId,
-        fields: "library",
+        library: String(libraryId),
+        fields: "library,access_count,available_licenses,max_uses_per_license,license_uses_count",
         limit: "200",
     });
     const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
-    const links = normalizeBookLibraryLinksResponse(data);
-
-    const unique = new Set<number>();
-    for (const item of links) {
-        unique.add(item.libraryId);
-    }
-
-    return Array.from(unique);
+    return normalizeBookLibraryLinksResponse(data).map((item) => item.library);
 }
 
 /**

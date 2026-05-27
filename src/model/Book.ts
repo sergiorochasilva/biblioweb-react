@@ -1,3 +1,5 @@
+import type { BookLibraryLink } from "./BookLibrary";
+
 export interface BookSubjectLink {
     id?: number;
     subject: number;
@@ -39,7 +41,21 @@ export interface Book {
     carrier_type?: string;
     subjects?: BookSubjectLink[];
     image_url?: string | null;
+    library?: number;
+    libraries?: BookLibraryLink[];
     access_count?: number;
+    available_licenses?: number;
+    max_uses_per_license?: number;
+    license_uses_count?: number;
+    loan_state?: string;
+    loan_expires_at?: string;
+    last_access_at?: string;
+    current_book_active_licenses?: number;
+    current_user_active_loans?: number;
+    max_concurrent_loans?: number;
+    unavailable_users_count?: number;
+    loan_started_at?: string;
+    loan_license_id?: string;
 }
 
 /**

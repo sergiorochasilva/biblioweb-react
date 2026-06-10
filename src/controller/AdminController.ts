@@ -60,6 +60,7 @@ type BookFormState = {
     corporate_author: string;
     publisher: string;
     publication_place: string;
+    preco_sugerido: string;
     authors: string[];
     dewey_decimal: string;
     subjects: string[];
@@ -179,6 +180,7 @@ const emptyBookForm: BookFormState = {
     corporate_author: "",
     publisher: "",
     publication_place: "",
+    preco_sugerido: "",
     authors: [],
     dewey_decimal: "",
     subjects: [],
@@ -302,9 +304,15 @@ function mapUserLibraryLimitsToForm(user: AdminUser): UserLibraryLimitForm[] {
 function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormState {
     const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
     const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
+    const suggestedPrice = typeof book.preco_sugerido === "number" || typeof book.preco_sugerido === "string"
+        ? String(book.preco_sugerido)
+        : "";
     const libraries = buildBookLibraryForms(
         book.libraries,
-        BOOK_LIBRARY_DEFAULT_POLICY,
+        {
+            ...BOOK_LIBRARY_DEFAULT_POLICY,
+            preco_compra: suggestedPrice,
+        },
         fallbackLibraryIds
     );
 
@@ -316,6 +324,7 @@ function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormS
         corporate_author: book.corporate_author || "",
         publisher: book.publisher_name || book.publisher || "",
         publication_place: book.publication_place || "",
+        preco_sugerido: suggestedPrice,
         authors: rawAuthors
             .map((item) => (item && typeof item.author === "number" ? String(item.author) : ""))
             .filter((item) => Boolean(item)),
@@ -1796,7 +1805,10 @@ export function useAdminController() {
                 libraries: syncBookLibrarySelection(
                     previous.libraries,
                     values,
-                    BOOK_LIBRARY_DEFAULT_POLICY
+                    {
+                        ...BOOK_LIBRARY_DEFAULT_POLICY,
+                        preco_compra: previous.preco_sugerido,
+                    }
                 ),
             };
         });
@@ -1871,6 +1883,7 @@ export function useAdminController() {
                 corporate_author: toNullableField(bookForm.corporate_author),
                 publisher: toNullableField(bookForm.publisher),
                 publication_place: toNullableField(bookForm.publication_place),
+                preco_sugerido: toNullableField(bookForm.preco_sugerido),
                 dewey_decimal: toNullableField(bookForm.dewey_decimal),
                 type: normalizeBookType(bookForm.type),
                 external_url: toNullableField(bookForm.external_url),

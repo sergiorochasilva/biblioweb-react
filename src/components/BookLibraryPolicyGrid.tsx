@@ -9,6 +9,7 @@ export type BookLibraryPolicyGridProps = {
     value: BookLibraryForm[];
     options?: LibraryGridSelectorOption[];
     emptyDescription?: string;
+    showPurchasePrice?: boolean;
     onChange: (values: BookLibraryForm[]) => void;
 };
 
@@ -24,7 +25,7 @@ export type BookLibraryPolicyGridProps = {
 function updateLibraryField(
     current: BookLibraryForm[],
     library: string,
-    field: "available_licenses" | "max_uses_per_license",
+    field: "available_licenses" | "max_uses_per_license" | "preco_compra",
     value: string
 ): BookLibraryForm[] {
     const target = library.trim();
@@ -46,6 +47,7 @@ export default function BookLibraryPolicyGrid({
     value,
     options = [],
     emptyDescription,
+    showPurchasePrice = false,
     onChange,
 }: BookLibraryPolicyGridProps) {
     const labelMap = new Map(options.map((option) => [option.value, option] as const));
@@ -143,6 +145,36 @@ export default function BookLibraryPolicyGrid({
                                             {accumulatedUses}
                                         </span>
                                     </div>
+
+                                    {showPurchasePrice && (
+                                        <div className="book-library-policy-field">
+                                            <span className="library-limit-card-label">
+                                                Preço de compra
+                                            </span>
+                                            <InputNumber
+                                                className="library-limit-input"
+                                                min={0}
+                                                precision={2}
+                                                value={
+                                                    item.preco_compra === null ||
+                                                    item.preco_compra === undefined ||
+                                                    item.preco_compra === ""
+                                                        ? null
+                                                        : Number(item.preco_compra)
+                                                }
+                                                onChange={(newValue) => {
+                                                    onChange(
+                                                        updateLibraryField(
+                                                            value,
+                                                            item.library,
+                                                            "preco_compra",
+                                                            String(newValue ?? "")
+                                                        )
+                                                    );
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );

@@ -43,6 +43,8 @@ export interface Book {
     image_url?: string | null;
     library?: number;
     libraries?: BookLibraryLink[];
+    preco_sugerido?: number | string | null;
+    preco_compra?: number | string | null;
     access_count?: number;
     available_licenses?: number;
     max_uses_per_license?: number;
@@ -54,6 +56,9 @@ export interface Book {
     current_user_active_loans?: number;
     max_concurrent_loans?: number;
     unavailable_users_count?: number;
+    purchased_by_user?: boolean;
+    purchase_license_id?: string;
+    purchase_issued_at?: string;
     loan_started_at?: string;
     loan_license_id?: string;
 }

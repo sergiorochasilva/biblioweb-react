@@ -256,6 +256,15 @@ export default function HeaderView() {
                             >
                                 Autores
                             </Button>
+                            {isAuthenticated && (
+                                <Button
+                                    className="categories-button"
+                                    type="text"
+                                    onClick={() => navigate("/meus-livros")}
+                                >
+                                    Meus livros
+                                </Button>
+                            )}
                         </div>
                     </div>
 

@@ -1,6 +1,25 @@
-const API_HOST = (
-    import.meta.env.VITE_API_BASE_URL || "https://biblioweb.online:8080"
-).replace(/\/+$/, "");
+/**
+ * Resolve o host base da API considerando o ambiente atual do navegador.
+ *
+ * Quando a aplicação roda em `localhost`, prioriza a API local do devcontainer
+ * para evitar CORS desnecessário. Fora disso, usa a URL configurada em ambiente.
+ *
+ * @returns Host base sem barra final.
+ */
+function resolveApiHost(): string {
+    const configuredHost = (
+        import.meta.env.VITE_API_BASE_URL || "https://biblioweb.online:8080"
+    ).trim();
+    const currentHostname = window.location.hostname;
+
+    if (currentHostname === "localhost" || currentHostname === "127.0.0.1") {
+        return "http://localhost:15000";
+    }
+
+    return configuredHost;
+}
+
+const API_HOST = resolveApiHost().replace(/\/+$/, "");
 
 export const API_BASE_URL = API_HOST;
 export type ApiError = Error & { status?: number; body?: unknown };

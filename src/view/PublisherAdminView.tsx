@@ -5,6 +5,7 @@ import {
     Card,
     Empty,
     Input,
+    InputNumber,
     Layout,
     List,
     Modal,
@@ -454,6 +455,26 @@ export default function PublisherAdminView() {
                             {state.bookFormErrors.publisher && (
                                 <span className="form-field-error">{state.bookFormErrors.publisher}</span>
                             )}
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Preço Sugerido</label>
+                            <InputNumber
+                                className="admin-input"
+                                min={0}
+                                precision={2}
+                                value={
+                                    state.bookForm.preco_sugerido
+                                        ? Number(state.bookForm.preco_sugerido)
+                                        : null
+                                }
+                                onChange={(value) =>
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        preco_sugerido: value === null ? "" : String(value),
+                                    }))
+                                }
+                                style={{ width: "100%" }}
+                            />
                         </div>
                         <div className="form-field">
                             <label className="field-label">Local de publicação <span className="marc-tag">[260$a]</span></label>

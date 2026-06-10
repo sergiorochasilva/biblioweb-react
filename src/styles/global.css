@@ -260,6 +260,22 @@ a {
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
 }
 
+.book-card-purchase-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+.book-card-actions {
+    margin-top: 4px;
+}
+
+.book-card-secondary-action {
+    width: 100%;
+}
+
 @media (max-width: 720px) {
     .page-content {
         width: min(100%, 92vw);

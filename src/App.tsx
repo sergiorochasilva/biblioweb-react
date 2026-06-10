@@ -31,6 +31,7 @@ export default function App() {
 
             <Route element={<ProtectedRoute />}>
                 <Route path="/profile" element={<ProfileView />} />
+                <Route path="/meus-livros" element={<ProfileView />} />
                 <Route
                     element={
                         <RoleProtectedRoute

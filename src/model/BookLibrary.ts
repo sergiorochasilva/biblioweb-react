@@ -8,6 +8,7 @@ export type BookLibraryLink = {
     available_licenses?: number | null;
     max_uses_per_license?: number | null;
     license_uses_count?: number | null;
+    preco_compra?: number | string | null;
 };
 
 /**
@@ -19,16 +20,19 @@ export type BookLibraryForm = {
     available_licenses: string;
     max_uses_per_license: string;
     license_uses_count: string;
+    preco_compra: string;
 };
 
 /**
  * Payload enviado para a API ao salvar vínculos livro x acervo.
  */
 export type BookLibraryPayload = {
+    id?: number;
     library: number;
     available_licenses?: number | null;
     max_uses_per_license?: number | null;
     license_uses_count?: number | null;
+    preco_compra?: number | null;
 };
 
 /**
@@ -36,7 +40,7 @@ export type BookLibraryPayload = {
  */
 export type BookLibraryPolicyValues = Pick<
     BookLibraryForm,
-    "available_licenses" | "max_uses_per_license" | "license_uses_count"
+    "available_licenses" | "max_uses_per_license" | "license_uses_count" | "preco_compra"
 >;
 
 /**
@@ -46,6 +50,7 @@ export const BOOK_LIBRARY_DEFAULT_POLICY: BookLibraryPolicyValues = {
     available_licenses: "5",
     max_uses_per_license: "26",
     license_uses_count: "0",
+    preco_compra: "",
 };
 
 /**
@@ -106,6 +111,30 @@ function resolvePolicyText(
 }
 
 /**
+ * Converte um valor bruto para decimal opcional.
+ *
+ * @param value Valor bruto recebido.
+ * @returns Número decimal ou ``null``.
+ */
+function normalizeOptionalDecimal(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const normalized = String(value).replace(",", ".").trim();
+    if (!normalized) {
+        return null;
+    }
+
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) {
+        return null;
+    }
+
+    return parsed;
+}
+
+/**
  * Normaliza vínculos de acervo retornados pela API.
  *
  * @param value Payload bruto retornado pela API.
@@ -138,6 +167,7 @@ export function normalizeBookLibraryLinks(value: unknown): BookLibraryLink[] {
             available_licenses: normalizeOptionalInteger(raw.available_licenses),
             max_uses_per_license: normalizeOptionalInteger(raw.max_uses_per_license),
             license_uses_count: normalizeOptionalInteger(raw.license_uses_count),
+            preco_compra: normalizeOptionalDecimal(raw.preco_compra),
         });
     }
 
@@ -173,6 +203,10 @@ export function buildBookLibraryForm(
             defaults.license_uses_count,
             0
         ),
+        preco_compra:
+            link?.preco_compra === null || link?.preco_compra === undefined
+                ? defaults.preco_compra
+                : String(normalizeOptionalDecimal(link.preco_compra) ?? ""),
     };
 }
 
@@ -201,6 +235,7 @@ export function buildBookLibraryForms(
             available_licenses: defaults.available_licenses,
             max_uses_per_license: defaults.max_uses_per_license,
             license_uses_count: defaults.license_uses_count,
+            preco_compra: defaults.preco_compra,
         }));
 }
 
@@ -250,6 +285,7 @@ export function syncBookLibrarySelection(
             available_licenses: defaults.available_licenses,
             max_uses_per_license: defaults.max_uses_per_license,
             license_uses_count: defaults.license_uses_count,
+            preco_compra: defaults.preco_compra,
         };
     });
 }
@@ -272,10 +308,12 @@ export function buildBookLibraryPayloads(
         }
 
         unique.set(library, {
+            id: normalizeOptionalInteger(item.id) ?? undefined,
             library,
             available_licenses: normalizeOptionalInteger(item.available_licenses),
             max_uses_per_license: normalizeOptionalInteger(item.max_uses_per_license),
             license_uses_count: normalizeOptionalInteger(item.license_uses_count),
+            preco_compra: normalizeOptionalDecimal(item.preco_compra),
         });
     }
 

@@ -60,6 +60,7 @@ type BookFormState = {
     corporate_author: string;
     publisher: string;
     publication_place: string;
+    preco_sugerido: string;
     authors: string[];
     dewey_decimal: string;
     subjects: string[];
@@ -87,6 +88,7 @@ const emptyBookForm: BookFormState = {
     corporate_author: "",
     publisher: "",
     publication_place: "",
+    preco_sugerido: "",
     authors: [],
     dewey_decimal: "",
     subjects: [],
@@ -237,9 +239,17 @@ function mapBookToForm(
 ): BookFormState {
     const rawSubjects = Array.isArray(book.subjects) ? book.subjects : [];
     const rawAuthors = Array.isArray(book.authors) ? book.authors : [];
-    const resolvedLibraries = buildBookLibraryForms(book.libraries, BOOK_LIBRARY_DEFAULT_POLICY, [
-        typeof book.library === "number" && book.library > 0 ? String(book.library) : "",
-    ]);
+    const suggestedPrice = typeof book.preco_sugerido === "number" || typeof book.preco_sugerido === "string"
+        ? String(book.preco_sugerido)
+        : "";
+    const resolvedLibraries = buildBookLibraryForms(
+        book.libraries,
+        {
+            ...BOOK_LIBRARY_DEFAULT_POLICY,
+            preco_compra: suggestedPrice,
+        },
+        [typeof book.library === "number" && book.library > 0 ? String(book.library) : ""]
+    );
 
     return {
         id: book.id,
@@ -253,6 +263,7 @@ function mapBookToForm(
             defaultPublisherId
         ),
         publication_place: book.publication_place || "",
+        preco_sugerido: suggestedPrice,
         authors: rawAuthors
             .map((item) => (item && typeof item.author === "number" ? String(item.author) : ""))
             .filter((item) => Boolean(item)),
@@ -734,6 +745,7 @@ export function usePublisherAdminController() {
                 corporate_author: toNullableField(bookForm.corporate_author),
                 publisher: toNullableField(bookForm.publisher),
                 publication_place: toNullableField(bookForm.publication_place),
+                preco_sugerido: toNullableField(bookForm.preco_sugerido),
                 dewey_decimal: toNullableField(bookForm.dewey_decimal),
                 type: "protected",
                 external_url: null,
@@ -754,7 +766,12 @@ export function usePublisherAdminController() {
                 carrier_type: toNullableField(bookForm.carrier_type),
                 authors: authorIds.map((authorId) => ({ author: authorId })),
                 subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
-                libraries: buildBookLibraryPayloads(bookForm.libraries),
+                libraries: buildBookLibraryPayloads(
+                    bookForm.libraries.map((item) => ({
+                        ...item,
+                        preco_compra: item.preco_compra || bookForm.preco_sugerido,
+                    }))
+                ),
             };
 
             if (bookModalMode === "create") {

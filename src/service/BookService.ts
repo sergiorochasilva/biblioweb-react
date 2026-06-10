@@ -6,10 +6,22 @@ const DEFAULT_BOOK_FIELDS =
     "subtitle,original_title,corporate_author,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
     "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type," +
     "library,external_url,external_source,html_version_url,file_name,image_url,subjects(subject,subject_name)," +
-    "authors(author,author_name),available_licenses,max_uses_per_license,license_uses_count,loan_state," +
-    "loan_expires_at,last_access_at,current_book_active_licenses,current_user_active_loans," +
-    "max_concurrent_loans,unavailable_users_count";
+    "authors(author,author_name),preco_sugerido,preco_compra,available_licenses,max_uses_per_license," +
+    "license_uses_count,loan_state,loan_expires_at,last_access_at,current_book_active_licenses," +
+    "current_user_active_loans,max_concurrent_loans,unavailable_users_count,purchased_by_user," +
+    "purchase_license_id,purchase_issued_at";
 const MOST_ACCESSED_ORDER = "access_count desc";
+
+export type MercadoPagoCheckoutResponse = {
+    order_id?: string;
+    preference_id?: string;
+    checkout_url?: string;
+};
+
+export type MercadoPagoCheckoutRequest = {
+    book_id: string;
+    library: number;
+};
 
 /**
  * Normaliza respostas da API que podem vir como lista direta
@@ -108,6 +120,32 @@ async function extractErrorMessage(
     }
 
     return fallback;
+}
+
+/**
+ * Dispara o download de um blob retornado pela API.
+ *
+ * @param response Resposta HTTP com o arquivo.
+ * @param fallbackFilename Nome padrão quando o ``Content-Disposition`` não ajudar.
+ * @returns Promise<void>.
+ */
+async function downloadBinaryResponse(
+    response: Response,
+    fallbackFilename: string
+): Promise<void> {
+    const disposition = response.headers.get("Content-Disposition");
+    let filename = disposition?.split(";")[1]?.trim().split("=")[1];
+    filename = filename ? filename : fallbackFilename;
+    filename = filename.replace(/^"+|"+$/g, "");
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
 }
 
 /**
@@ -445,10 +483,15 @@ export async function fetchBookDetails(
     libraryId: number,
     token?: string
 ): Promise<Book | null> {
-    const endpoint = `/libraries_books/${id}?library=${libraryId}&fields=${DEFAULT_BOOK_FIELDS}`;
+    const endpoint =
+        `/libraries_books?library=${libraryId}` +
+        `&id=${encodeURIComponent(id)}` +
+        `&fields=${encodeURIComponent(DEFAULT_BOOK_FIELDS)}` +
+        "&limit=1";
     try {
         const data = await api.get<unknown>(endpoint, token);
-        return normalizeBookResponse(data);
+        const books = normalizeBooksResponse(data);
+        return books.length > 0 ? books[0] : normalizeBookResponse(data);
     } catch {
         return null;
     }
@@ -995,19 +1038,7 @@ export async function lendBook(id: string, libraryId: number, token: string): Pr
         throw new Error(message);
     }
 
-    const disposition = response.headers.get("Content-Disposition");
-    let filename = disposition?.split(";")[1]?.trim().split("=")[1];
-    filename = filename ? filename : "book.lcpl";
-    filename = filename.replace(/^"+|"+$/g, "");
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    await downloadBinaryResponse(response, "book.lcpl");
 }
 
 /**
@@ -1024,4 +1055,51 @@ export async function returnBookLoan(
     token: string
 ): Promise<void> {
     await api.post(`/books-loan/${encodeURIComponent(id)}/return`, { library: libraryId }, token);
+}
+
+/**
+ * Cria a preferência de checkout do Mercado Pago para compra de um livro.
+ *
+ * @param payload Dados necessários para iniciar a compra.
+ * @param token Token JWT obrigatório.
+ * @returns Resposta com a URL de checkout.
+ */
+export async function createMercadoPagoCheckout(
+    payload: MercadoPagoCheckoutRequest,
+    token: string
+): Promise<MercadoPagoCheckoutResponse> {
+    return api.post<MercadoPagoCheckoutResponse>("/books-purchase/mercado-pago", payload, token);
+}
+
+/**
+ * Solicita o download da cópia comprada pelo usuário.
+ *
+ * @param id Identificador do livro.
+ * @param libraryId Identificador do acervo usado para registrar acesso.
+ * @param token Token JWT obrigatório.
+ * @returns Promise<void> sem payload; dispara download no navegador.
+ */
+export async function downloadPurchasedBook(
+    id: string,
+    libraryId: number,
+    token: string
+): Promise<void> {
+    const response = await fetch(
+        `${API_BASE_URL}/books-purchase/${encodeURIComponent(id)}/download`,
+        {
+            method: "POST",
+            headers: buildAuthHeaders(token, true),
+            body: JSON.stringify({ library: libraryId }),
+        }
+    );
+
+    if (!response.ok) {
+        const message = await extractErrorMessage(
+            response,
+            "Falha ao baixar a cópia comprada do livro."
+        );
+        throw new Error(message);
+    }
+
+    await downloadBinaryResponse(response, "book.lcpl");
 }

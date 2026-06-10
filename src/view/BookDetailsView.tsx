@@ -20,6 +20,8 @@ import {
     DEFAULT_PUBLIC_LIBRARY_ID,
     fetchBookMarc21,
     formatMarc21Record,
+    createMercadoPagoCheckout,
+    downloadPurchasedBook,
     lendBook,
     registerBookAccessWithType,
     returnBookLoan,
@@ -60,6 +62,8 @@ interface BookDetailsViewProps {
     html_version_url?: string;
     file_name?: string;
     image_url?: string | null;
+    preco_sugerido?: number | string | null;
+    preco_compra?: number | string | null;
     loan_state?: string;
     loan_expires_at?: string;
     last_access_at?: string;
@@ -68,6 +72,9 @@ interface BookDetailsViewProps {
     current_user_active_loans?: number;
     max_concurrent_loans?: number;
     unavailable_users_count?: number;
+    purchased_by_user?: boolean;
+    purchase_license_id?: string;
+    purchase_issued_at?: string;
     onReloadBook?: () => void | Promise<void>;
 }
 
@@ -328,6 +335,39 @@ function formatDisplayDate(value?: string): string {
     return parsedDate.toLocaleDateString("pt-BR");
 }
 
+/**
+ * Converte um valor monetário bruto em número.
+ *
+ * @param value Valor bruto da moeda.
+ * @returns Número decimal ou ``null``.
+ */
+function normalizeMoneyValue(value?: number | string | null): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const normalized =
+        typeof value === "number" ? value : Number(String(value).replace(",", ".").trim());
+    if (!Number.isFinite(normalized) || normalized <= 0) {
+        return null;
+    }
+
+    return normalized;
+}
+
+/**
+ * Formata um valor monetário em moeda brasileira.
+ *
+ * @param value Valor numérico.
+ * @returns String formatada para exibição.
+ */
+function formatCurrency(value: number): string {
+    return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+    }).format(value);
+}
+
 export default function BookDetailsView({
     id,
     title,
@@ -357,6 +397,7 @@ export default function BookDetailsView({
     html_version_url,
     file_name,
     image_url,
+    preco_compra,
     loan_state,
     loan_expires_at,
     last_access_at,
@@ -365,11 +406,14 @@ export default function BookDetailsView({
     current_user_active_loans,
     max_concurrent_loans,
     unavailable_users_count,
+    purchased_by_user,
     onReloadBook,
 }: BookDetailsViewProps) {
     const navigate = useNavigate();
     const location = useLocation();
     const [loadingLendBook, setLoadingLendBook] = useState(false);
+    const [loadingPurchasedCopy, setLoadingPurchasedCopy] = useState(false);
+    const [loadingPurchaseCheckout, setLoadingPurchaseCheckout] = useState(false);
     const [loadingReturnBook, setLoadingReturnBook] = useState(false);
     const [loadingMarcExport, setLoadingMarcExport] = useState(false);
     const [isMarcModalOpen, setIsMarcModalOpen] = useState(false);
@@ -390,6 +434,9 @@ export default function BookDetailsView({
         ? freeBooksBaseUrl
         : `${freeBooksBaseUrl}/`;
     const normalizedHtmlVersionUrl = typeof html_version_url === "string" ? html_version_url.trim() : "";
+    const purchasePrice = normalizeMoneyValue(preco_compra);
+    const hasPurchasePrice = purchasePrice !== null;
+    const isPurchasedByUser = Boolean(purchased_by_user);
     const formattedLoanExpiresAt = formatDisplayDate(loan_expires_at);
     const formattedLastAccessAt = formatDisplayDate(last_access_at);
     const formattedBookLoanCount = formatActiveLoanCount(
@@ -422,11 +469,16 @@ export default function BookDetailsView({
         },
         referenceFormat
     );
-    const primaryButtonLabel = isLoanedBook
+    const primaryButtonLabel = isPurchasedByUser
+        ? "Ler sua cópia"
+        : isLoanedBook
         ? "Baixar novamente"
         : isRecentBook
         ? "Continuar lendo"
         : "Ler agora";
+    const purchaseButtonLabel = hasPurchasePrice
+        ? `Comprar - ${formatCurrency(purchasePrice)}`
+        : "Comprar";
     const secondaryWebButtonLabel =
         isRecentBook && normalizedHtmlVersionUrl
             ? "Continuar lendo versão web"
@@ -581,6 +633,35 @@ export default function BookDetailsView({
             return;
         }
 
+        if (isPurchasedByUser) {
+            const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+            let accessToken: string | undefined = token || undefined;
+            if (token) {
+                const refreshedToken = await getAccessToken({ redirectOnFail: false });
+                accessToken = refreshedToken || token;
+            }
+
+            if (!accessToken) {
+                const returnTo = `${location.pathname}${location.search}`;
+                navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                return;
+            }
+
+            setLoadingPurchasedCopy(true);
+            try {
+                await downloadPurchasedBook(id, libraryId, accessToken);
+            } catch (error: unknown) {
+                const messageText =
+                    error instanceof Error && error.message
+                        ? error.message
+                        : "Erro ao baixar sua cópia.";
+                message.error(messageText);
+            } finally {
+                setLoadingPurchasedCopy(false);
+            }
+            return;
+        }
+
         if (isLoanedBook && resolvedType === "protected") {
             const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
             if (!token) {
@@ -670,6 +751,53 @@ export default function BookDetailsView({
             message.error(messageText);
         } finally {
             setLoadingLendBook(false);
+        }
+    }
+
+    /**
+     * Cria o checkout Mercado Pago para compra do livro.
+     */
+    async function handlePurchaseAction(): Promise<void> {
+        if (!hasPurchasePrice || isPurchasedByUser || resolvedType !== "protected") {
+            return;
+        }
+
+        const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+        let accessToken: string | undefined = token || undefined;
+        if (token) {
+            const refreshedToken = await getAccessToken({ redirectOnFail: false });
+            accessToken = refreshedToken || token;
+        }
+
+        if (!accessToken) {
+            const returnTo = `${location.pathname}${location.search}`;
+            navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+            return;
+        }
+
+        setLoadingPurchaseCheckout(true);
+        try {
+            const checkout = await createMercadoPagoCheckout(
+                {
+                    book_id: id,
+                    library: libraryId,
+                },
+                accessToken
+            );
+
+            if (!checkout.checkout_url) {
+                throw new Error("Mercado Pago não retornou a URL de checkout.");
+            }
+
+            window.location.assign(checkout.checkout_url);
+        } catch (error: unknown) {
+            const messageText =
+                error instanceof Error && error.message
+                    ? error.message
+                    : "Erro ao iniciar a compra.";
+            message.error(messageText);
+        } finally {
+            setLoadingPurchaseCheckout(false);
         }
     }
 
@@ -808,11 +936,15 @@ export default function BookDetailsView({
                                     className={`book-details-cover glass-panel book-details-cover--${resolvedLoanState}`}
                                 >
                                     <BookTypeTag type={bookType} className="book-details-type-tag" />
-                                    {isLoanedBook && formattedLoanExpiresAt && (
+                                    {isPurchasedByUser ? (
+                                        <Tag color="orange" className="book-details-purchase-tag">
+                                            Já comprado
+                                        </Tag>
+                                    ) : isLoanedBook && formattedLoanExpiresAt ? (
                                         <Tag color="blue" className="book-details-expiry-tag">
                                             Expira em: {formattedLoanExpiresAt}
                                         </Tag>
-                                    )}
+                                    ) : null}
                                     <Image
                                         src={image_url || book_icon}
                                         alt="Capa do livro"
@@ -829,7 +961,7 @@ export default function BookDetailsView({
                                         type="primary"
                                         size="large"
                                         className="book-details-ler"
-                                        loading={loadingLendBook}
+                                        loading={loadingLendBook || loadingPurchasedCopy}
                                         disabled={isUnavailableBook}
                                         onClick={() => {
                                             void handlePrimaryAction();
@@ -894,6 +1026,19 @@ export default function BookDetailsView({
                                 >
                                     Referência Bibliográfica
                                 </Button>
+                                {resolvedType === "protected" && hasPurchasePrice && !isPurchasedByUser && (
+                                    <Button
+                                        size="large"
+                                        className="book-details-buy"
+                                        type="primary"
+                                        loading={loadingPurchaseCheckout}
+                                        onClick={() => {
+                                            void handlePurchaseAction();
+                                        }}
+                                    >
+                                        {purchaseButtonLabel}
+                                    </Button>
+                                )}
                             </div>
                         </Col>
                     </Row>

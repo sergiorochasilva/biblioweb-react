@@ -34,6 +34,7 @@ export type UpdateBookPayload = {
     corporate_author?: string | null;
     publisher: string | null;
     publication_place?: string | null;
+    preco_sugerido?: string | null;
     dewey_decimal?: string | null;
     type?: string | null;
     external_url?: string | null;
@@ -524,7 +525,7 @@ export async function fetchBookLibraryLinks(
     const query = new URLSearchParams({
         id: bookId,
         library: String(libraryId),
-        fields: "library,access_count,available_licenses,max_uses_per_license,license_uses_count",
+        fields: "id,library,access_count,available_licenses,max_uses_per_license,license_uses_count,preco_compra",
         limit: "200",
     });
     const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);

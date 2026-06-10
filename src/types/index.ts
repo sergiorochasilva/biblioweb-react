@@ -23,4 +23,5 @@ export interface ProfileData {
     libraries: Library[];
     recent_reads?: import("../model/Book").Book[];
     loaned_books?: import("../model/Book").Book[];
+    purchased_books?: import("../model/Book").Book[];
 }

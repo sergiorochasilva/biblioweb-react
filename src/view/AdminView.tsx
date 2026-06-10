@@ -1053,6 +1053,7 @@ export default function AdminView() {
                             helperText="Licenças disponíveis e máximo de usos são editáveis. Progresso da licença atual é apenas leitura."
                             error={state.bookFormErrors.library_policy}
                             value={state.bookForm.libraries}
+                            showPurchasePrice
                             options={libraryOptions}
                             emptyDescription="Selecione ao menos um acervo para editar a política."
                             onChange={(libraries) => {

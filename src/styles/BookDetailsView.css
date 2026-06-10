@@ -132,6 +132,14 @@
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
 }
 
+.book-details-purchase-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
 .book-details-last-access {
     display: block;
     text-align: center;
@@ -162,6 +170,20 @@
 
 .book-details-return {
     width: 100%;
+}
+
+.book-details-buy {
+    width: 100%;
+    color: #fff !important;
+    background: linear-gradient(135deg, #c65a00, #9e4200) !important;
+    border-color: #9e4200 !important;
+}
+
+.book-details-buy:hover,
+.book-details-buy:focus {
+    color: #fff !important;
+    background: linear-gradient(135deg, #d16800, #a84a00) !important;
+    border-color: #a84a00 !important;
 }
 
 .book-details-marc-content {

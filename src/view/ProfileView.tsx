@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
     Alert,
     App as AntdApp,
@@ -21,7 +21,12 @@ import { useAuth } from "../contexts/useAuth";
 import type { ProfileData } from "../types";
 import { api } from "../service/api";
 import { validateStrongPassword } from "../service/passwordPolicy";
-import { DEFAULT_PUBLIC_LIBRARY_ID, lendBook, returnBookLoan } from "../service/BookService";
+import {
+    DEFAULT_PUBLIC_LIBRARY_ID,
+    downloadPurchasedBook,
+    lendBook,
+    returnBookLoan,
+} from "../service/BookService";
 import BookCard from "../components/BookCard";
 import LoanedBookCard from "../components/LoanedBookCard";
 import "../styles/AdminView.css";
@@ -133,10 +138,12 @@ function validateSelfPasswordForm(
 
 export default function ProfileView() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { message } = AntdApp.useApp();
     const { Content } = Layout;
     const { profile, setProfile, publisher, library, getAccessToken } = useAuth();
     const currentLibraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+    const isBooksOnlyView = location.pathname === "/meus-livros";
 
     const [isLoading, setIsLoading] = useState(false);
     const [currentProfile, setCurrentProfile] = useState<ProfileData | null>(profile);
@@ -150,6 +157,7 @@ export default function ProfileView() {
     >({});
     const [isSavingSelfPassword, setIsSavingSelfPassword] = useState(false);
     const [loanedBookLoadingId, setLoanedBookLoadingId] = useState<string | null>(null);
+    const [purchasedBookLoadingId, setPurchasedBookLoadingId] = useState<string | null>(null);
     const [returnLoadingId, setReturnLoadingId] = useState<string | null>(null);
     const isMountedRef = useRef(true);
 
@@ -183,7 +191,7 @@ export default function ProfileView() {
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
-                navigate(`/login?next=${encodeURIComponent("/profile")}`);
+                navigate(`/login?next=${encodeURIComponent(location.pathname)}`);
                 return;
             }
 
@@ -222,7 +230,7 @@ export default function ProfileView() {
         try {
             const accessToken = await getAccessToken();
             if (!accessToken) {
-                const nextPath = "/profile";
+                const nextPath = location.pathname;
                 navigate(`/login?next=${encodeURIComponent(nextPath)}`);
                 return;
             }
@@ -247,7 +255,7 @@ export default function ProfileView() {
                 setIsLoading(false);
             }
         }
-    }, [currentLibraryId, getAccessToken, message, navigate, setProfile]);
+    }, [currentLibraryId, getAccessToken, location.pathname, message, navigate, setProfile]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -261,6 +269,7 @@ export default function ProfileView() {
     const publishers = useMemo(() => currentProfile?.publishers || [], [currentProfile]);
     const libraries = useMemo(() => currentProfile?.libraries || [], [currentProfile]);
     const loanedBooks = useMemo(() => currentProfile?.loaned_books || [], [currentProfile]);
+    const purchasedBooks = useMemo(() => currentProfile?.purchased_books || [], [currentProfile]);
     const recentReads = useMemo(() => currentProfile?.recent_reads || [], [currentProfile]);
     const maxConcurrentLoans = useMemo(
         () => currentProfile?.max_concurrent_loans || 3,
@@ -278,7 +287,7 @@ export default function ProfileView() {
         const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
         const accessToken = await getAccessToken();
         if (!accessToken) {
-            navigate(`/login?next=${encodeURIComponent("/profile")}`);
+            navigate(`/login?next=${encodeURIComponent(location.pathname)}`);
             return;
         }
 
@@ -290,6 +299,31 @@ export default function ProfileView() {
             message.error("Não foi possível baixar novamente este livro.");
         } finally {
             setLoanedBookLoadingId(null);
+        }
+    }
+
+    /**
+     * Baixa a licença de uma cópia já comprada.
+     *
+     * @param bookId Identificador do livro.
+     * @returns Promise<void>.
+     */
+    async function downloadPurchasedBookById(bookId: string): Promise<void> {
+        const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+        const accessToken = await getAccessToken();
+        if (!accessToken) {
+            navigate(`/login?next=${encodeURIComponent(location.pathname)}`);
+            return;
+        }
+
+        setPurchasedBookLoadingId(bookId);
+        try {
+            await downloadPurchasedBook(bookId, libraryId, accessToken);
+        } catch (error) {
+            console.warn("Failed to download purchased book", error);
+            message.error("Não foi possível baixar sua cópia.");
+        } finally {
+            setPurchasedBookLoadingId(null);
         }
     }
 
@@ -310,7 +344,7 @@ export default function ProfileView() {
             onOk: async () => {
                 const accessToken = await getAccessToken();
                 if (!accessToken) {
-                    navigate(`/login?next=${encodeURIComponent("/profile")}`);
+                    navigate(`/login?next=${encodeURIComponent(location.pathname)}`);
                     return;
                 }
 
@@ -336,7 +370,7 @@ export default function ProfileView() {
                 <section className="page-section">
                     <div className="section-header">
                         <Typography.Title level={3} className="section-title">
-                            Meu perfil
+                            {isBooksOnlyView ? "Meus livros" : "Meu perfil"}
                         </Typography.Title>
                     </div>
 
@@ -348,61 +382,72 @@ export default function ProfileView() {
                             </div>
                         ) : (
                             <Space direction="vertical" size={18} style={{ width: "100%" }}>
-                                <Descriptions column={1} size="small" labelStyle={{ fontWeight: 600 }}>
-                                    <Descriptions.Item label="E-mail">
-                                        {currentProfile?.email || "-"}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Administrador">
-                                        {formatYesNo(Boolean(currentProfile?.admin))}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Limite de empréstimos simultâneos">
-                                        {maxConcurrentLoans}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Biblioteca atual">
-                                        {library?.name || "-"}
-                                    </Descriptions.Item>
-                                    <Descriptions.Item label="Editora atual">
-                                        {publisher?.name || "-"}
-                                    </Descriptions.Item>
-                                </Descriptions>
+                                {!isBooksOnlyView && (
+                                    <>
+                                        <Descriptions
+                                            column={1}
+                                            size="small"
+                                            labelStyle={{ fontWeight: 600 }}
+                                        >
+                                            <Descriptions.Item label="E-mail">
+                                                {currentProfile?.email || "-"}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Administrador">
+                                                {formatYesNo(Boolean(currentProfile?.admin))}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Limite de empréstimos simultâneos">
+                                                {maxConcurrentLoans}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Biblioteca atual">
+                                                {library?.name || "-"}
+                                            </Descriptions.Item>
+                                            <Descriptions.Item label="Editora atual">
+                                                {publisher?.name || "-"}
+                                            </Descriptions.Item>
+                                        </Descriptions>
 
-                                <div className="profile-block">
-                                    <Typography.Text className="profile-block-title">
-                                        Bibliotecas vinculadas
-                                    </Typography.Text>
-                                    <div className="profile-tag-list">
-                                        {libraries.length === 0 ? (
-                                            <Typography.Text type="secondary">
-                                                Nenhuma biblioteca vinculada.
+                                        <div className="profile-block">
+                                            <Typography.Text className="profile-block-title">
+                                                Bibliotecas vinculadas
                                             </Typography.Text>
-                                        ) : (
-                                            libraries.map((item) => (
-                                                <Tag key={`library-${item.id}`} color="blue">
-                                                    {item.name}
-                                                </Tag>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
+                                            <div className="profile-tag-list">
+                                                {libraries.length === 0 ? (
+                                                    <Typography.Text type="secondary">
+                                                        Nenhuma biblioteca vinculada.
+                                                    </Typography.Text>
+                                                ) : (
+                                                    libraries.map((item) => (
+                                                        <Tag key={`library-${item.id}`} color="blue">
+                                                            {item.name}
+                                                        </Tag>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
 
-                                <div className="profile-block">
-                                    <Typography.Text className="profile-block-title">
-                                        Editoras vinculadas
-                                    </Typography.Text>
-                                    <div className="profile-tag-list">
-                                        {publishers.length === 0 ? (
-                                            <Typography.Text type="secondary">
-                                                Nenhuma editora vinculada.
+                                        <div className="profile-block">
+                                            <Typography.Text className="profile-block-title">
+                                                Editoras vinculadas
                                             </Typography.Text>
-                                        ) : (
-                                            publishers.map((item) => (
-                                                <Tag key={`publisher-${item.id}`} color="geekblue">
-                                                    {item.name}
-                                                </Tag>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
+                                            <div className="profile-tag-list">
+                                                {publishers.length === 0 ? (
+                                                    <Typography.Text type="secondary">
+                                                        Nenhuma editora vinculada.
+                                                    </Typography.Text>
+                                                ) : (
+                                                    publishers.map((item) => (
+                                                        <Tag
+                                                            key={`publisher-${item.id}`}
+                                                            color="geekblue"
+                                                        >
+                                                            {item.name}
+                                                        </Tag>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
 
                                 <div className="profile-block">
                                     <Typography.Text className="profile-block-title">
@@ -435,6 +480,35 @@ export default function ProfileView() {
 
                                 <div className="profile-block">
                                     <Typography.Text className="profile-block-title">
+                                        Livros que eu comprei
+                                    </Typography.Text>
+                                    {purchasedBooks.length === 0 ? (
+                                        <Typography.Text type="secondary">
+                                            Nenhum livro comprado ainda.
+                                        </Typography.Text>
+                                    ) : (
+                                        <Row gutter={[16, 16]} className="profile-book-grid">
+                                            {purchasedBooks.map((book) => (
+                                                <Col key={`purchased-${book.id}`} xs={24} sm={12} md={8} lg={6}>
+                                                    <BookCard
+                                                        book={book}
+                                                        onClick={() => navigate(`/book/${book.id}`)}
+                                                        secondaryActionLabel="Ler sua cópia"
+                                                        secondaryActionLoading={
+                                                            purchasedBookLoadingId === book.id
+                                                        }
+                                                        onSecondaryAction={() => {
+                                                            void downloadPurchasedBookById(book.id);
+                                                        }}
+                                                    />
+                                                </Col>
+                                            ))}
+                                        </Row>
+                                    )}
+                                </div>
+
+                                <div className="profile-block">
+                                    <Typography.Text className="profile-block-title">
                                         Livros recentes
                                     </Typography.Text>
                                     {recentReads.length === 0 ? (
@@ -456,9 +530,11 @@ export default function ProfileView() {
                                 </div>
 
                                 <div className="profile-actions">
-                                    <Button type="primary" onClick={openSelfPasswordModal}>
-                                        Alterar minha senha
-                                    </Button>
+                                    {!isBooksOnlyView && (
+                                        <Button type="primary" onClick={openSelfPasswordModal}>
+                                            Alterar minha senha
+                                        </Button>
+                                    )}
                                     {hasMultipleContexts && (
                                         <Button
                                             type="default"

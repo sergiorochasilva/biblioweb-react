@@ -204,6 +204,7 @@ export default function BookDetailsWrapper() {
             html_version_url={book.html_version_url}
             file_name={book.file_name}
             image_url={book.image_url}
+            active={book.active}
             preco_sugerido={book.preco_sugerido}
             preco_compra={book.preco_compra}
             loan_state={book.loan_state}

@@ -4,7 +4,7 @@ import { api, API_BASE_URL, buildAuthHeaders } from "./api";
 export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
 const DEFAULT_BOOK_FIELDS =
     "subtitle,original_title,corporate_author,publication_place,dewey_decimal,edition,year,isbn,pages,language," +
-    "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type," +
+    "summary,general_note,bibliography_note,content_type,media_type,carrier_type,type,active," +
     "library,external_url,external_source,html_version_url,file_name,image_url,subjects(subject,subject_name)," +
     "authors(author,author_name),preco_sugerido,preco_compra,available_licenses,max_uses_per_license," +
     "license_uses_count,loan_state,loan_expires_at,last_access_at,current_book_active_licenses," +

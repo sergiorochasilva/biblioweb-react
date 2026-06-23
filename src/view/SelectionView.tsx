@@ -5,6 +5,7 @@ import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../contexts/useAuth";
 import { api } from "../service/api";
 import { getErrorMessage } from "../service/errorMessage";
+import { resolvePostLoginRoute } from "../service/postLoginRoute";
 import type { ProfileData } from "../types";
 
 /**
@@ -68,9 +69,12 @@ export default function SelectionView() {
                 if (!isActive) return;
                 setProfileData(data);
                 setProfile(data);
+                setPublisher(null);
+                setLibrary(null);
 
-                if (data.libraries.length === 0) {
-                    message.error("Nenhuma biblioteca disponível para este usuário.");
+                const landingPath = resolvePostLoginRoute(data, null);
+                if (landingPath !== "/selection") {
+                    navigate(landingPath);
                     return;
                 }
 

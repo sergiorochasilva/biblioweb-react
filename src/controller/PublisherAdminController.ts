@@ -20,7 +20,6 @@ import {
     PublisherAuthor,
     PublisherSubject,
     readFileAsBase64,
-    sha256Hex,
     UpdateBookPayload,
     updateBook,
     createBook,
@@ -42,6 +41,8 @@ type BookFieldErrorKey =
     | "authors"
     | "publisher"
     | "subjects"
+    | "external_url"
+    | "external_source"
     | "file_name"
     | "edition"
     | "library_policy"
@@ -54,6 +55,7 @@ type ValidationResult<TField extends string> = {
 
 type BookFormState = {
     id?: string;
+    active: boolean;
     title: string;
     subtitle: string;
     original_title: string;
@@ -61,10 +63,13 @@ type BookFormState = {
     publisher: string;
     publication_place: string;
     preco_sugerido: string;
+    type: string;
     authors: string[];
     dewey_decimal: string;
     subjects: string[];
     html_version_url: string;
+    external_url: string;
+    external_source: string;
     file_name: string;
     edition: string;
     year: string;
@@ -82,6 +87,7 @@ type BookFormState = {
 };
 
 const emptyBookForm: BookFormState = {
+    active: true,
     title: "",
     subtitle: "",
     original_title: "",
@@ -89,10 +95,13 @@ const emptyBookForm: BookFormState = {
     publisher: "",
     publication_place: "",
     preco_sugerido: "",
+    type: "protected",
     authors: [],
     dewey_decimal: "",
     subjects: [],
     html_version_url: "",
+    external_url: "",
+    external_source: "",
     file_name: "",
     edition: "",
     year: "",
@@ -205,6 +214,16 @@ function isProtectedType(value: string | null | undefined): boolean {
 }
 
 /**
+ * Indica se um livro é do tipo externo.
+ *
+ * @param value Tipo bruto retornado pela API.
+ * @returns ``true`` quando o tipo for ``external``.
+ */
+function isExternalType(value: string | null | undefined): boolean {
+    return (value || "").trim().toLowerCase() === "external";
+}
+
+/**
  * Resolve o valor de editora permitido para o formulário.
  *
  * @param rawPublisher Editora bruta vinda da API.
@@ -253,6 +272,7 @@ function mapBookToForm(
 
     return {
         id: book.id,
+        active: book.active !== false,
         title: book.title || "",
         subtitle: book.subtitle || "",
         original_title: book.original_title || "",
@@ -264,6 +284,7 @@ function mapBookToForm(
         ),
         publication_place: book.publication_place || "",
         preco_sugerido: suggestedPrice,
+        type: "protected",
         authors: rawAuthors
             .map((item) => (item && typeof item.author === "number" ? String(item.author) : ""))
             .filter((item) => Boolean(item)),
@@ -272,6 +293,8 @@ function mapBookToForm(
             .map((item) => (item && typeof item.subject === "number" ? String(item.subject) : ""))
             .filter((item) => Boolean(item)),
         html_version_url: book.html_version_url || "",
+        external_url: book.external_url || "",
+        external_source: book.external_source || "",
         file_name: book.file_name || "",
         edition: book.edition || "",
         year: book.year || "",
@@ -303,6 +326,7 @@ function validateBookForm(
     hasBookFile: boolean
 ): ValidationResult<BookFieldErrorKey> | null {
     const fieldErrors: Partial<Record<BookFieldErrorKey, string>> = {};
+    const externalType = isExternalType(form.type);
 
     if (!form.title.trim()) {
         fieldErrors.title = "Título obrigatório.";
@@ -320,30 +344,40 @@ function validateBookForm(
         fieldErrors.subjects = "Selecione ao menos um assunto.";
     }
 
-    if (!form.file_name.trim() && !(mode === "create" && hasBookFile)) {
+    if (externalType) {
+        if (!form.external_url.trim()) {
+            fieldErrors.external_url = "URL externa obrigatória.";
+        }
+
+        if (!form.external_source.trim()) {
+            fieldErrors.external_source = "Fonte externa obrigatória.";
+        }
+    } else if (!form.file_name.trim() && !(mode === "create" && hasBookFile)) {
         fieldErrors.file_name = "Nome do arquivo obrigatório.";
     }
 
-    const invalidLibraryPolicy = form.libraries.some((item) => {
-        const availableLicenses = toNullableIntegerField(item.available_licenses);
-        const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
-        return (
-            availableLicenses === null ||
-            availableLicenses < 0 ||
-            maxUsesPerLicense === null ||
-            maxUsesPerLicense <= 0
-        );
-    });
+    if (form.libraries.length > 0) {
+        const invalidLibraryPolicy = form.libraries.some((item) => {
+            const availableLicenses = toNullableIntegerField(item.available_licenses);
+            const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
+            return (
+                availableLicenses === null ||
+                availableLicenses < 0 ||
+                maxUsesPerLicense === null ||
+                maxUsesPerLicense <= 0
+            );
+        });
 
-    if (invalidLibraryPolicy) {
-        fieldErrors.library_policy = "Preencha a política do acervo vinculado.";
+        if (invalidLibraryPolicy) {
+            fieldErrors.library_policy = "Preencha a política do acervo vinculado.";
+        }
     }
 
     if (!form.edition.trim()) {
         fieldErrors.edition = "Edição obrigatória.";
     }
 
-    if (mode === "create" && !hasBookFile) {
+    if (mode === "create" && !hasBookFile && !externalType) {
         fieldErrors.file = "Arquivo obrigatório para cadastro.";
     }
 
@@ -419,7 +453,12 @@ export function usePublisherAdminController() {
     const bookOptions = useMemo(
         () =>
             books
-                .filter((book) => Boolean(book.id))
+                .filter(
+                    (book) =>
+                        Boolean(book.id) &&
+                        book.active !== false &&
+                        isProtectedType(book.type)
+                )
                 .map((book) => ({
                     value: book.id,
                     label: book.title,
@@ -500,8 +539,7 @@ export function usePublisherAdminController() {
                 limit: 200,
             });
 
-            const protectedBooks = result.filter((book) => isProtectedType(book.type));
-            setBooks(protectedBooks);
+            setBooks(result.filter((book) => isProtectedType(book.type)));
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao buscar livros."));
         } finally {
@@ -579,12 +617,15 @@ export function usePublisherAdminController() {
         }
 
         setPurchaseBookId((previous) => {
-            if (previous && books.some((book) => book.id === previous)) {
+            if (previous && bookOptions.some((book) => book.value === previous)) {
                 return previous;
             }
-            return books[0].id;
+            const activeBook = books.find(
+                (book) => book.active !== false && isProtectedType(book.type)
+            );
+            return activeBook?.id || bookOptions[0]?.value || "";
         });
-    }, [books]);
+    }, [bookOptions, books]);
 
     /**
      * Limpa mensagem de erro de um campo específico do formulário.
@@ -615,12 +656,9 @@ export function usePublisherAdminController() {
         setBookFile(null);
         setBookForm({
             ...emptyBookForm,
+            active: true,
             publisher: publisherFilter || defaultPublisherId,
-            libraries: buildBookLibraryForms(
-                undefined,
-                BOOK_LIBRARY_DEFAULT_POLICY,
-                ["1"]
-            ),
+            libraries: [],
         });
         setBookModalOpen(true);
     }
@@ -632,6 +670,11 @@ export function usePublisherAdminController() {
      * @returns Promise<void>
      */
     async function openEditBookModal(book: PublisherAdminBook): Promise<void> {
+        if (!isProtectedType(book.type)) {
+            setError("Administradores de editora só podem editar livros protected.");
+            return;
+        }
+
         setBookModalError("");
         setBookFormErrors({});
         setBookFile(null);
@@ -645,15 +688,14 @@ export function usePublisherAdminController() {
             }
 
             const detailedBook = await fetchBookById(accessToken, book.id);
-            const selectedLibraryId = detailedBook.library ?? book.library ?? null;
             const relatedLibraries =
                 Array.isArray(detailedBook.libraries) && detailedBook.libraries.length > 0
                     ? detailedBook.libraries
-                    : selectedLibraryId !== null
+                    : book.library !== undefined
                         ? await fetchBookLibraryLinks(
                               accessToken,
                               detailedBook.id,
-                              selectedLibraryId
+                              book.library
                           )
                         : [];
             const detailedBookWithLibraries: PublisherAdminBook = {
@@ -708,8 +750,12 @@ export function usePublisherAdminController() {
     async function saveBook(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
+        const protectedForm = {
+            ...bookForm,
+            type: "protected",
+        };
         const validationError = validateBookForm(
-            bookForm,
+            protectedForm,
             bookModalMode,
             Boolean(bookFile)
         );
@@ -736,40 +782,42 @@ export function usePublisherAdminController() {
                 return;
             }
 
-            const subjectIds = parseBookSubjectIds(bookForm.subjects);
-            const authorIds = parseBookAuthorIds(bookForm.authors);
+            const subjectIds = parseBookSubjectIds(protectedForm.subjects);
+            const authorIds = parseBookAuthorIds(protectedForm.authors);
+            const bookType = "protected";
             const payload: UpdateBookPayload = {
-                title: toNullableField(bookForm.title),
-                subtitle: toNullableField(bookForm.subtitle),
-                original_title: toNullableField(bookForm.original_title),
-                corporate_author: toNullableField(bookForm.corporate_author),
-                publisher: toNullableField(bookForm.publisher),
-                publication_place: toNullableField(bookForm.publication_place),
-                preco_sugerido: toNullableField(bookForm.preco_sugerido),
-                dewey_decimal: toNullableField(bookForm.dewey_decimal),
-                type: "protected",
+                title: toNullableField(protectedForm.title),
+                subtitle: toNullableField(protectedForm.subtitle),
+                original_title: toNullableField(protectedForm.original_title),
+                corporate_author: toNullableField(protectedForm.corporate_author),
+                publisher: toNullableField(protectedForm.publisher),
+                publication_place: toNullableField(protectedForm.publication_place),
+                preco_sugerido: toNullableField(protectedForm.preco_sugerido),
+                dewey_decimal: toNullableField(protectedForm.dewey_decimal),
+                type: bookType,
                 external_url: null,
                 external_source: null,
-                html_version_url: toNullableField(bookForm.html_version_url),
-                file_name: toNullableField(bookForm.file_name),
-                image_url: toNullableField(bookForm.image_url),
-                edition: toNullableField(bookForm.edition),
-                year: toNullableField(bookForm.year),
-                isbn: toNullableField(bookForm.isbn),
-                pages: toNullableField(bookForm.pages),
-                language: toNullableField(bookForm.language),
-                summary: toNullableField(bookForm.summary),
-                general_note: toNullableField(bookForm.general_note),
-                bibliography_note: toNullableField(bookForm.bibliography_note),
-                content_type: toNullableField(bookForm.content_type),
-                media_type: toNullableField(bookForm.media_type),
-                carrier_type: toNullableField(bookForm.carrier_type),
+                html_version_url: toNullableField(protectedForm.html_version_url),
+                file_name: toNullableField(protectedForm.file_name),
+                image_url: toNullableField(protectedForm.image_url),
+                edition: toNullableField(protectedForm.edition),
+                year: toNullableField(protectedForm.year),
+                isbn: toNullableField(protectedForm.isbn),
+                pages: toNullableField(protectedForm.pages),
+                language: toNullableField(protectedForm.language),
+                summary: toNullableField(protectedForm.summary),
+                general_note: toNullableField(protectedForm.general_note),
+                bibliography_note: toNullableField(protectedForm.bibliography_note),
+                content_type: toNullableField(protectedForm.content_type),
+                media_type: toNullableField(protectedForm.media_type),
+                carrier_type: toNullableField(protectedForm.carrier_type),
+                active: protectedForm.active,
                 authors: authorIds.map((authorId) => ({ author: authorId })),
                 subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
                 libraries: buildBookLibraryPayloads(
-                    bookForm.libraries.map((item) => ({
+                    protectedForm.libraries.map((item) => ({
                         ...item,
-                        preco_compra: item.preco_compra || bookForm.preco_sugerido,
+                        preco_compra: item.preco_compra || protectedForm.preco_sugerido,
                     }))
                 ),
             };
@@ -852,13 +900,12 @@ export function usePublisherAdminController() {
                 return;
             }
 
-            const passHash = await sha256Hex(purchasePassword);
             const payload = {
                 publisher: purchasePublisherId,
                 book_id: purchaseBookId,
                 user_email: purchaseEmail,
                 reading_pass_hint: purchaseHint,
-                reading_pass_hash: passHash,
+                reading_password: purchasePassword,
             };
 
             const data = await generatePurchaseLink(accessToken, payload);

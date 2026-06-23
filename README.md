@@ -56,6 +56,35 @@ Foi adicionada a rota protegida `"/admin"` para manutenção global do sistema:
 
 A rota `"/publisher-admin"` continua disponível para o fluxo legado da editora.
 
+## Playwright e validação local
+
+Quando a mudanca tocar login, selecao, admin de editoras, perfil, CRUD de livro,
+links de venda ou download licenciado, prefira validar com a stack real:
+
+1. Suba a API e o banco no repositório `biblioweb-api` com Docker Compose.
+2. Rode o front com a URL da API apontando para essa stack.
+3. Execute a suíte com `npm run test:e2e`.
+
+Comandos úteis:
+
+```sh
+cd /home/sergio/@pessoal/biblioweb-api
+docker compose up -d postgres app
+
+cd /home/sergio/@pessoal/biblioweb-react
+PLAYWRIGHT_API_BASE_URL=http://127.0.0.1:5000 npm run test:e2e
+```
+
+Observações:
+
+- a suíte do browser usa um host diferente de `localhost` para evitar a regra
+  especial de `src/service/api.ts`;
+- a URL da API deve vir de `VITE_API_BASE_URL`;
+- `npm run build` e `npm run lint` continuam sendo as validações rápidas antes
+  do e2e.
+- se o Chromium do Playwright ainda não estiver instalado, rode
+  `npx playwright install chromium` uma vez.
+
 ## Navegação pública e descoberta
 
 - Header público com:

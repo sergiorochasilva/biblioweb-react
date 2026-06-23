@@ -7,6 +7,7 @@ import type { AuthTokenResponse } from "../service/authTypes";
 import { getErrorMessage } from "../service/errorMessage";
 import { useAuth } from "../contexts/useAuth";
 import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
+import { resolveLandingAfterLogin } from "../service/postLoginRoute";
 
 /**
  * Tela de validação do código recebido por e-mail.
@@ -17,7 +18,7 @@ export default function CodeVerificationView() {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { setSessionFromResponse } = useAuth();
+    const { setSessionFromResponse, setProfile, setPublisher, setLibrary } = useAuth();
     const { message } = AntdApp.useApp();
     const email = sessionStorage.getItem("login_email");
     const nextPath = searchParams.get("next");
@@ -69,11 +70,16 @@ export default function CodeVerificationView() {
                     return;
                 }
 
-                if (nextPath) {
-                    navigate(nextPath);
-                } else {
-                    navigate("/selection");
-                }
+                const landingPath = await resolveLandingAfterLogin(
+                    accessToken,
+                    {
+                        setProfile,
+                        setPublisher,
+                        setLibrary,
+                    },
+                    nextPath
+                );
+                navigate(landingPath);
             } else {
                 throw new Error("Token não recebido da API.");
             }

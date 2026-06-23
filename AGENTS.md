@@ -61,12 +61,35 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
   - selecao de editora/biblioteca
   - tentativa de emprestimo sem login e retomada pos-login
 
-## 6.1) Skills disponiveis
+## 6.1) Validacao integrada e Playwright
+- Quando a mudanca tocar login, selecao, admin de editoras, perfil, CRUD de livro, links de venda ou download licenciado, prefira validar com a stack real:
+  - front rodando de verdade;
+  - API rodando de verdade;
+  - PostgreSQL rodando de verdade.
+- Em cenarios de integracao/e2e, nao use `localhost` como pressuposto do front se ele estiver dentro de container; a URL da API deve vir de uma variavel de ambiente ou do hostname alcancavel na rede Docker.
+- Para Playwright local, prefira abrir o front em um host que nao seja `localhost` nem `127.0.0.1` (por exemplo, `127.0.0.2`), porque `src/service/api.ts` cai em `http://localhost:15000` nesses hostnames.
+- Ao rodar e2e, configure `VITE_API_BASE_URL` para a URL real da API no Docker e suba o Vite com `--host 0.0.0.0`.
+- Playwright deve abrir o browser real e percorrer o fluxo real; nao mocke auth, rota ou download quando o objetivo for validar contrato.
+- Sequencia minima recomendada quando houver teste ponta a ponta:
+  - subir `postgres` e `app` pelo `docker compose` da API;
+  - iniciar o front com a URL da API apontando para essa stack;
+  - executar a suite do navegador contra o front em execucao.
+- Coberturas que valem como baseline:
+  - acesso anonimo a home, busca e detalhe;
+  - login por e-mail + codigo;
+  - login por credenciais;
+  - selecao quando houver mais de um contexto;
+  - landing sem biblioteca;
+  - CRUD de publisher-admin;
+  - geracao e teste de URL de venda.
+- Se a suite e2e for adicionada, prefira um script dedicado como `npm run test:e2e`, separado de `build` e `lint`.
+
+## 6.2) Skills disponiveis
 - `skills/auth-frontend-flow.md`
 - `skills/public-routes-and-loan-gate.md`
 - `skills/frontend-visual-patterns-public-pages.md`
 
-## 6.2) Evolucao cooperativa de AGENTS e Skills
+## 6.3) Evolucao cooperativa de AGENTS e Skills
 - O agente pode (e deve) cooperar evoluindo este `AGENTS.md` quando perceber lacunas recorrentes durante as interacoes.
 - Sinal forte de lacuna: varias mensagens seguidas do usuario para ajustar a mesma tarefa/fluxo por falta de padrao explicito.
 - O agente pode manter skills existentes e criar novas skills em `skills/` quando identificar ganho real para acoes futuras.

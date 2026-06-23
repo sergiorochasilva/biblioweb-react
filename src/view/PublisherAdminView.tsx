@@ -10,6 +10,7 @@ import {
     List,
     Modal,
     Select,
+    Switch,
     Tabs,
     Typography,
     Upload,
@@ -120,7 +121,7 @@ export default function PublisherAdminView() {
                                 children: (
                                     <Card
                                         className="glass-card admin-panel admin-tab-card"
-                                        title="Livros protegidos"
+                                        title="Livros da editora"
                                         extra={
                                             <Button
                                                 type="primary"
@@ -171,7 +172,7 @@ export default function PublisherAdminView() {
                                         </div>
 
                                         {state.books.length === 0 && !state.isLoadingBooks ? (
-                                            <Empty description="Nenhum livro protegido encontrado." />
+                                            <Empty description="Nenhum livro encontrado." />
                                         ) : (
                                             <List
                                                 className="admin-list"
@@ -197,8 +198,11 @@ export default function PublisherAdminView() {
                                                             description={
                                                                 <div className="publisher-admin-list-meta">
                                                                     <span>{getBookAuthorsText(book) || "Autor não informado"}</span>
-                                                                    <span>
+                                                                <span>
                                                                         {book.publisher || "Editora não informada"}
+                                                                    </span>
+                                                                    <span>
+                                                                        Status: {book.active === false ? "Inativo" : "Ativo"}
                                                                     </span>
                                                                     <span>
                                                                         ISBN: {book.isbn || "-"} | Edição: {book.edition || "-"}
@@ -344,7 +348,7 @@ export default function PublisherAdminView() {
             </Content>
 
             <Modal
-                title={state.bookModalMode === "create" ? "Adicionar livro protegido" : "Editar livro protegido"}
+                title={state.bookModalMode === "create" ? "Adicionar livro" : "Editar livro"}
                 open={state.bookModalOpen}
                 onCancel={actions.closeBookModal}
                 footer={null}
@@ -457,6 +461,10 @@ export default function PublisherAdminView() {
                             )}
                         </div>
                         <div className="form-field">
+                            <label className="field-label">Tipo</label>
+                            <Input className="admin-input" value="Protegido" disabled />
+                        </div>
+                        <div className="form-field">
                             <label className="field-label">Preço Sugerido</label>
                             <InputNumber
                                 className="admin-input"
@@ -534,15 +542,27 @@ export default function PublisherAdminView() {
                         </div>
                         <BookLibraryPolicyGrid
                             label="Política por acervo"
-                            helperText="Licenças disponíveis e máximo de usos são editáveis. Progresso da licença atual é apenas leitura."
+                            helperText="Licenças disponíveis e máximo de usos são editáveis quando houver acervo vinculado. O livro também pode ser salvo sem acervo."
                             error={state.bookFormErrors.library_policy}
                             value={state.bookForm.libraries}
-                            emptyDescription="A política será criada junto com o acervo vinculado."
+                            emptyDescription="Nenhum acervo vinculado. O livro pode ser salvo assim."
                             onChange={(libraries) => {
                                 actions.setBookLibraries(libraries);
                                 actions.clearBookFieldError("library_policy");
                             }}
                         />
+                        <div className="form-field switch-field">
+                            <label className="field-label">Livro ativo</label>
+                            <Switch
+                                checked={state.bookForm.active}
+                                onChange={(checked) =>
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        active: checked,
+                                    }))
+                                }
+                            />
+                        </div>
                         <div className="form-field">
                             <label className="field-label">Nome do arquivo (*)</label>
                             <Input
@@ -550,7 +570,10 @@ export default function PublisherAdminView() {
                                 status={state.bookFormErrors.file_name ? "error" : undefined}
                                 value={state.bookForm.file_name}
                                 onChange={(event) => {
-                                    actions.setBookForm((previous) => ({ ...previous, file_name: event.target.value }));
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        file_name: event.target.value,
+                                    }));
                                     actions.clearBookFieldError("file_name");
                                 }}
                             />

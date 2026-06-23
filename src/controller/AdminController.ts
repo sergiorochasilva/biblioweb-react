@@ -15,6 +15,7 @@ import {
     AdminLibrary,
     AdminPublisher,
     AdminSubject,
+    AdminUserPublisher,
     AdminUser,
     CreateBookPayload,
     createBook,
@@ -54,6 +55,7 @@ import { validateStrongPassword } from "../service/passwordPolicy";
 
 type BookFormState = {
     id?: string;
+    active: boolean;
     title: string;
     subtitle: string;
     original_title: string;
@@ -96,7 +98,7 @@ type UserFormState = {
     dica_senha: string;
     admin: boolean;
     library_limits: UserLibraryLimitForm[];
-    publishers: string[];
+    publishers: AdminUserPublisher[];
 };
 
 type UserPasswordFormState = {
@@ -174,6 +176,7 @@ type ValidationResult<TField extends string> = {
 const ADMIN_BOOKS_PAGE_SIZE = 20;
 
 const emptyBookForm: BookFormState = {
+    active: true,
     title: "",
     subtitle: "",
     original_title: "",
@@ -318,6 +321,7 @@ function mapBookToForm(book: AdminBook, fallbackLibraryIds: string[]): BookFormS
 
     return {
         id: book.book_id || book.id,
+        active: book.active !== false,
         title: book.title || "",
         subtitle: book.subtitle || "",
         original_title: book.original_title || "",
@@ -392,23 +396,21 @@ function validateBookForm(
         fieldErrors.subjects = "Selecione ao menos um assunto.";
     }
 
-    if (!form.libraries || form.libraries.length <= 0) {
-        fieldErrors.libraries = "Selecione ao menos um acervo.";
-    }
+    if ((form.libraries || []).length > 0) {
+        const invalidLibraryPolicy = form.libraries.some((item) => {
+            const availableLicenses = toNullableIntegerField(item.available_licenses);
+            const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
+            return (
+                availableLicenses === null ||
+                availableLicenses < 0 ||
+                maxUsesPerLicense === null ||
+                maxUsesPerLicense <= 0
+            );
+        });
 
-    const invalidLibraryPolicy = form.libraries.some((item) => {
-        const availableLicenses = toNullableIntegerField(item.available_licenses);
-        const maxUsesPerLicense = toNullableIntegerField(item.max_uses_per_license);
-        return (
-            availableLicenses === null ||
-            availableLicenses < 0 ||
-            maxUsesPerLicense === null ||
-            maxUsesPerLicense <= 0
-        );
-    });
-
-    if (invalidLibraryPolicy) {
-        fieldErrors.library_policy = "Preencha a política de cada acervo selecionado.";
+        if (invalidLibraryPolicy) {
+            fieldErrors.library_policy = "Preencha a política de cada acervo selecionado.";
+        }
     }
 
     if (!externalType && !form.file_name.trim() && !(mode === "create" && hasBookFile)) {
@@ -750,22 +752,129 @@ function parseBookAuthorIds(values: string[]): number[] {
 }
 
 /**
- * Converte lista textual para IDs únicos de editora.
+ * Converte uma flag heterogênea em booleano.
  *
- * @param values IDs de editora.
- * @returns IDs únicos e não vazios.
+ * @param value Valor bruto.
+ * @returns ``true`` quando representa ligado.
  */
-function parseUserPublisherIds(values: string[]): string[] {
-    const unique = new Set<string>();
+function normalizeBooleanFlag(value: unknown): boolean {
+    if (value === true || value === 1 || value === "1") {
+        return true;
+    }
 
-    for (const value of values) {
-        const parsed = value.trim();
-        if (parsed) {
-            unique.add(parsed);
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "true" || normalized === "yes" || normalized === "sim";
+    }
+
+    return false;
+}
+
+/**
+ * Normaliza os vínculos de editoras do usuário para o formulário.
+ *
+ * @param value Lista bruta recebida da API.
+ * @returns Lista única de vínculos com flag de admin.
+ */
+function normalizeUserPublisherSelection(value: unknown): AdminUserPublisher[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    const unique = new Map<string, AdminUserPublisher>();
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
         }
+
+        const raw = item as Record<string, unknown>;
+        const publisherRaw = raw.publisher ?? raw.id ?? raw.name ?? raw.nome;
+        const publisher =
+            typeof publisherRaw === "string" || typeof publisherRaw === "number"
+                ? String(publisherRaw).trim()
+                : "";
+
+        if (!publisher) {
+            continue;
+        }
+
+        const current = unique.get(publisher);
+        const normalized = {
+            publisher,
+            admin: normalizeBooleanFlag(raw.admin),
+        };
+        unique.set(publisher, {
+            publisher,
+            admin: current ? current.admin || normalized.admin : normalized.admin,
+        });
     }
 
     return Array.from(unique.values());
+}
+
+/**
+ * Alterna a associação de uma editora no formulário.
+ *
+ * @param current Editoras atualmente vinculadas.
+ * @param publisherId ID da editora.
+ * @returns Novo conjunto de vínculos.
+ */
+function toggleUserPublisherSelection(
+    current: AdminUserPublisher[],
+    publisherId: string
+): AdminUserPublisher[] {
+    const normalizedPublisher = publisherId.trim();
+    if (!normalizedPublisher) {
+        return current;
+    }
+
+    const exists = current.find((item) => item.publisher === normalizedPublisher);
+    if (exists) {
+        return current.filter((item) => item.publisher !== normalizedPublisher);
+    }
+
+    return [...current, { publisher: normalizedPublisher, admin: false }];
+}
+
+/**
+ * Atualiza a flag de admin de uma editora vinculada.
+ *
+ * @param current Editoras atualmente vinculadas.
+ * @param publisherId ID da editora.
+ * @param admin Novo valor da flag.
+ * @returns Novo conjunto de vínculos.
+ */
+function setUserPublisherAdmin(
+    current: AdminUserPublisher[],
+    publisherId: string,
+    admin: boolean
+): AdminUserPublisher[] {
+    const normalizedPublisher = publisherId.trim();
+    if (!normalizedPublisher) {
+        return current;
+    }
+
+    let found = false;
+    const next = current.map((item) => {
+        if (item.publisher !== normalizedPublisher) {
+            return item;
+        }
+
+        found = true;
+        return {
+            publisher: item.publisher,
+            admin,
+        };
+    });
+
+    if (!found) {
+        next.push({
+            publisher: normalizedPublisher,
+            admin,
+        });
+    }
+
+    return next;
 }
 
 /**
@@ -921,11 +1030,6 @@ export function useAdminController() {
             setPublisherRows(loadedPublishers);
             setSubjectRows(loadedSubjects);
             setAuthorRows(loadedAuthors);
-
-            const firstLibraryId = loadedLibraries[0]?.id
-                ? String(loadedLibraries[0].id)
-                : "";
-
             setLibraryFilter((previous) => {
                 if (
                     previous &&
@@ -933,21 +1037,17 @@ export function useAdminController() {
                 ) {
                     return previous;
                 }
-                return firstLibraryId;
+                return "";
             });
 
-            setAppliedFilters((previous) => {
-                const currentLibrary =
+            setAppliedFilters((previous) => ({
+                ...previous,
+                library:
                     previous.library &&
                     loadedLibraries.some((item) => String(item.id) === previous.library)
                         ? previous.library
-                        : firstLibraryId;
-
-                return {
-                    ...previous,
-                    library: currentLibrary,
-                };
-            });
+                        : "",
+            }));
 
             setPublisherFilter((previous) => {
                 if (
@@ -969,12 +1069,6 @@ export function useAdminController() {
      * @returns Promise<void>.
      */
     const loadBooks = useCallback(async (): Promise<void> => {
-        if (!appliedFilters.library) {
-            setBooks([]);
-            setBooksNext(null);
-            return;
-        }
-
         setIsLoadingBooks(true);
         setError("");
 
@@ -988,7 +1082,7 @@ export function useAdminController() {
             const page = await fetchBooksPage(token, {
                 search: appliedFilters.search || undefined,
                 publisher: appliedFilters.publisher || undefined,
-                library: appliedFilters.library,
+                library: appliedFilters.library || undefined,
                 limit: ADMIN_BOOKS_PAGE_SIZE,
             });
             setBooks(page.result);
@@ -1020,7 +1114,7 @@ export function useAdminController() {
                 return;
             }
 
-            const page = await fetchBooksPageByNext(token, booksNext);
+            const page = await fetchBooksPageByNext(token, booksNext, appliedFilters.library || undefined);
             setBooks((previous) => {
                 const knownIds = new Set(previous.map((book) => String(book.id)));
                 const appendOnly = page.result.filter(
@@ -1034,7 +1128,7 @@ export function useAdminController() {
         } finally {
             setIsLoadingMoreBooks(false);
         }
-    }, [booksNext, getAccessToken]);
+    }, [appliedFilters.library, booksNext, getAccessToken]);
 
     /**
      * Carrega usuários administrativos.
@@ -1266,6 +1360,33 @@ export function useAdminController() {
     }
 
     /**
+     * Alterna o vínculo de uma editora no formulário de usuário.
+     *
+     * @param publisherId ID da editora.
+     * @returns void.
+     */
+    function toggleUserPublisher(publisherId: string): void {
+        setUserForm((previous) => ({
+            ...previous,
+            publishers: toggleUserPublisherSelection(previous.publishers, publisherId),
+        }));
+    }
+
+    /**
+     * Atualiza a flag de admin de uma editora vinculada ao usuário.
+     *
+     * @param publisherId ID da editora.
+     * @param admin Novo valor da flag.
+     * @returns void.
+     */
+    function setUserPublisherAdminFlag(publisherId: string, admin: boolean): void {
+        setUserForm((previous) => ({
+            ...previous,
+            publishers: setUserPublisherAdmin(previous.publishers, publisherId, admin),
+        }));
+    }
+
+    /**
      * Remove erro de um campo do formulário de troca de senha.
      *
      * @param field Campo a ser limpo.
@@ -1460,12 +1581,12 @@ export function useAdminController() {
     }, [isAuthenticated, loadReferenceData]);
 
     useEffect(() => {
-        if (!isAuthenticated || !appliedFilters.library) {
+        if (!isAuthenticated || activeTab !== "books") {
             return;
         }
 
         void loadBooks();
-    }, [isAuthenticated, loadBooks, appliedFilters.library]);
+    }, [activeTab, isAuthenticated, loadBooks]);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -1513,16 +1634,10 @@ export function useAdminController() {
      * @returns void.
      */
     function applyBookFilters(): void {
-        const normalizedLibrary = libraryFilter.trim();
-        if (!normalizedLibrary) {
-            message.error("Selecione um acervo para filtrar os livros.");
-            return;
-        }
-
         setAppliedFilters({
             search: bookSearch.trim(),
             publisher: publisherFilter.trim(),
-            library: normalizedLibrary,
+            library: libraryFilter.trim(),
         });
     }
 
@@ -1532,14 +1647,10 @@ export function useAdminController() {
      * @returns void.
      */
     function clearBookFilters(): void {
-        const firstLibraryId = libraries[0]?.id ? String(libraries[0].id) : "";
         setBookSearch("");
         setPublisherFilter("");
-        setLibraryFilter(firstLibraryId);
-        setAppliedFilters({
-            ...emptyFilters,
-            library: firstLibraryId,
-        });
+        setLibraryFilter("");
+        setAppliedFilters(emptyFilters);
     }
 
     /**
@@ -1643,20 +1754,11 @@ export function useAdminController() {
      * @returns void.
      */
     function openCreateBookModal(): void {
-        const defaultLibrary = libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
-        if (!defaultLibrary) {
-            message.error("Cadastre ao menos um acervo antes de adicionar livros.");
-            return;
-        }
-
         setBookModalMode("create");
         setBookForm({
             ...emptyBookForm,
-            libraries: buildBookLibraryForms(
-                undefined,
-                BOOK_LIBRARY_DEFAULT_POLICY,
-                [defaultLibrary]
-            ),
+            active: true,
+            libraries: [],
             publisher: publishers[0]?.id || "",
         });
         setBookFile(null);
@@ -1682,13 +1784,6 @@ export function useAdminController() {
                   buildBookLibraryForms(book.libraries, BOOK_LIBRARY_DEFAULT_POLICY)
               )
             : [];
-        if (fallbackLibraries.length <= 0) {
-            const fallbackLibrary =
-                libraryFilter.trim() || (libraries[0] ? String(libraries[0].id) : "");
-            if (fallbackLibrary) {
-                fallbackLibraries.push(fallbackLibrary);
-            }
-        }
         const fallbackForm = mapBookToForm(book, fallbackLibraries);
 
         const token = await getAccessToken();
@@ -1701,15 +1796,13 @@ export function useAdminController() {
             const selected = await fetchBookById(token, book.book_id || book.id);
             const resolvedBookId = selected.book_id || selected.id;
             let selectedLibraries = Array.isArray(selected.libraries) ? selected.libraries : [];
-            const selectedLibraryId =
-                selected.library ?? book.library ?? fallbackLibraries[0] ?? null;
             if (resolvedBookId) {
                 try {
-                    if (selectedLibraries.length <= 0 && selectedLibraryId !== null) {
+                    if (selectedLibraries.length <= 0 && book.library !== undefined) {
                         selectedLibraries = await fetchBookLibraryLinks(
                             token,
                             resolvedBookId,
-                            selectedLibraryId
+                            book.library
                         );
                     }
                 } catch {
@@ -1853,14 +1946,6 @@ export function useAdminController() {
                 return;
             }
 
-            const libraryIds = extractBookLibraryIds(bookForm.libraries);
-            if (libraryIds.length <= 0) {
-                showBookModalError("Selecione ao menos um acervo.", {
-                    libraries: "Selecione ao menos um acervo.",
-                });
-                return;
-            }
-
             const subjectIds = parseBookSubjectIds(bookForm.subjects);
             if (subjectIds.length <= 0) {
                 showBookModalError("Selecione ao menos um assunto.", {
@@ -1902,6 +1987,7 @@ export function useAdminController() {
                 content_type: toNullableField(bookForm.content_type),
                 media_type: toNullableField(bookForm.media_type),
                 carrier_type: toNullableField(bookForm.carrier_type),
+                active: bookForm.active,
                 authors: authorIds.map((authorId) => ({ author: authorId })),
                 subjects: subjectIds.map((subjectId) => ({ subject: subjectId })),
                 libraries: buildBookLibraryPayloads(bookForm.libraries),
@@ -1999,7 +2085,7 @@ export function useAdminController() {
                 dica_senha: detailed.reading_pass_hint,
                 admin: Boolean(detailed.admin),
                 library_limits: mapUserLibraryLimitsToForm(detailed),
-                publishers: detailed.publishers,
+                publishers: normalizeUserPublisherSelection(detailed.publishers),
             });
             setUserModalOpen(true);
         } catch (err) {
@@ -2010,7 +2096,7 @@ export function useAdminController() {
                 dica_senha: user.reading_pass_hint,
                 admin: Boolean(user.admin),
                 library_limits: mapUserLibraryLimitsToForm(user),
-                publishers: user.publishers,
+                publishers: normalizeUserPublisherSelection(user.publishers),
             });
             setUserModalOpen(true);
             showUserModalError(
@@ -2063,7 +2149,7 @@ export function useAdminController() {
             const dicaSenha = userForm.dica_senha.trim();
             const senha = userForm.senha.trim();
             const userLibraryLimits = normalizeUserLibraryLimits(userForm.library_limits);
-            const userPublishers = parseUserPublisherIds(userForm.publishers);
+            const userPublishers = normalizeUserPublisherSelection(userForm.publishers);
 
             if (userModalMode === "edit" && userForm.id) {
                 await updateUser(token, userForm.id, {
@@ -2780,6 +2866,8 @@ export function useAdminController() {
             openEditUserModal,
             closeUserModal,
             setUserForm,
+            toggleUserPublisher,
+            setUserPublisherAdminFlag,
             saveUser,
             openChangePasswordModal,
             closeUserPasswordModal,

@@ -62,6 +62,7 @@ interface BookDetailsViewProps {
     html_version_url?: string;
     file_name?: string;
     image_url?: string | null;
+    active?: boolean;
     preco_sugerido?: number | string | null;
     preco_compra?: number | string | null;
     loan_state?: string;
@@ -397,6 +398,7 @@ export default function BookDetailsView({
     html_version_url,
     file_name,
     image_url,
+    active,
     preco_compra,
     loan_state,
     loan_expires_at,
@@ -483,6 +485,7 @@ export default function BookDetailsView({
         isRecentBook && normalizedHtmlVersionUrl
             ? "Continuar lendo versão web"
             : "Ler versão web";
+    const isInactiveBook = active === false;
 
     useEffect(() => {
         unavailableModalShownRef.current = false;
@@ -876,6 +879,7 @@ export default function BookDetailsView({
                             <Typography.Title level={3} className="book-details-title">
                                 {title}
                             </Typography.Title>
+                            {isInactiveBook && <Tag color="default">Inativo</Tag>}
                             <Descriptions
                                 column={1}
                                 size="small"

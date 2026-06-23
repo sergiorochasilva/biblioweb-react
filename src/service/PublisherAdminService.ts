@@ -53,6 +53,7 @@ export type UpdateBookPayload = {
     content_type?: string | null;
     media_type?: string | null;
     carrier_type?: string | null;
+    active: boolean;
     authors?: Array<{ id?: number; author: number }>;
     subjects?: Array<{ id?: number; subject: number }>;
     libraries?: BookLibraryPayload[];
@@ -68,7 +69,7 @@ export type PurchaseLinkPayload = {
     book_id: string;
     user_email: string;
     reading_pass_hint: string;
-    reading_pass_hash: string;
+    reading_password: string;
 };
 
 export type PurchaseLinkResponse = {
@@ -467,7 +468,7 @@ export async function fetchBooks(
     }
 
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    let data = await api.get<unknown>(`/libraries_books${suffix}`, token);
+    let data = await api.get<unknown>(`/books${suffix}`, token);
     let books = normalizeBooksResponse(data);
     allBooks.push(...books);
 

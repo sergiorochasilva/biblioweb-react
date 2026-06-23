@@ -7,6 +7,7 @@ import type { AuthTokenResponse } from "../service/authTypes";
 import { getErrorMessage } from "../service/errorMessage";
 import { useAuth } from "../contexts/useAuth";
 import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
+import { resolveLandingAfterLogin } from "../service/postLoginRoute";
 
 /**
  * Tela de autenticação por senha.
@@ -18,7 +19,7 @@ export default function PasswordLoginView() {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { setSessionFromResponse } = useAuth();
+    const { setSessionFromResponse, setProfile, setPublisher, setLibrary } = useAuth();
     const { message } = AntdApp.useApp();
     const email = sessionStorage.getItem("login_email");
     const nextPath = searchParams.get("next");
@@ -81,11 +82,16 @@ export default function PasswordLoginView() {
                 return;
             }
 
-            if (nextPath) {
-                navigate(nextPath);
-            } else {
-                navigate("/selection");
-            }
+            const landingPath = await resolveLandingAfterLogin(
+                accessToken,
+                {
+                    setProfile,
+                    setPublisher,
+                    setLibrary,
+                },
+                nextPath
+            );
+            navigate(landingPath);
         } catch (err: unknown) {
             message.error(getErrorMessage(err, "Senha inválida. Tente novamente."));
         } finally {

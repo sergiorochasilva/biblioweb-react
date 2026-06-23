@@ -61,7 +61,12 @@ export type AdminUser = {
     admin: boolean;
     libraries: number[];
     library_limits?: AdminUserLibraryLimit[];
-    publishers: string[];
+    publishers: AdminUserPublisher[];
+};
+
+export type AdminUserPublisher = {
+    publisher: string;
+    admin: boolean;
 };
 
 export type AdminUserLibraryLimit = {
@@ -95,6 +100,7 @@ export type BookFormPayload = {
     content_type?: string | null;
     media_type?: string | null;
     carrier_type?: string | null;
+    active: boolean;
     authors?: Array<{ id?: number; author: number }>;
     subjects?: Array<{ id?: number; subject: number }>;
     libraries?: BookLibraryPayload[];
@@ -111,7 +117,7 @@ export type AdminUserPayload = {
     dica_senha: string;
     admin: boolean;
     library_limits?: AdminUserLibraryLimit[];
-    publishers?: string[];
+    publishers?: AdminUserPublisher[];
 };
 
 export type AdminUserPasswordPayload = {
@@ -217,9 +223,26 @@ function normalizeLibraryLimits(value: unknown): AdminUserLibraryLimit[] {
     }));
 }
 
-type UserPublisherPayload = {
-    publisher: string;
-};
+type UserPublisherPayload = AdminUserPublisher;
+
+/**
+ * Converte uma flag heterogênea em booleano.
+ *
+ * @param value Valor bruto da flag.
+ * @returns ``true`` quando o valor representa ligado.
+ */
+function normalizeBooleanFlag(value: unknown): boolean {
+    if (value === true || value === 1 || value === "1") {
+        return true;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        return normalized === "true" || normalized === "yes" || normalized === "sim";
+    }
+
+    return false;
+}
 
 /**
  * Normaliza a lista de editoras usada no cadastro de usuário.
@@ -232,7 +255,7 @@ function normalizeUserPublishers(value: unknown): UserPublisherPayload[] {
         return [];
     }
 
-    const unique = new Set<string>();
+    const unique = new Map<string, boolean>();
     for (const item of value) {
         const rawPublisher =
             item && typeof item === "object"
@@ -241,6 +264,10 @@ function normalizeUserPublishers(value: unknown): UserPublisherPayload[] {
                   (item as Record<string, unknown>).name ??
                   (item as Record<string, unknown>).nome
                 : item;
+        const rawAdmin =
+            item && typeof item === "object"
+                ? (item as Record<string, unknown>).admin
+                : undefined;
 
         const publisher =
             typeof rawPublisher === "string" || typeof rawPublisher === "number"
@@ -248,12 +275,14 @@ function normalizeUserPublishers(value: unknown): UserPublisherPayload[] {
                 : "";
 
         if (publisher) {
-            unique.add(publisher);
+            const currentAdmin = unique.get(publisher) || false;
+            unique.set(publisher, currentAdmin || normalizeBooleanFlag(rawAdmin));
         }
     }
 
-    return Array.from(unique.values()).map((publisher) => ({
+    return Array.from(unique.entries()).map(([publisher, admin]) => ({
         publisher,
+        admin,
     }));
 }
 
@@ -461,102 +490,6 @@ function normalizeBookLibraryLinksResponse(data: unknown): BookLibraryLinkRef[] 
 }
 
 /**
- * Busca todos os acervos associados a uma lista de livros.
- *
- * @param token Token JWT.
- * @param books Livros já normalizados da listagem.
- * @returns Mapa ``bookId`` -> lista de IDs de acervo.
- */
-async function fetchLibrariesMapByBooks(
-    token: string,
-    books: AdminBook[],
-    libraryId?: string
-): Promise<Map<string, BookLibraryLink[]>> {
-    const targetBookIds = Array.from(
-        new Set(
-            books
-                .map((book) => buildBookIdCandidates(book.book_id, book.id)[0] || "")
-                .filter((bookId) => Boolean(bookId))
-        )
-    );
-
-    const librariesByBook = new Map<string, Map<number, BookLibraryLink>>();
-    if (targetBookIds.length <= 0) {
-        return new Map();
-    }
-
-    const resolvedLibraryId =
-        typeof libraryId === "string" && libraryId.trim() ? libraryId.trim() : "";
-    if (!resolvedLibraryId) {
-        return new Map();
-    }
-
-        const query = new URLSearchParams({
-            id: targetBookIds.join(","),
-            library: resolvedLibraryId,
-            fields: "id,library,access_count,available_licenses,max_uses_per_license,license_uses_count,preco_compra",
-            limit: "1000",
-        });
-    const data = await api.get<unknown>(`/libraries_books?${query.toString()}`, token);
-    const normalizedLinks = normalizeBookLibraryLinksResponse(data);
-
-    for (const item of normalizedLinks) {
-        const knownLibraries = librariesByBook.get(item.bookId) || new Map<number, BookLibraryLink>();
-        knownLibraries.set(item.library.library, item.library);
-        librariesByBook.set(item.bookId, knownLibraries);
-    }
-
-    const result = new Map<string, BookLibraryLink[]>();
-    for (const [bookId, librarySet] of librariesByBook.entries()) {
-        result.set(bookId, Array.from(librarySet.values()));
-    }
-
-    return result;
-}
-
-/**
- * Enriquce a listagem de livros com a lista de acervos de cada livro.
- *
- * @param token Token JWT.
- * @param books Livros da página atual.
- * @returns Lista de livros com ``libraries`` preenchido quando disponível.
- */
-async function enrichBooksWithLibraries(
-    token: string,
-    books: AdminBook[],
-    libraryId?: string
-): Promise<AdminBook[]> {
-    if (books.length <= 0) {
-        return books;
-    }
-
-    const librariesByBook = await fetchLibrariesMapByBooks(token, books, libraryId);
-
-    return books.map((book) => {
-        const resolvedBookId = buildBookIdCandidates(book.book_id, book.id)[0];
-        if (!resolvedBookId) {
-            return {
-                ...book,
-                libraries: Array.isArray(book.libraries) ? book.libraries : [],
-            };
-        }
-
-        const linkedLibraries = librariesByBook.get(resolvedBookId);
-        if (!linkedLibraries) {
-            return {
-                ...book,
-                libraries: Array.isArray(book.libraries) ? book.libraries : [],
-            };
-        }
-
-        return {
-            ...book,
-            libraries: linkedLibraries,
-        };
-    });
-}
-
-/**
  * Normaliza uma lista bruta de livros administrativos.
  *
  * @param data Lista bruta retornada pela API.
@@ -636,7 +569,7 @@ function normalizeAdminUser(entry: unknown): AdminUser | null {
 
     const libraryLimits = normalizeLibraryLimits(raw.library_limits);
     const libraries = libraryLimits.map((item) => item.library);
-    const publishers = normalizeUserPublishers(raw.publishers).map((item) => item.publisher);
+    const publishers = normalizeUserPublishers(raw.publishers);
 
     return {
         id,
@@ -964,6 +897,27 @@ export function readFileAsBase64(file: File): Promise<string> {
 }
 
 /**
+ * Verifica se um livro está associado ao acervo selecionado.
+ *
+ * @param book Livro já normalizado.
+ * @param libraryId ID textual do acervo.
+ * @returns ``true`` quando o livro pertence ao acervo informado.
+ */
+function bookMatchesLibraryFilter(book: AdminBook, libraryId?: string): boolean {
+    const normalizedLibrary = typeof libraryId === "string" ? libraryId.trim() : "";
+    if (!normalizedLibrary) {
+        return true;
+    }
+
+    if (String(book.library ?? "").trim() === normalizedLibrary) {
+        return true;
+    }
+
+    const relatedLibraries = Array.isArray(book.libraries) ? book.libraries : [];
+    return relatedLibraries.some((link) => String(link.library) === normalizedLibrary);
+}
+
+/**
  * Carrega página inicial de livros com filtros.
  *
  * @param token Token JWT.
@@ -982,17 +936,17 @@ export async function fetchBooksPage(
     if (filters.publisher) {
         query.set("publisher", filters.publisher);
     }
-    if (filters.library) {
-        query.set("library", filters.library);
-    }
     if (filters.limit && filters.limit > 0) {
         query.set("limit", String(filters.limit));
     }
 
     const suffix = query.toString() ? `?${query.toString()}` : "";
-    const data = await api.get<unknown>(`/libraries_books${suffix}`, token);
+    const data = await api.get<unknown>(`/books${suffix}`, token);
     const page = normalizePaginatedBooksResponse(data);
-    const enrichedBooks = await enrichBooksWithLibraries(token, page.result, filters.library);
+    const normalizedBooks = normalizeAdminBooksList(page.result);
+    const enrichedBooks = normalizedBooks.filter((book) =>
+        bookMatchesLibraryFilter(book, filters.library)
+    );
     return {
         ...page,
         result: enrichedBooks,
@@ -1008,10 +962,9 @@ export async function fetchBooksPage(
  */
 export async function fetchBooksPageByNext(
     token: string,
-    nextUrl: string
+    nextUrl: string,
+    libraryId?: string
 ): Promise<PaginatedAdminBooksResponse> {
-    const parsedUrl = new URL(nextUrl, window.location.origin);
-    const nextLibraryId = parsedUrl.searchParams.get("library") || undefined;
     const response = await fetch(nextUrl, {
         method: "GET",
         headers: buildAuthHeaders(token),
@@ -1032,7 +985,10 @@ export async function fetchBooksPageByNext(
 
     const data = (await response.json()) as unknown;
     const page = normalizePaginatedBooksResponse(data);
-    const enrichedBooks = await enrichBooksWithLibraries(token, page.result, nextLibraryId);
+    const normalizedBooks = normalizeAdminBooksList(page.result);
+    const enrichedBooks = normalizedBooks.filter((book) =>
+        bookMatchesLibraryFilter(book, libraryId)
+    );
     return {
         ...page,
         result: enrichedBooks,

@@ -28,6 +28,7 @@ export interface Book {
     external_source?: string;
     html_version_url?: string;
     file_name?: string;
+    active?: boolean;
     edition: string;
     year: string;
     isbn: string;

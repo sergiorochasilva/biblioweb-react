@@ -195,8 +195,9 @@ export default function AdminView() {
                                                     />
                                                 </div>
                                                 <div className="form-field">
-                                                    <label className="field-label">Acervo (*)</label>
+                                                    <label className="field-label">Acervo (opcional)</label>
                                                     <Select
+                                                        allowClear
                                                         placeholder="Selecione o acervo"
                                                         value={state.libraryFilter || undefined}
                                                         options={libraryOptions}
@@ -266,6 +267,9 @@ export default function AdminView() {
                                                                             {book.publisher_name ||
                                                                                 book.publisher ||
                                                                                 "Editora não informada"}
+                                                                        </span>
+                                                                        <span>
+                                                                            Status: {book.active === false ? "Inativo" : "Ativo"}
                                                                         </span>
                                                                         <span>
                                                                             {getBookLibraryLabel(book)}
@@ -1026,8 +1030,9 @@ export default function AdminView() {
                             />
                         </div>
                         <div className="form-field form-field-full">
-                            <label className="field-label">Acervo (*)</label>
+                            <label className="field-label">Acervo (opcional)</label>
                             <Select
+                                allowClear
                                 mode="multiple"
                                 className="admin-select"
                                 status={state.bookFormErrors.libraries ? "error" : undefined}
@@ -1050,17 +1055,29 @@ export default function AdminView() {
                         </div>
                         <BookLibraryPolicyGrid
                             label="Política por acervo"
-                            helperText="Licenças disponíveis e máximo de usos são editáveis. Progresso da licença atual é apenas leitura."
+                            helperText="Licenças disponíveis e máximo de usos são editáveis quando houver acervo vinculado. O livro também pode ser salvo sem acervo."
                             error={state.bookFormErrors.library_policy}
                             value={state.bookForm.libraries}
                             showPurchasePrice
                             options={libraryOptions}
-                            emptyDescription="Selecione ao menos um acervo para editar a política."
+                            emptyDescription="Nenhum acervo vinculado. O livro pode ser salvo assim."
                             onChange={(libraries) => {
                                 actions.setBookLibraries(libraries);
                                 actions.clearBookFieldError("library_policy");
                             }}
                         />
+                        <div className="form-field switch-field">
+                            <label className="field-label">Livro ativo</label>
+                            <Switch
+                                checked={state.bookForm.active}
+                                onChange={(checked) =>
+                                    actions.setBookForm((previous) => ({
+                                        ...previous,
+                                        active: checked,
+                                    }))
+                                }
+                            />
+                        </div>
                     </div>
                     <div className="form-field form-field-full">
                         <label className="field-label">Resumo <span className="marc-tag">[520$a]</span></label>
@@ -1209,19 +1226,57 @@ export default function AdminView() {
                             }))
                         }
                     />
-                    <div className="form-field">
+                    <div className="form-field form-field-full">
                         <label className="field-label">Editoras</label>
-                        <Select
-                            mode="multiple"
-                            className="admin-select"
-                            placeholder="Selecione uma ou mais editoras"
-                            value={state.userForm.publishers}
-                            options={publisherOptions}
-                            onChange={(values: string[]) =>
-                                actions.setUserForm((previous) => ({ ...previous, publishers: values }))
-                            }
-                            optionFilterProp="label"
-                        />
+                        {publisherOptions.length === 0 ? (
+                            <Empty description="Cadastre editoras antes de vincular usuários." />
+                        ) : (
+                            <div className="admin-publisher-permission-grid">
+                                {publisherOptions.map((option) => {
+                                    const selectedPublisher = state.userForm.publishers.find(
+                                        (item) => item.publisher === option.value
+                                    );
+                                    const isLinked = Boolean(selectedPublisher);
+
+                                    return (
+                                        <div
+                                            key={option.value}
+                                            className={`admin-publisher-permission-card${isLinked ? " is-selected" : ""}`}
+                                        >
+                                            <div className="admin-publisher-permission-main">
+                                                <span className="admin-publisher-permission-title">
+                                                    {option.label}
+                                                </span>
+                                                <span className="admin-publisher-permission-status">
+                                                    {isLinked ? "Vinculada ao usuário" : "Não vinculada"}
+                                                </span>
+                                            </div>
+                                            <div className="admin-publisher-permission-actions">
+                                                <Button
+                                                    size="small"
+                                                    onClick={() => actions.toggleUserPublisher(option.value)}
+                                                >
+                                                    {isLinked ? "Remover" : "Vincular"}
+                                                </Button>
+                                                <div className="switch-field">
+                                                    <label className="field-label">Admin</label>
+                                                    <Switch
+                                                        checked={selectedPublisher?.admin ?? false}
+                                                        disabled={!isLinked}
+                                                        onChange={(checked) =>
+                                                            actions.setUserPublisherAdminFlag(
+                                                                option.value,
+                                                                checked
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                     <div className="form-field switch-field">
                         <label className="field-label">Administrador global</label>

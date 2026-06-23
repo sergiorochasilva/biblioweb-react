@@ -17,6 +17,33 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-06-19 - e2e publisher-admin precisa limpar licenças locais antes de excluir livro
+- Descoberta:
+  - O fluxo de venda no Publisher Admin cria registros locais em `license`, `license_status`, `content` e tabelas relacionadas.
+  - Depois de gerar a URL de venda e baixar a licença, o `DELETE /books/{id}` pode voltar `400` no teardown se esses vínculos não forem removidos antes.
+- Evidencias:
+  - tests/e2e/support.ts
+  - tests/e2e/publisher-admin.spec.ts
+  - fronesis/client/readium_client.py
+- Acao aplicada:
+  - O helper de Playwright passou a limpar os vínculos do livro no Postgres e a tentar o delete novamente antes de falhar.
+- Impacto esperado:
+  - O e2e de administração da editora fica estável mesmo depois de exercitar o caminho completo de compra/download.
+
+### 2026-06-19 - publisher admin só opera livros protected e Playwright deve capturar ids pela resposta
+- Descoberta:
+  - O Publisher Admin final ficou restrito a livros `protected`; cadastro e edição de externos/free precisavam ser bloqueados na UI e no backend.
+  - Em Playwright, procurar o livro recém-criado no endpoint de listagem logo após salvar era instável; a resposta de `POST /books` já devolve `id`, e a de `PUT /books/{id}` confirma a edição.
+- Evidencias:
+  - src/view/PublisherAdminView.tsx
+  - src/controller/PublisherAdminController.ts
+  - tests/e2e/publisher-admin.spec.ts
+- Acao aplicada:
+  - Removi a edição do tipo de livro na interface do Publisher Admin e forcei o fluxo protegido.
+  - Os testes e2e passaram a capturar o `id` diretamente das respostas de criação e atualização, em vez de depender da listagem.
+- Impacto esperado:
+  - A regra de negócio fica consistente entre UI e API, e os testes de CRUD da editora deixam de falhar por corrida de leitura logo após o save.
+
 ### 2026-06-09 - preserve book_library id so purchase price updates the existing link
 - Descoberta:
   - O formulário de edição já carregava `book_library.id`, mas o payload de save descartava esse identificador.
@@ -57,46 +84,3 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
   - `lendBook()` passou a ler o corpo da resposta e extrair `message` de objeto ou de lista antes de lançar o erro.
 - Impacto esperado:
   - O usuário passa a ver a razão real da falha de empréstimo, como limite excedido ou licença indisponível, em vez do toast genérico.
-
-### 2026-05-27 - admin book enrichment must carry the active library
-- Contexto: listagem de livros do Admin ao enriquecer vínculos de acervo.
-- Descoberta:
-  - A função que enriquece os livros com `libraries` estava consultando `/libraries_books` sem o parâmetro `library`, mas o backend passou a exigir esse particionamento.
-  - Mesmo com o filtro de acervo visível na UI, o passo de enriquecimento ainda precisava receber o `library` explicitamente.
-- Evidencias:
-  - `src/service/AdminService.ts`
-  - `src/controller/AdminController.ts`
-- Acao aplicada:
-  - A rotina de enriquecimento passou a receber o `library` do filtro atual e também o extrai do `next` quando necessário.
-- Impacto esperado:
-  - A aba de livros do Admin deixa de gerar `400 Missing parameter: library` ao carregar os vínculos de acervo.
-
-### 2026-05-26 - book policy must be edited per library and accumulated uses are read-only
-- Contexto: modal de cadastro/edição de livros no Admin e no Publisher Admin.
-- Descoberta:
-  - Os campos `available_licenses` e `max_uses_per_license` não representam uma política global do livro, e sim política por vínculo livro x acervo.
-  - `license_uses_count` é contador de estado, então não deve ser editável pelo usuário.
-- Evidencias:
-  - `src/controller/AdminController.ts`
-  - `src/controller/PublisherAdminController.ts`
-  - `src/view/AdminView.tsx`
-  - `src/view/PublisherAdminView.tsx`
-  - `src/components/BookLibraryPolicyGrid.tsx`
-- Acao aplicada:
-  - Removi os campos globais do formulário de livro e passei a editar a política dentro de cada acervo selecionado.
-  - `license_uses_count` virou somente leitura na UI, mantendo o valor apenas como contexto do vínculo.
-- Impacto esperado:
-  - O cadastro de livro deixa de sugerir uma política única para todos os acervos e passa a refletir o contrato por biblioteca.
-
-### 2026-05-26 - book detail fetch must be single-shot with optional token
-- Descoberta:
-  - A página de detalhe deve fazer uma única chamada por carregamento: com `access_token` quando houver sessão válida, ou sem token quando não houver.
-  - O front não deve “insistir” com fallback após uma falha autenticada; se a API falhar, o erro deve refletir o estado real.
-- Evidencias:
-  - src/service/BookService.ts
-  - src/view/BookDetailsWrapper.tsx
-- Acao aplicada:
-  - Removi o retry sem token do fetch de detalhe.
-  - Mantive apenas a chamada única, parametrizada pelo token disponível no contexto.
-- Impacto esperado:
-  - Comportamento previsível e alinhado ao contrato do backend, sem mascarar falhas de autenticação/consulta com um fallback no front.

@@ -118,6 +118,35 @@ function runPostgresSql(sql: string): string {
 }
 
 /**
+ * Executa SQL escalar no banco e devolve o valor bruto.
+ *
+ * @param sql Comando SQL que retorna uma única linha/coluna.
+ * @returns Saída textual sem espaços nas bordas.
+ */
+function runPostgresScalar(sql: string): string {
+    const containerName = resolvePostgresContainerName();
+    return execFileSync(
+        "docker",
+        [
+            "exec",
+            "-e",
+            `PGPASSWORD=${POSTGRES_DATABASE_PASSWORD}`,
+            containerName,
+            "psql",
+            "-U",
+            POSTGRES_DATABASE_USER,
+            "-d",
+            POSTGRES_DATABASE_NAME,
+            "-t",
+            "-A",
+            "-c",
+            sql,
+        ],
+        { encoding: "utf8" }
+    ).trim();
+}
+
+/**
  * Sincroniza a senha do admin seed no banco do ambiente local.
  *
  * @returns Promise que conclui quando o hash do admin seed estiver atualizado.
@@ -175,6 +204,8 @@ async function forceDeleteUserFromDatabase(userId: string): Promise<void> {
 async function forceDeleteBookFromDatabase(bookId: string): Promise<void> {
     const cleanupSql = [
         "begin;",
+        `delete from book_embedding_chunk where book_id = '${bookId}';`,
+        `delete from book_embedding_summary where book_id = '${bookId}';`,
         `delete from book_purchase_order where book_id = '${bookId}';`,
         `delete from library_license_binding where book_id = '${bookId}';`,
         `delete from log_license_expiration where book_id = '${bookId}';`,
@@ -190,6 +221,25 @@ async function forceDeleteBookFromDatabase(bookId: string): Promise<void> {
     ].join(" ");
 
     runPostgresSql(cleanupSql);
+}
+
+/**
+ * Conta os registros dos índices semânticos associados ao livro.
+ *
+ * @param bookId Identificador do livro.
+ * @returns Quantidade de linhas em resumo e conteúdo.
+ */
+export function countSemanticIndexRows(bookId: string): { summary: number; chunk: number } {
+    const summary = Number(
+        runPostgresScalar(
+            `select count(*) from book_embedding_summary where book_id = '${bookId}';`
+        ) || "0"
+    );
+    const chunk = Number(
+        runPostgresScalar(`select count(*) from book_embedding_chunk where book_id = '${bookId}';`) ||
+            "0"
+    );
+    return { summary, chunk };
 }
 
 /**
@@ -760,16 +810,32 @@ export async function findBookIdByTitle(
     title: string
 ): Promise<string | null> {
     const attempts = [
-        `${API_BASE_URL}/books?search=${encodeURIComponent(title)}&limit=20`,
+        {
+            method: "post" as const,
+            url: `${API_BASE_URL}/books/search-semantic`,
+            data: {
+                query: title,
+                library: 1,
+                limit: 20,
+            },
+        },
         `${API_BASE_URL}/books?limit=200`,
     ];
 
     for (const url of attempts) {
-        const response = await request.get(url, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        });
+        const response =
+            typeof url === "string"
+                ? await request.get(url, {
+                      headers: {
+                          Authorization: `Bearer ${token}`,
+                      },
+                  })
+                : await request.post(url.url, {
+                      headers: {
+                          Authorization: `Bearer ${token}`,
+                      },
+                      data: url.data,
+                  });
 
         expect(response.ok()).toBeTruthy();
         const body = (await response.json()) as unknown;

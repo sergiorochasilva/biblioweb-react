@@ -277,10 +277,15 @@ test.describe.serial("Fluxos de administração", () => {
                 await page.getByRole("button", { name: "Salvar" }).click();
                 await expect(page.getByText("Status: Inativo")).toBeVisible();
 
-                const publicSearch = await page.request.get(
-                    `${API_BASE_URL}/libraries_books?library=1&search=${encodeURIComponent(
-                        editedTitle
-                    )}&fields=title,active&limit=20`
+                const publicSearch = await page.request.post(
+                    `${API_BASE_URL}/books/search-semantic`,
+                    {
+                        data: {
+                            query: editedTitle,
+                            library: 1,
+                            limit: 20,
+                        },
+                    }
                 );
                 expect(publicSearch.ok()).toBeTruthy();
                 const publicSearchBody = (await publicSearch.json()) as unknown;

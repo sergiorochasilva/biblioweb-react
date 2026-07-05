@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test:e2e": "playwright test",
+    "pretest:e2e": "npx playwright install chromium",
+    "test:e2e": "node scripts/run-e2e-stack.mjs",
+    "test:e2e:playwright": "playwright test",
     "preview": "vite preview",
     "predeploy": "npm run build"
   },

@@ -17,6 +17,38 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-04 - busca semântica precisa de loading explícito e e2e com API/base URL corretas
+- Descoberta:
+  - Os resultados da busca semântica só podem vir de livros já presentes em `book_embedding_summary` e/ou `book_embedding_chunk`; no fluxo atual o merge deduplica por `book_id` e o score final prevalente é o maior entre resumo e conteúdo.
+  - A UI de busca pública precisava de shimmer próprio para o carregamento, porque o retorno rápido da API deixava o usuário sem feedback visual enquanto os resultados eram buscados.
+  - O Playwright deste repo usa `PLAYWRIGHT_API_BASE_URL` e `PLAYWRIGHT_BASE_URL`; sem isso, a suíte tenta falar com `127.0.0.1:5000` e falha quando o ambiente real está em outra porta.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/embedding_search/service.py
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/embedding_search/semantic_search.py
+  - /home/sergio/@pessoal/biblioweb-react/src/view/SearchView.tsx
+  - /home/sergio/@pessoal/biblioweb-react/src/styles/SearchView.css
+  - /home/sergio/@pessoal/biblioweb-react/playwright.config.ts
+  - /home/sergio/@pessoal/biblioweb-react/tests/e2e/semantic-search.spec.ts
+- Acao aplicada:
+  - Adicionei shimmer de carregamento na tela de busca, deixei o E2E verificar esse estado e rodei a suíte contra a API local com as URLs explícitas.
+- Impacto esperado:
+  - O usuário percebe que a pesquisa está em andamento e o time evita diagnósticos errados quando a suíte e2e está apontando para a base URL errada.
+
+### 2026-07-03 - busca semantica do front depende do stack real e do browser Playwright
+- Descoberta:
+  - O front precisa chamar `POST /books/search-semantic` na pesquisa normal, e o E2E so valida de verdade quando roda contra a API e o preview do Vite com browser real.
+  - O ambiente local nem sempre tem o Chromium do Playwright baixado; a execucao do `test:e2e` fica mais auto-suficiente quando o repo instala o browser automaticamente antes da suite.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/service/BookService.ts
+  - /home/sergio/@pessoal/biblioweb-react/src/view/SearchView.tsx
+  - /home/sergio/@pessoal/biblioweb-react/scripts/run-e2e-stack.mjs
+  - /home/sergio/@pessoal/biblioweb-react/tests/e2e/semantic-search.spec.ts
+  - /home/sergio/@pessoal/biblioweb-react/package.json
+- Acao aplicada:
+  - Troquei a busca da tela para o endpoint semantico, adicionei o fluxo E2E real e deixei o `test:e2e` instalar/verificar o Chromium automaticamente antes de rodar.
+- Impacto esperado:
+  - A pesquisa na interface usa a mesma API nova do backend, e a validação automatizada nao depende de preparos manuais de browser.
+
 ### 2026-06-19 - e2e publisher-admin precisa limpar licenças locais antes de excluir livro
 - Descoberta:
   - O fluxo de venda no Publisher Admin cria registros locais em `license`, `license_status`, `content` e tabelas relacionadas.
@@ -43,44 +75,3 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
   - Os testes e2e passaram a capturar o `id` diretamente das respostas de criação e atualização, em vez de depender da listagem.
 - Impacto esperado:
   - A regra de negócio fica consistente entre UI e API, e os testes de CRUD da editora deixam de falhar por corrida de leitura logo após o save.
-
-### 2026-06-09 - preserve book_library id so purchase price updates the existing link
-- Descoberta:
-  - O formulário de edição já carregava `book_library.id`, mas o payload de save descartava esse identificador.
-  - Sem o `id` do vínculo, o `rest_lib` tende a tratar a linha como inserção nova, e o preço editado pode não reaparecer na próxima leitura do livro.
-- Evidencias:
-  - src/model/BookLibrary.ts
-  - src/controller/AdminController.ts
-  - src/controller/PublisherAdminController.ts
-- Acao aplicada:
-  - O payload de `BookLibraryPayload` passou a enviar `id` quando disponível, preservando o vínculo existente no `PUT` de livro.
-- Impacto esperado:
-  - O preço de compra editado por acervo atualiza a linha correta no banco e volta a aparecer ao reabrir o livro.
-
-### 2026-05-27 - admin book edit needs library when loading book-library links
-- Descoberta:
-  - O fallback de edição de livros no Admin e no Publisher Admin ainda podia chamar `/libraries_books?id=...` sem `library`, o que quebra o `ListRoute` do backend com 400.
-  - O vínculo de `book_library` precisa do acervo para ser listado/resolveido com segurança, mesmo quando o livro detalhado não traz os vínculos completos.
-- Evidencias:
-  - src/service/AdminService.ts
-  - src/service/PublisherAdminService.ts
-  - src/controller/AdminController.ts
-  - src/controller/PublisherAdminController.ts
-- Acao aplicada:
-  - A busca de vínculos passou a receber `libraryId` explícito.
-  - O modal de edição do Admin agora deriva o acervo do livro/lista/filtro antes de tentar recarregar os vínculos.
-  - O Publisher Admin só consulta vínculos quando já existe um acervo resolvido.
-- Impacto esperado:
-  - A tela administrativa deixa de gerar 400 por falta de `library` ao abrir edições de livro, e o mesmo contrato fica protegido no fluxo da editora.
-
-### 2026-05-27 - lendBook should surface backend error messages
-- Descoberta:
-  - O backend já devolve o motivo real da falha de empréstimo (por exemplo, limite atingido), mas o front estava sobrescrevendo isso com uma mensagem genérica ao detectar `response.ok === false`.
-  - A resposta de erro pode vir como objeto ou como lista com um item contendo `message`.
-- Evidencias:
-  - src/service/BookService.ts
-  - src/view/BookDetailsView.tsx
-- Acao aplicada:
-  - `lendBook()` passou a ler o corpo da resposta e extrair `message` de objeto ou de lista antes de lançar o erro.
-- Impacto esperado:
-  - O usuário passa a ver a razão real da falha de empréstimo, como limite excedido ou licença indisponível, em vez do toast genérico.

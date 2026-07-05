@@ -565,6 +565,33 @@ export async function fetchSearchResults(
     return normalizeBooksResponse(data);
 }
 
+/**
+ * Pesquisa livros pelo endpoint semântico.
+ *
+ * @param query Termo pesquisado.
+ * @param libraryId ID da biblioteca usada na consulta.
+ * @param token Token JWT opcional para cenários autenticados.
+ * @param limit Quantidade máxima desejada.
+ * @returns Lista de livros relevantes semanticamente.
+ */
+export async function fetchSemanticSearchResults(
+    query: string,
+    libraryId: number,
+    token?: string,
+    limit = 20
+): Promise<Book[]> {
+    const data = await api.post<unknown>(
+        "/books/search-semantic",
+        {
+            query,
+            library: libraryId,
+            limit,
+        },
+        token
+    );
+    return normalizeBooksResponse(data);
+}
+
 export type AdvancedSearchFieldType = "text" | "number" | "date" | "enum";
 
 export type AdvancedSearchFieldKey =

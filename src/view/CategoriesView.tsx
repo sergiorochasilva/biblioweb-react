@@ -10,6 +10,7 @@ import {
 import { Book } from "../model/Book";
 import HeaderView from "./HeaderView";
 import BookCard from "../components/BookCard";
+import CarouselLoadingState from "../components/CarouselLoadingState";
 import { useAuth } from "../contexts/useAuth";
 import "../styles/CategoriesView.css";
 
@@ -269,11 +270,7 @@ export default function CategoriesView() {
                                             carouselRefs.current[subject] = element;
                                         }}
                                     >
-                                        {isLoadingSection && (
-                                            <div className="carousel-empty">
-                                                <Typography.Text>Carregando...</Typography.Text>
-                                            </div>
-                                        )}
+                                        {isLoadingSection && <CarouselLoadingState />}
 
                                         {!isLoadingSection && books.length === 0 && (
                                             <div className="carousel-empty">

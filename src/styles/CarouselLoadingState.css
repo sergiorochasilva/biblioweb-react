@@ -1,0 +1,31 @@
+.carousel-loading {
+    display: contents;
+}
+
+.carousel-loading-card {
+    flex: 0 0 260px;
+    width: 260px;
+    border-radius: 24px;
+    overflow: hidden;
+}
+
+.carousel-loading-cover {
+    min-height: 280px;
+}
+
+.carousel-loading-meta {
+    padding: 4px 0 0;
+}
+
+.carousel-loading .ant-skeleton-image {
+    width: 70px;
+    height: 110px;
+}
+
+.carousel-loading .ant-skeleton-title {
+    margin-top: 0;
+}
+
+.carousel-loading .ant-card-body {
+    padding-top: 16px;
+}

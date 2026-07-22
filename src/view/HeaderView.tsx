@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button, Dropdown, Input, Layout, type MenuProps } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Input, Layout, message, type MenuProps } from "antd";
+import { RobotOutlined, SearchOutlined } from "@ant-design/icons";
 import logo from "../assets/logo.png";
 import "../styles/HeaderView.css";
 import { useAuth } from "../contexts/useAuth";
@@ -161,6 +161,22 @@ export default function HeaderView() {
         navigate(`/search?query=${encodeURIComponent(normalized)}`);
     };
 
+    /**
+     * Abre o chat do bibliotecário, reutilizando o texto digitado na barra.
+     *
+     * @returns void
+     */
+    const doAskBibliotecario = () => {
+        const normalized = input.trim();
+        if (!normalized) {
+            message.warning("Escreva algo antes de perguntar ao bibliotecário.");
+            return;
+        }
+        navigate(`/bibliotecario?message=${encodeURIComponent(normalized)}`, {
+            state: { fromSearchAsk: true },
+        });
+    };
+
     const menuItems: MenuProps["items"] = [
         {
             key: "profile",
@@ -245,6 +261,13 @@ export default function HeaderView() {
                             <Button
                                 className="categories-button"
                                 type="text"
+                                onClick={() => navigate("/bibliotecario", { state: { freshChat: true } })}
+                            >
+                                Bibliotecário
+                            </Button>
+                            <Button
+                                className="categories-button"
+                                type="text"
                                 onClick={() => navigate("/subjects")}
                             >
                                 Assuntos
@@ -313,6 +336,13 @@ export default function HeaderView() {
                         onClick={() => navigate("/advanced-search")}
                     >
                         Busca avançada
+                    </Button>
+                    <Button
+                        className="advanced-search-button bibliotecario-search-button"
+                        icon={<RobotOutlined />}
+                        onClick={doAskBibliotecario}
+                    >
+                        Pergunte ao bibliotecário
                     </Button>
                 </div>
             </div>

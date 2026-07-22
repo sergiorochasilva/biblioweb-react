@@ -12,6 +12,7 @@ import SelectionView from "./view/SelectionView";
 import CategoriesView from "./view/CategoriesView";
 import AuthorsView from "./view/AuthorsView";
 import ProfileView from "./view/ProfileView";
+import BibliotecarioView from "./view/BibliotecarioView";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
 
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/advanced-search" element={<AdvancedSearchView />} />
             <Route path="/subjects" element={<CategoriesView />} />
             <Route path="/authors" element={<AuthorsView />} />
+            <Route path="/bibliotecario" element={<BibliotecarioView />} />
 
             <Route element={<ProtectedRoute />}>
                 <Route path="/profile" element={<ProfileView />} />

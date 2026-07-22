@@ -25,6 +25,46 @@ export const API_BASE_URL = API_HOST;
 export type ApiError = Error & { status?: number; body?: unknown };
 
 /**
+ * Extrai uma mensagem legível de corpos de erro retornados pela API.
+ *
+ * @param body Corpo bruto retornado pelo backend.
+ * @returns Mensagem legível ou `null` quando não houver texto útil.
+ */
+function extractErrorMessage(body: unknown): string | null {
+    if (typeof body === "string") {
+        const trimmed = body.trim();
+        return trimmed || null;
+    }
+
+    if (Array.isArray(body)) {
+        const messages = body
+            .map((item) => {
+                if (!item || typeof item !== "object") {
+                    return "";
+                }
+
+                const message = (item as { message?: unknown }).message;
+                return typeof message === "string" ? message.trim() : "";
+            })
+            .filter(Boolean);
+
+        if (messages.length > 0) {
+            return messages.join(" ");
+        }
+    }
+
+    if (body && typeof body === "object") {
+        const message = (body as { message?: unknown }).message;
+        if (typeof message === "string") {
+            const trimmed = message.trim();
+            return trimmed || null;
+        }
+    }
+
+    return null;
+}
+
+/**
  * Monta headers padrão para chamadas HTTP da aplicação.
  *
  * @param token Token JWT opcional para autenticação Bearer.
@@ -72,7 +112,15 @@ async function handleResponse<T>(response: Response): Promise<T> {
             "message" in parsedBody &&
             typeof (parsedBody as { message?: unknown }).message === "string"
         ) {
-            message = (parsedBody as { message: string }).message;
+            const parsedMessage = extractErrorMessage(parsedBody);
+            if (parsedMessage) {
+                message = parsedMessage;
+            }
+        } else {
+            const parsedMessage = extractErrorMessage(parsedBody);
+            if (parsedMessage) {
+                message = parsedMessage;
+            }
         }
 
         const apiError = new Error(message) as ApiError;
@@ -81,7 +129,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
         throw apiError;
     }
 
-    if (response.status === 204 || response.status === 202) {
+    if (response.status === 204) {
         return {} as T;
     }
 

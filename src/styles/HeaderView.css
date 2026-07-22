@@ -93,6 +93,10 @@
     padding-inline: 16px;
 }
 
+.bibliotecario-search-button {
+    white-space: nowrap;
+}
+
 .categories-button {
     border-radius: 999px;
     font-weight: 600;
@@ -169,6 +173,10 @@
     }
 
     .advanced-search-button {
+        width: 100%;
+    }
+
+    .bibliotecario-search-button {
         width: 100%;
     }
 }

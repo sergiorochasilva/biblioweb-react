@@ -12,6 +12,7 @@ import {
 import { Book } from "../model/Book";
 import HeaderView from "../view/HeaderView";
 import BookCard from "../components/BookCard";
+import CarouselLoadingState from "../components/CarouselLoadingState";
 import "../styles/HomeView.css";
 import { useAuth } from "../contexts/useAuth";
 import type { ProfileData } from "../types";
@@ -27,7 +28,7 @@ export default function HomeView() {
     const [myReadings, setMyReadings] = useState<Book[]>([]);
     const [recentPublications, setRecentPublications] = useState<Book[]>([]);
     const [mostAccessedBooks, setMostAccessedBooks] = useState<Book[]>([]);
-    const showMyReadings = isAuthenticated && myReadings.length > 0;
+    const [isLoadingHomeData, setIsLoadingHomeData] = useState(true);
 
     useEffect(() => {
         let isActive = true;
@@ -35,6 +36,10 @@ export default function HomeView() {
         async function loadRecentPublications() {
             const libraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
             const accessToken = await getAccessToken();
+
+            if (isActive) {
+                setIsLoadingHomeData(true);
+            }
 
             try {
                 if (isAuthenticated && accessToken) {
@@ -87,6 +92,10 @@ export default function HomeView() {
                     setMostAccessedBooks([]);
                 }
                 console.error("Failed to load home publications", error);
+            } finally {
+                if (isActive) {
+                    setIsLoadingHomeData(false);
+                }
             }
         }
 
@@ -104,7 +113,7 @@ export default function HomeView() {
             <HeaderView />
             <Content className="page-content">
                 <section className="page-section">
-                    {showMyReadings && (
+                    {isAuthenticated && (
                         <>
                             <div className="section-header">
                                 <Typography.Title level={3} className="section-title">
@@ -122,7 +131,10 @@ export default function HomeView() {
                                     aria-label="Voltar carrossel de minhas leituras"
                                 />
                                 <div className="book-carousel" ref={myReadingsCarouselRef}>
-                                    {myReadings.length === 0 && (
+                                    {isLoadingHomeData && myReadings.length === 0 && (
+                                        <CarouselLoadingState />
+                                    )}
+                                    {!isLoadingHomeData && myReadings.length === 0 && (
                                         <div className="carousel-empty">
                                             <Empty description="Nenhuma leitura recente encontrada." />
                                         </div>
@@ -162,7 +174,10 @@ export default function HomeView() {
                             aria-label="Voltar carrossel"
                         />
                         <div className="book-carousel" ref={recentCarouselRef}>
-                            {recentPublications.length === 0 && (
+                            {isLoadingHomeData && recentPublications.length === 0 && (
+                                <CarouselLoadingState />
+                            )}
+                            {!isLoadingHomeData && recentPublications.length === 0 && (
                                 <div className="carousel-empty">
                                     <Empty description="Nenhuma publicação recente." />
                                 </div>
@@ -202,7 +217,10 @@ export default function HomeView() {
                             aria-label="Voltar carrossel de mais acessados"
                         />
                         <div className="book-carousel" ref={mostAccessedCarouselRef}>
-                            {mostAccessedBooks.length === 0 && (
+                            {isLoadingHomeData && mostAccessedBooks.length === 0 && (
+                                <CarouselLoadingState />
+                            )}
+                            {!isLoadingHomeData && mostAccessedBooks.length === 0 && (
                                 <div className="carousel-empty">
                                     <Empty description="Nenhum livro acessado ainda." />
                                 </div>

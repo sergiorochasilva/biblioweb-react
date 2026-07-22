@@ -55,6 +55,16 @@ function sha256Hex(value: string): string {
     return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+/**
+ * Escapa um valor para uso seguro em SQL literal.
+ *
+ * @param value Texto de entrada.
+ * @returns Texto escapado para SQL.
+ */
+function escapeSqlLiteral(value: string): string {
+    return value.replace(/'/g, "''");
+}
+
 function resolvePostgresContainerName(): string {
     const explicitName = POSTGRES_CONTAINER_NAME.trim();
     if (explicitName) {
@@ -171,6 +181,72 @@ async function ensureSeedAdminPassword(): Promise<void> {
         adminPasswordSync = null;
         throw error;
     }
+}
+
+/**
+ * Reseta a cota de uso do chat para um e-mail específico.
+ *
+ * @param email E-mail do usuário cujo uso do chat deve ser zerado.
+ * @returns void
+ */
+export function resetChatUsageForEmail(email: string): void {
+    const safeEmail = escapeSqlLiteral(email);
+    const resetSql = [
+        "begin;",
+        "update chat_message",
+        "set input_tokens = 0, output_tokens = 0, total_tokens = 0",
+        "where conversation_id in (select id from chat_conversation where user_email = '" +
+            safeEmail +
+            "');",
+        "update chat_conversation",
+        "set total_tokens = 0, daily_tokens = 0, daily_token_date = current_date, updated_at = current_timestamp",
+        "where user_email = '" + safeEmail + "';",
+        "commit;",
+    ].join(" ");
+
+    runPostgresSql(resetSql);
+}
+
+/**
+ * Força um consumo diário de tokens para um e-mail específico.
+ *
+ * @param email E-mail do usuário.
+ * @param totalTokens Valor total de tokens a aplicar em todas as mensagens do escopo.
+ * @returns void
+ */
+export function setChatDailyUsageForEmail(email: string, totalTokens: number): void {
+    const safeEmail = escapeSqlLiteral(email);
+    const safeTokens = Math.max(0, Math.trunc(totalTokens));
+    const sql = [
+        "begin;",
+        "update chat_message",
+        `set total_tokens = ${safeTokens}, input_tokens = 0, output_tokens = 0`,
+        "where conversation_id in (select id from chat_conversation where user_email = '" +
+            safeEmail +
+            "');",
+        "commit;",
+    ].join(" ");
+
+    runPostgresSql(sql);
+}
+
+/**
+ * Força um consumo acumulado de tokens em uma conversa específica.
+ *
+ * @param conversationId Identificador da conversa.
+ * @param totalTokens Valor total de tokens da conversa.
+ * @returns void
+ */
+export function setChatConversationUsage(conversationId: string, totalTokens: number): void {
+    const safeConversationId = escapeSqlLiteral(conversationId);
+    const safeTokens = Math.max(0, Math.trunc(totalTokens));
+    const sql = [
+        "update chat_conversation",
+        `set total_tokens = ${safeTokens}, daily_tokens = ${safeTokens}, updated_at = current_timestamp`,
+        `where id = '${safeConversationId}';`,
+    ].join(" ");
+
+    runPostgresSql(sql);
 }
 
 /**

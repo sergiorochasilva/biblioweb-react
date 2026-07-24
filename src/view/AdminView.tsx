@@ -31,6 +31,17 @@ import { getBookAuthorsText } from "../model/Book";
 import "../styles/AdminView.css";
 
 /**
+ * Formata o uso diário de tokens para a área administrativa.
+ *
+ * @param used Tokens usados no dia.
+ * @param limit Limite diário de tokens.
+ * @returns Texto legível com usado e limite.
+ */
+function formatTokenUsage(used: number, limit: number): string {
+    return `${used.toLocaleString("pt-BR")} / ${limit.toLocaleString("pt-BR")}`;
+}
+
+/**
  * Renderiza a área administrativa global com gestão de livros, usuários,
  * bibliotecas e editoras.
  *
@@ -1161,6 +1172,44 @@ export default function AdminView() {
                             message={state.userModalError}
                             className="admin-modal-alert"
                         />
+                    )}
+                    {state.userModalMode === "edit" && state.userForm.id && (
+                        <section className="admin-ai-usage-card">
+                            <div className="admin-ai-usage-header">
+                                <div>
+                                    <h3>Uso de IA (Blibliotecário)</h3>
+                                    <span>
+                                        {state.isLoadingUserDailyTokenUsage
+                                            ? "Carregando uso diário..."
+                                            : state.userDailyTokenUsage
+                                                ? `Hoje: ${formatTokenUsage(
+                                                    state.userDailyTokenUsage.used,
+                                                    state.userDailyTokenUsage.limit
+                                                )} usados | ${state.userDailyTokenUsage.available.toLocaleString("pt-BR")} disponíveis`
+                                                : "Uso diário indisponível"}
+                                    </span>
+                                </div>
+                                <Popconfirm
+                                    title="Resetar tokens diários"
+                                    description="Isso libera o usuário para usar novamente o bibliotecário hoje."
+                                    okText="Resetar"
+                                    cancelText="Cancelar"
+                                    onConfirm={() => {
+                                        if (state.userForm.id) {
+                                            void actions.resetUserDailyTokens(state.userForm.id);
+                                        }
+                                    }}
+                                >
+                                    <Button
+                                        icon={<ReloadOutlined />}
+                                        loading={state.isResettingUserDailyTokens}
+                                        disabled={state.isLoadingUserDailyTokenUsage}
+                                    >
+                                        Zerar uso
+                                    </Button>
+                                </Popconfirm>
+                            </div>
+                        </section>
                     )}
                     <div className="form-field">
                         <label className="field-label">E-mail (*)</label>

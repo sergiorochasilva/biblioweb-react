@@ -62,6 +62,14 @@ export type AdminUser = {
     libraries: number[];
     library_limits?: AdminUserLibraryLimit[];
     publishers: AdminUserPublisher[];
+    daily_token_usage?: AdminUserDailyTokenUsage;
+};
+
+export type AdminUserDailyTokenUsage = {
+    used: number;
+    limit: number;
+    available: number;
+    date?: string;
 };
 
 export type AdminUserPublisher = {
@@ -242,6 +250,33 @@ function normalizeBooleanFlag(value: unknown): boolean {
     }
 
     return false;
+}
+
+/**
+ * Normaliza o payload de uso diário de tokens de chat.
+ *
+ * @param value Payload bruto retornado pela API.
+ * @returns Uso diário normalizado ou ``undefined`` quando inválido.
+ */
+function normalizeDailyTokenUsage(value: unknown): AdminUserDailyTokenUsage | undefined {
+    if (!value || typeof value !== "object") {
+        return undefined;
+    }
+
+    const raw = value as Record<string, unknown>;
+    const used = Number(raw.used);
+    const limit = Number(raw.limit);
+    const available = Number(raw.available);
+    if (!Number.isFinite(used) || !Number.isFinite(limit) || !Number.isFinite(available)) {
+        return undefined;
+    }
+
+    return {
+        used: Math.max(0, Math.floor(used)),
+        limit: Math.max(0, Math.floor(limit)),
+        available: Math.max(0, Math.floor(available)),
+        date: typeof raw.date === "string" ? raw.date : undefined,
+    };
 }
 
 /**
@@ -586,6 +621,7 @@ function normalizeAdminUser(entry: unknown): AdminUser | null {
         libraries,
         library_limits: libraryLimits,
         publishers,
+        daily_token_usage: normalizeDailyTokenUsage(raw.daily_token_usage),
     };
 }
 
@@ -1164,6 +1200,28 @@ export async function fetchUsers(
 }
 
 /**
+ * Consulta uso diário de tokens do chat para um usuário.
+ *
+ * @param token Token JWT.
+ * @param email E-mail do usuário.
+ * @returns Uso diário de tokens.
+ */
+export async function fetchUserDailyTokenUsage(
+    token: string,
+    email: string
+): Promise<AdminUserDailyTokenUsage> {
+    const query = new URLSearchParams();
+    query.append("email", email);
+    const data = await api.get<unknown>(`/users/chat-token-usage?${query.toString()}`, token);
+    const result = normalizeSingleObjectPayload(data) || {};
+    return normalizeDailyTokenUsage((result as Record<string, unknown>)[email]) || {
+        used: 0,
+        limit: 0,
+        available: 0,
+    };
+}
+
+/**
  * Busca usuário por ID.
  *
  * @param token Token JWT.
@@ -1243,6 +1301,21 @@ export async function updateUserPassword(
 ): Promise<AdminUser> {
     const data = await api.patch<unknown>(`/users/${id}`, payload, token);
     return normalizeUserResponse(data);
+}
+
+/**
+ * Reseta o uso diário de tokens de chat de um usuário.
+ *
+ * @param token Token JWT.
+ * @param id Identificador do usuário.
+ * @returns Uso diário após o reset.
+ */
+export async function resetUserDailyTokenUsage(
+    token: string,
+    id: string
+): Promise<AdminUserDailyTokenUsage> {
+    const data = await api.post<unknown>(`/users/${id}/chat-token-usage/reset`, {}, token);
+    return normalizeDailyTokenUsage(data) || { used: 0, limit: 0, available: 0 };
 }
 
 /**

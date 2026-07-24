@@ -17,6 +17,19 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-24 - uso de IA do usuario deve ficar no modal de edicao
+- Descoberta:
+  - O grid de usuarios do `/admin` deve manter apenas dados cadastrais; uso diario de IA do bibliotecario e uma informacao operacional que deve aparecer somente ao editar um usuario.
+  - O reset de tokens diarios fica no topo do modal de edicao, junto ao card "Uso de IA (Blibliotecario)", e atualiza apenas o estado do modal.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/service/AdminService.ts
+  - /home/sergio/@pessoal/biblioweb-react/src/controller/AdminController.ts
+  - /home/sergio/@pessoal/biblioweb-react/src/view/AdminView.tsx
+- Acao aplicada:
+  - `fetchUsers` voltou a carregar apenas usuarios; `openEditUserModal` consulta `/users/chat-token-usage` para o e-mail selecionado e o botao do modal chama o reset.
+- Impacto esperado:
+  - A listagem fica mais leve e a gestao de uso de IA fica concentrada no contexto de edicao do usuario.
+
 ### 2026-07-24 - bibliotecario precisa recuperar SSE encerrado antes do done
 - Descoberta:
   - Em producao, o worker pode finalizar e persistir a resposta corretamente depois de a conexao SSE do navegador/proxy cair; nesse caso a conversa fica `done` no banco, mas a UI permanece visualmente em analise se nao sincronizar o snapshot.

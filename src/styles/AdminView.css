@@ -81,6 +81,32 @@
     margin-bottom: 4px;
 }
 
+.admin-ai-usage-card {
+    border: 1px solid rgba(15, 23, 42, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
+    padding: 14px 16px;
+}
+
+.admin-ai-usage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.admin-ai-usage-header h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-strong);
+}
+
+.admin-ai-usage-header span {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
 .admin-form .admin-input,
 .admin-form .admin-input.ant-input-affix-wrapper,
 .admin-form .admin-select .ant-select-selector {

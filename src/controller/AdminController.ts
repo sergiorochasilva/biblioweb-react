@@ -15,6 +15,7 @@ import {
     AdminLibrary,
     AdminPublisher,
     AdminSubject,
+    AdminUserDailyTokenUsage,
     AdminUserPublisher,
     AdminUser,
     CreateBookPayload,
@@ -38,10 +39,12 @@ import {
     fetchLibraries,
     fetchPublishers,
     fetchSubjects,
+    fetchUserDailyTokenUsage,
     fetchUserById,
     fetchUsers,
     getFileParts,
     readFileAsBase64,
+    resetUserDailyTokenUsage,
     resolveBookIdByLibraryBookId,
     updateAuthor,
     updateBook,
@@ -958,6 +961,10 @@ export function useAdminController() {
     const [userModalError, setUserModalError] = useState("");
     const [userFormErrors, setUserFormErrors] =
         useState<Partial<Record<UserFieldErrorKey, string>>>({});
+    const [userDailyTokenUsage, setUserDailyTokenUsage] =
+        useState<AdminUserDailyTokenUsage | null>(null);
+    const [isLoadingUserDailyTokenUsage, setIsLoadingUserDailyTokenUsage] = useState(false);
+    const [isResettingUserDailyTokens, setIsResettingUserDailyTokens] = useState(false);
 
     const [userPasswordModalOpen, setUserPasswordModalOpen] = useState(false);
     const [userPasswordForm, setUserPasswordForm] =
@@ -2056,6 +2063,9 @@ export function useAdminController() {
         setUserForm(emptyUserForm);
         setUserModalError("");
         setUserFormErrors({});
+        setUserDailyTokenUsage(null);
+        setIsLoadingUserDailyTokenUsage(false);
+        setIsResettingUserDailyTokens(false);
         setUserModalOpen(true);
     }
 
@@ -2069,11 +2079,15 @@ export function useAdminController() {
         setUserModalMode("edit");
         setUserModalError("");
         setUserFormErrors({});
+        setUserDailyTokenUsage(null);
+        setIsLoadingUserDailyTokenUsage(true);
+        setIsResettingUserDailyTokens(false);
 
         try {
             const token = await getAccessToken();
             if (!token) {
                 showUserModalError("Sessão expirada. Faça login novamente.");
+                setIsLoadingUserDailyTokenUsage(false);
                 return;
             }
 
@@ -2088,6 +2102,19 @@ export function useAdminController() {
                 publishers: normalizeUserPublisherSelection(detailed.publishers),
             });
             setUserModalOpen(true);
+            try {
+                const usage = await fetchUserDailyTokenUsage(token, detailed.email);
+                setUserDailyTokenUsage(usage);
+            } catch (usageError) {
+                showUserModalError(
+                    normalizeErrorMessage(
+                        usageError,
+                        "Erro ao carregar uso de IA do usuário."
+                    )
+                );
+            } finally {
+                setIsLoadingUserDailyTokenUsage(false);
+            }
         } catch (err) {
             setUserForm({
                 id: user.id,
@@ -2105,6 +2132,17 @@ export function useAdminController() {
                     "Erro ao carregar detalhes do usuário."
                 )} Exibindo os dados da listagem.`
             );
+            try {
+                const token = await getAccessToken();
+                if (token) {
+                    const usage = await fetchUserDailyTokenUsage(token, user.email);
+                    setUserDailyTokenUsage(usage);
+                }
+            } catch {
+                setUserDailyTokenUsage(null);
+            } finally {
+                setIsLoadingUserDailyTokenUsage(false);
+            }
         }
     }
 
@@ -2117,6 +2155,9 @@ export function useAdminController() {
         setUserModalOpen(false);
         setUserModalError("");
         setUserFormErrors({});
+        setUserDailyTokenUsage(null);
+        setIsLoadingUserDailyTokenUsage(false);
+        setIsResettingUserDailyTokens(false);
     }
 
     /**
@@ -2285,6 +2326,34 @@ export function useAdminController() {
             await loadUsers();
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao remover usuário."));
+        }
+    }
+
+    /**
+     * Reseta o uso diário de tokens de chat de um usuário.
+     *
+     * @param userId Identificador do usuário.
+     * @returns Promise<void>.
+     */
+    async function resetUserDailyTokens(userId: string): Promise<void> {
+        setUserModalError("");
+        setIsResettingUserDailyTokens(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                showUserModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const usage = await resetUserDailyTokenUsage(token, userId);
+            setUserDailyTokenUsage(usage);
+            message.success("Uso diário de tokens resetado.");
+        } catch (err) {
+            showUserModalError(
+                normalizeErrorMessage(err, "Erro ao resetar uso diário de tokens.")
+            );
+        } finally {
+            setIsResettingUserDailyTokens(false);
         }
     }
 
@@ -2790,6 +2859,9 @@ export function useAdminController() {
             userForm,
             userModalError,
             userFormErrors,
+            userDailyTokenUsage,
+            isLoadingUserDailyTokenUsage,
+            isResettingUserDailyTokens,
             userPasswordModalOpen,
             userPasswordForm,
             userPasswordModalError,
@@ -2874,6 +2946,7 @@ export function useAdminController() {
             setUserPasswordForm,
             saveUserPassword,
             removeUser,
+            resetUserDailyTokens,
             openCreateLibraryModal,
             openEditLibraryModal,
             closeLibraryModal,

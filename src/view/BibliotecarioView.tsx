@@ -143,6 +143,8 @@ export default function BibliotecarioView() {
     const eventSourceRef = useRef<EventSource | null>(null);
     const loadingToolStartedAtRef = useRef<number | null>(null);
     const loadingDoneTimeoutRef = useRef<number | null>(null);
+    const streamReconnectTimeoutRef = useRef<number | null>(null);
+    const streamRecoveringRef = useRef(false);
     const autoSendRef = useRef(false);
     const previousConversationIdRef = useRef<string | null>(null);
     const [pendingAutoSendMessage, setPendingAutoSendMessage] = useState<string | null>(null);
@@ -159,6 +161,11 @@ export default function BibliotecarioView() {
             window.clearTimeout(loadingDoneTimeoutRef.current);
             loadingDoneTimeoutRef.current = null;
         }
+        if (streamReconnectTimeoutRef.current) {
+            window.clearTimeout(streamReconnectTimeoutRef.current);
+            streamReconnectTimeoutRef.current = null;
+        }
+        streamRecoveringRef.current = false;
         loadingToolStartedAtRef.current = null;
         setCurrentConversationId(null);
         setMessages([]);
@@ -272,6 +279,11 @@ export default function BibliotecarioView() {
             loadingToolStartedAtRef.current = null;
             eventSourceRef.current?.close();
             eventSourceRef.current = null;
+            if (streamReconnectTimeoutRef.current) {
+                window.clearTimeout(streamReconnectTimeoutRef.current);
+                streamReconnectTimeoutRef.current = null;
+            }
+            streamRecoveringRef.current = false;
             loadingDoneTimeoutRef.current = null;
             void refreshConversations();
         };
@@ -327,6 +339,9 @@ export default function BibliotecarioView() {
             if (loadingDoneTimeoutRef.current) {
                 window.clearTimeout(loadingDoneTimeoutRef.current);
             }
+            if (streamReconnectTimeoutRef.current) {
+                window.clearTimeout(streamReconnectTimeoutRef.current);
+            }
         };
     }, []);
 
@@ -376,25 +391,31 @@ export default function BibliotecarioView() {
             setLoadingLabel(toolName ? `Analisando (${toolName})...` : "Analisando...");
         }
         if (messageType === "assistant" || messageType === "status" || messageType === "tool_start" || messageType === "tool_result" || messageType === "action" || messageType === "done") {
-            setMessages((previous) => [
-                ...previous,
-                {
-                    id: String(event.id || crypto.randomUUID()),
-                    conversation_id: String(event.conversation_id || currentConversationId || ""),
-                    role: "assistant",
-                    message_type: messageType,
-                    content: typeof event.content === "string" ? event.content : messageType,
-                    payload: (event.payload as ChatTurnPayload | Record<string, unknown> | null) || null,
-                    tool_name:
-                        typeof event.tool_name === "string"
-                            ? event.tool_name
-                            : typeof event.tool === "string"
-                              ? event.tool
-                              : null,
-                    status: typeof event.status === "string" ? event.status : null,
-                    created_at: typeof event.created_at === "string" ? event.created_at : undefined,
-                },
-            ]);
+            const eventId = String(event.id || crypto.randomUUID());
+            setMessages((previous) => {
+                if (previous.some((messageItem) => messageItem.id === eventId)) {
+                    return previous;
+                }
+                return [
+                    ...previous,
+                    {
+                        id: eventId,
+                        conversation_id: String(event.conversation_id || currentConversationId || ""),
+                        role: "assistant",
+                        message_type: messageType,
+                        content: typeof event.content === "string" ? event.content : messageType,
+                        payload: (event.payload as ChatTurnPayload | Record<string, unknown> | null) || null,
+                        tool_name:
+                            typeof event.tool_name === "string"
+                                ? event.tool_name
+                                : typeof event.tool === "string"
+                                  ? event.tool
+                                  : null,
+                        status: typeof event.status === "string" ? event.status : null,
+                        created_at: typeof event.created_at === "string" ? event.created_at : undefined,
+                    },
+                ];
+            });
         }
         if (messageType === "done") {
             const startedAt = loadingToolStartedAtRef.current;
@@ -406,6 +427,68 @@ export default function BibliotecarioView() {
             completeLoading(120);
         }
     };
+
+    /**
+     * Reabre o SSE da conversa atual depois de uma queda sem `done`.
+     *
+     * @param conversationId Identificador da conversa em processamento.
+     * @returns void
+     */
+    function reopenConversationStream(conversationId: string): void {
+        eventSourceRef.current?.close();
+        eventSourceRef.current = openChatConversationStream(
+            conversationId,
+            clientKey,
+            applyStreamEvent,
+            () => recoverConversationStream(conversationId)
+        );
+    }
+
+    /**
+     * Recupera o estado da conversa quando a conexão SSE cai antes do evento final.
+     *
+     * @param conversationId Identificador da conversa em processamento.
+     * @returns Promise<void>
+     */
+    async function recoverConversationStream(conversationId: string): Promise<void> {
+        if (streamRecoveringRef.current) {
+            return;
+        }
+        streamRecoveringRef.current = true;
+        try {
+            await syncConversationSnapshot(conversationId);
+            const accessToken = await getAccessToken({ redirectOnFail: false });
+            const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+            const nextMessages = conversation.messages || [];
+            const hasFinalMessage = nextMessages.some((messageItem) =>
+                messageItem.role === "assistant" &&
+                (messageItem.message_type === "assistant" || messageItem.message_type === "done")
+            );
+            const finished = conversation.status === "done" || conversation.status === "error" || hasFinalMessage;
+            if (finished) {
+                completeLoading(120);
+                return;
+            }
+            if (streamReconnectTimeoutRef.current) {
+                window.clearTimeout(streamReconnectTimeoutRef.current);
+            }
+            streamReconnectTimeoutRef.current = window.setTimeout(() => {
+                streamReconnectTimeoutRef.current = null;
+                reopenConversationStream(conversationId);
+            }, 1500);
+        } catch (error) {
+            console.error("Falha ao recuperar stream do chat", error);
+            if (streamReconnectTimeoutRef.current) {
+                window.clearTimeout(streamReconnectTimeoutRef.current);
+            }
+            streamReconnectTimeoutRef.current = window.setTimeout(() => {
+                streamReconnectTimeoutRef.current = null;
+                reopenConversationStream(conversationId);
+            }, 3000);
+        } finally {
+            streamRecoveringRef.current = false;
+        }
+    }
 
     /**
      * Envia a mensagem do usuário para o backend.
@@ -455,7 +538,8 @@ export default function BibliotecarioView() {
             eventSourceRef.current = openChatConversationStream(
                 response.conversation_id,
                 clientKey,
-                applyStreamEvent
+                applyStreamEvent,
+                () => recoverConversationStream(response.conversation_id)
             );
             void syncConversationSnapshot(response.conversation_id);
         } catch (error) {

@@ -211,17 +211,19 @@ export async function fetchChatConversation(
 }
 
 /**
- * Abre o stream SSE de uma conversa.
+ * Abre o stream SSE de uma conversa do bibliotecario.
  *
- * @param conversationId Identificador da conversa.
- * @param clientKey Chave local anônima, quando necessário.
- * @param onEvent Callback para cada evento recebido.
- * @returns Instância de EventSource.
+ * @param conversationId Identificador da conversa a acompanhar.
+ * @param clientKey Chave do cliente usada pelo backend para correlacionar o stream.
+ * @param onEvent Callback chamado para cada evento recebido no stream.
+ * @param onError Callback opcional para recuperar a UI quando a conexao cai antes do `done`.
+ * @returns Instancia de EventSource aberta para a conversa.
  */
 export function openChatConversationStream(
     conversationId: string,
     clientKey: string,
-    onEvent: (event: ChatSseEvent) => void
+    onEvent: (event: ChatSseEvent) => void,
+    onError?: () => void
 ): EventSource {
     const streamUrl = new URL(`/chat/conversations/${conversationId}/events`, API_BASE_URL);
     if (clientKey) {
@@ -254,6 +256,7 @@ export function openChatConversationStream(
         if (finished || eventSource.readyState === EventSource.CLOSED) {
             return;
         }
+        onError?.();
         console.error("Chat SSE error", error);
     };
     return eventSource;

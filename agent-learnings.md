@@ -17,6 +17,19 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-24 - bibliotecario precisa recuperar SSE encerrado antes do done
+- Descoberta:
+  - Em producao, o worker pode finalizar e persistir a resposta corretamente depois de a conexao SSE do navegador/proxy cair; nesse caso a conversa fica `done` no banco, mas a UI permanece visualmente em analise se nao sincronizar o snapshot.
+  - O `EventSource.onerror` precisa disparar recuperacao do estado da conversa, deduplicar eventos ja recebidos e reabrir o stream apenas quando o backend ainda nao terminou.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/service/ChatService.ts
+  - /home/sergio/@pessoal/biblioweb-react/src/view/BibliotecarioView.tsx
+  - producao: conversa `80084fdf-9b28-48c2-93c5-0ea71a7d38f7`, stream fechou antes da mensagem final persistida
+- Acao aplicada:
+  - Adicionei callback de erro ao SSE, sincronizacao de snapshot na queda, reabertura controlada do stream e deduplicacao por id de evento.
+- Impacto esperado:
+  - O bibliotecario deixa de ficar preso em `Analisando...` quando a resposta foi concluida no backend, mesmo se a conexao SSE cair antes do evento final.
+
 ### 2026-07-24 - diagnostico de producao do bibliotecario travado por timeout do provider
 - Descoberta:
   - A ultima conversa de producao do bibliotecario pode parecer travada quando o job RQ do chat estoura o timeout de 180s dentro do adapter OpenAI antes de persistir qualquer tool call.

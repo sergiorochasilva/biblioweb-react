@@ -17,6 +17,19 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-24 - e2e do bibliotecario deve cobrir segunda mensagem real com provider OpenAI
+- Descoberta:
+  - O runner e2e ainda forcava `CHAT_PROVIDER=local`, mas o backend atual rejeita provider local; o e2e precisa herdar `CHAT_PROVIDER`, `CHAT_MODEL` e `OPENAI_API_KEY` do `.env` da API quando nao houver override explicito.
+  - O fluxo que regrediu em producao e especificamente a segunda mensagem da mesma conversa pedindo indicacao de livros, entao precisa existir teste Playwright com duas mensagens reais e validacao de cards.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/scripts/run-e2e-stack.mjs
+  - /home/sergio/@pessoal/biblioweb-react/tests/e2e/chat-bibliotecario.spec.ts
+  - producao: conversa `4b813dbb-50c4-41e3-9438-a8ab359e25db` terminou no banco, mas o SSE caiu antes da resposta aparecer no navegador
+- Acao aplicada:
+  - Ajustei o runner para usar o provider real da API local e adicionei teste Playwright da sequencia "O que calvino..." seguida de "Pode me indicar livros sobre isso?".
+- Impacto esperado:
+  - Proximos deploys do bibliotecario passam a validar a segunda mensagem com stack real antes de chegar em producao.
+
 ### 2026-07-24 - uso de IA do usuario deve ficar no modal de edicao
 - Descoberta:
   - O grid de usuarios do `/admin` deve manter apenas dados cadastrais; uso diario de IA do bibliotecario e uma informacao operacional que deve aparecer somente ao editar um usuario.

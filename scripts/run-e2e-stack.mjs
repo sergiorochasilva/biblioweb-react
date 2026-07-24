@@ -19,8 +19,8 @@ const PLAYWRIGHT_TEST_ARGS = (process.env.PLAYWRIGHT_TEST_ARGS || "")
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-const DEFAULT_CHAT_PROVIDER = process.env.E2E_CHAT_PROVIDER || "local";
-const DEFAULT_CHAT_MODEL = process.env.E2E_CHAT_MODEL || "gpt-5.4-nano";
+const DEFAULT_CHAT_PROVIDER = process.env.E2E_CHAT_PROVIDER || "";
+const DEFAULT_CHAT_MODEL = process.env.E2E_CHAT_MODEL || "";
 const DEFAULT_EMBEDDING_BACKEND = process.env.E2E_EMBEDDING_BACKEND || "fake";
 const DEFAULT_OPENAI_API_KEY = process.env.E2E_OPENAI_API_KEY || "";
 
@@ -108,10 +108,10 @@ async function main() {
         ...apiEnv,
         PLAYWRIGHT_API_BASE_URL: API_BASE_URL,
         APP_HOST_PORT,
-        CHAT_PROVIDER: DEFAULT_CHAT_PROVIDER,
-        CHAT_MODEL: DEFAULT_CHAT_MODEL,
+        CHAT_PROVIDER: DEFAULT_CHAT_PROVIDER || apiEnv.CHAT_PROVIDER || "openai",
+        CHAT_MODEL: DEFAULT_CHAT_MODEL || apiEnv.CHAT_MODEL || "gpt-5.4-nano",
         EMBEDDING_BACKEND: DEFAULT_EMBEDDING_BACKEND,
-        OPENAI_API_KEY: DEFAULT_OPENAI_API_KEY,
+        OPENAI_API_KEY: DEFAULT_OPENAI_API_KEY || apiEnv.OPENAI_API_KEY || "",
     };
 
     await runCommand(

@@ -346,4 +346,110 @@ test.describe.serial("Chat bibliotecário", () => {
             }
         }
     });
+
+    test("responde a segunda mensagem com indicação de livros sobre a conversa anterior", async ({ page, request }) => {
+        const adminToken = await loginAsAdminApi(request);
+        const profileResponse = await request.get(`${API_BASE_URL}/profile`, {
+            headers: {
+                Authorization: `Bearer ${adminToken}`,
+            },
+        });
+        expect(profileResponse.ok()).toBeTruthy();
+        const profile = (await profileResponse.json()) as {
+            publishers?: Array<{ id: string; name?: string }>;
+            libraries?: Array<{ id: number; name?: string; nome?: string }>;
+        };
+        const authorId = await fetchFirstAuthorId(request, adminToken);
+        const subjectId = await fetchFirstSubjectId(request, adminToken);
+        const title = `Calvino e a Oração ${buildUniqueBookTitle()}`;
+        let bookId = "";
+
+        try {
+            const createResponse = await request.post(`${API_BASE_URL}/books`, {
+                headers: {
+                    Authorization: `Bearer ${adminToken}`,
+                },
+                data: {
+                    title,
+                    publisher: PUBLISHER_ID,
+                    type: "external",
+                    external_url: "file:///var/www/html/tests/fixtures/semantic-search-book.html",
+                    external_source: "fixture-e2e-chat-second-turn",
+                    edition: "1",
+                    year: "2026",
+                    isbn: "9780000000012",
+                    pages: "120",
+                    language: "pt-BR",
+                    summary: "Obra sobre Calvino, oração, comunhão com Deus, dependência e vida devocional cristã.",
+                    authors: [{ author: Number(authorId) }],
+                    subjects: [{ subject: Number(subjectId) }],
+                    libraries: [
+                        {
+                            library: 1,
+                            available_licenses: 0,
+                            max_uses_per_license: 0,
+                            license_uses_count: 0,
+                        },
+                    ],
+                },
+            });
+
+            expect(createResponse.ok()).toBeTruthy();
+            const createdBody = (await createResponse.json()) as { id?: string };
+            bookId = createdBody.id || "";
+            expect(bookId).toBeTruthy();
+
+            await expect
+                .poll(async () => countSemanticIndexRows(bookId).summary, {
+                    timeout: 120_000,
+                    intervals: [2_000, 4_000, 8_000],
+                })
+                .toBeGreaterThan(0);
+
+            await page.addInitScript(
+                ({ token, profileData, publisher, library }) => {
+                    localStorage.setItem("token", token);
+                    localStorage.setItem("profile", JSON.stringify(profileData));
+                    if (publisher) {
+                        localStorage.setItem("publisher", JSON.stringify(publisher));
+                    }
+                    if (library) {
+                        localStorage.setItem("library", JSON.stringify(library));
+                    }
+                },
+                {
+                    token: adminToken,
+                    profileData: profile,
+                    publisher: profile.publishers?.[0] ?? null,
+                    library: profile.libraries?.[0] ?? null,
+                }
+            );
+
+            await page.goto("/bibliotecario");
+            const chatInput = page.getByPlaceholder("Digite sua pergunta ao bibliotecário...");
+
+            await chatInput.fill("O que calvino ensinou sobre a oração?");
+            await page.getByRole("button", { name: "Enviar" }).click();
+            await expect(page.locator(".chat-response-markdown").first()).toBeVisible({ timeout: 120_000 });
+
+            await chatInput.fill("Pode me indicar livros sobre isso?");
+            await page.getByRole("button", { name: "Enviar" }).click();
+
+            await expect(page.locator(".chat-response-markdown").nth(1)).toBeVisible({ timeout: 180_000 });
+            const booksBlock = page.locator(".chat-books-block").last();
+            await expect(booksBlock).toBeVisible({ timeout: 120_000 });
+            await expect
+                .poll(async () => booksBlock.locator(".chat-book-card-wrap").count(), {
+                    timeout: 60_000,
+                    intervals: [2_000, 4_000, 8_000],
+                })
+                .toBeGreaterThan(0);
+            await expect(booksBlock.locator(".chat-book-card-wrap").filter({ hasText: title }).first()).toBeVisible();
+            await expect(page.locator(".chat-loading-panel")).toHaveCount(0);
+        } finally {
+            if (bookId) {
+                await deleteBook(request, adminToken, bookId);
+            }
+        }
+    });
 });

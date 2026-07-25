@@ -48,10 +48,10 @@ function getConversationStatusLabel(status?: string | null): string {
     const normalized = String(status || "").trim().toLowerCase();
     const labels: Record<string, string> = {
         done: "Concluída",
-        queued: "Na fila",
+        queued: "Em fila...",
         open: "Aberta",
         error: "Erro",
-        running: "Em análise",
+        running: "Analisando...",
     };
     return labels[normalized] || "Aberta";
 }
@@ -74,6 +74,31 @@ function getConversationStatusColor(status?: string | null): string {
         return "blue";
     }
     return "default";
+}
+
+/**
+ * Converte status de execução em texto de espera, sem tratar o status da
+ * conversa como se fosse uma etapa de processamento da resposta.
+ *
+ * @param status Texto recebido do backend ou do estado local.
+ * @returns Texto de execução ou `null` quando o valor pertence à conversa.
+ */
+function getLoadingStatusLabel(status?: string | null): string | null {
+    const normalized = String(status || "").trim();
+    const technicalStatus = normalized.toLowerCase();
+    if (!normalized) {
+        return "Analisando...";
+    }
+    if (technicalStatus === "queued") {
+        return "Em fila...";
+    }
+    if (technicalStatus === "running") {
+        return "Analisando...";
+    }
+    if (technicalStatus === "open" || technicalStatus === "done") {
+        return null;
+    }
+    return normalized;
 }
 
 /**
@@ -199,7 +224,9 @@ export default function BibliotecarioView() {
     const eventSourceRef = useRef<EventSource | null>(null);
     const messageStreamRef = useRef<HTMLDivElement | null>(null);
     const pendingAssistantScrollRef = useRef(false);
+    const pendingUserScrollRef = useRef(false);
     const lastAutoScrolledAssistantIdRef = useRef<string | null>(null);
+    const lastAutoScrolledUserIdRef = useRef<string | null>(null);
     const currentConversationIdRef = useRef<string | null>(null);
     const loadingConversationIdRef = useRef<string | null>(null);
     const fallbackPollingConversationIdRef = useRef<string | null>(null);
@@ -469,12 +496,13 @@ export default function BibliotecarioView() {
                 typeof (event.payload as { status?: unknown }).status === "string"
                     ? String((event.payload as { status: string }).status).trim()
                     : "";
-            const nextStatus =
+            const nextStatus = getLoadingStatusLabel(
                 typeof event.status === "string" && event.status.trim()
                     ? event.status.trim()
                     : typeof event.content === "string" && event.content.trim()
                       ? event.content.trim()
-                      : payloadStatus;
+                      : payloadStatus
+            );
             if (nextStatus) {
                 const hasToolLabel = loadingLabel.includes("(");
                 if (nextStatus.includes("(")) {
@@ -484,7 +512,7 @@ export default function BibliotecarioView() {
                     }
                     return;
                 }
-                if (hasToolLabel && nextStatus === "Analisando...") {
+                if (hasToolLabel && ["Em fila...", "Analisando..."].includes(nextStatus)) {
                     return;
                 }
                 if (isVisibleConversation) {
@@ -625,6 +653,7 @@ export default function BibliotecarioView() {
         setLoadingLabel("Analisando...");
         loadingToolStartedAtRef.current = null;
         pendingAssistantScrollRef.current = true;
+        pendingUserScrollRef.current = true;
         setInput("");
         try {
             const accessToken = await getAccessToken({ redirectOnFail: false });
@@ -754,15 +783,16 @@ export default function BibliotecarioView() {
                         typeof (messageItem.payload as { status?: unknown }).status === "string"
                             ? String((messageItem.payload as { status: string }).status).trim()
                             : "";
-                    if (payloadStatus && payloadStatus !== "Analisando...") {
-                        return payloadStatus;
+                    const safePayloadStatus = getLoadingStatusLabel(payloadStatus);
+                    if (safePayloadStatus) {
+                        return safePayloadStatus;
                     }
                     if (
                         typeof messageItem.content === "string" &&
                         messageItem.content.trim() &&
-                        messageItem.content.trim() !== "Analisando..."
+                        getLoadingStatusLabel(messageItem.content)
                     ) {
-                        return messageItem.content.trim();
+                        return getLoadingStatusLabel(messageItem.content) as string;
                     }
                 }
             }
@@ -784,11 +814,16 @@ export default function BibliotecarioView() {
                     typeof (messageItem.payload as { status?: unknown }).status === "string"
                         ? String((messageItem.payload as { status: string }).status).trim()
                         : "";
-                if (payloadStatus) {
-                    return payloadStatus;
+                const safePayloadStatus = getLoadingStatusLabel(payloadStatus);
+                if (safePayloadStatus) {
+                    return safePayloadStatus;
                 }
-                if (typeof messageItem.content === "string" && messageItem.content.trim()) {
-                    return messageItem.content.trim();
+                if (
+                    typeof messageItem.content === "string" &&
+                    messageItem.content.trim() &&
+                    getLoadingStatusLabel(messageItem.content)
+                ) {
+                    return getLoadingStatusLabel(messageItem.content) as string;
                 }
             }
         }
@@ -810,6 +845,46 @@ export default function BibliotecarioView() {
         return null;
     }, [visibleMessages]);
 
+    const latestUserMessageId = useMemo(() => {
+        for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+            const messageItem = visibleMessages[index];
+            if (isUserMessage(messageItem)) {
+                return messageItem.id;
+            }
+        }
+        return null;
+    }, [visibleMessages]);
+
+    /**
+     * Rola a área de mensagens até o início da bolha informada.
+     *
+     * @param messageId Identificador da mensagem no DOM.
+     * @returns void
+     */
+    const scrollMessageIntoView = useCallback((messageId: string): void => {
+        const escapedId = window.CSS?.escape
+            ? window.CSS.escape(messageId)
+            : messageId.replace(/["\\]/g, "\\$&");
+        const messageElement = messageStreamRef.current?.querySelector(
+            `[data-chat-message-id="${escapedId}"]`
+        );
+        messageElement?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, []);
+
+    useEffect(() => {
+        if (
+            !pendingUserScrollRef.current ||
+            !latestUserMessageId ||
+            lastAutoScrolledUserIdRef.current === latestUserMessageId
+        ) {
+            return;
+        }
+
+        lastAutoScrolledUserIdRef.current = latestUserMessageId;
+        pendingUserScrollRef.current = false;
+        scrollMessageIntoView(latestUserMessageId);
+    }, [latestUserMessageId, scrollMessageIntoView]);
+
     useEffect(() => {
         if (
             !pendingAssistantScrollRef.current ||
@@ -819,20 +894,10 @@ export default function BibliotecarioView() {
             return;
         }
 
-        const escapedId = window.CSS?.escape
-            ? window.CSS.escape(latestAssistantMessageId)
-            : latestAssistantMessageId.replace(/["\\]/g, "\\$&");
-        const messageElement = messageStreamRef.current?.querySelector(
-            `[data-chat-message-id="${escapedId}"]`
-        );
-        if (!messageElement) {
-            return;
-        }
-
         lastAutoScrolledAssistantIdRef.current = latestAssistantMessageId;
         pendingAssistantScrollRef.current = false;
-        messageElement.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, [latestAssistantMessageId]);
+        scrollMessageIntoView(latestAssistantMessageId);
+    }, [latestAssistantMessageId, scrollMessageIntoView]);
 
     return (
         <Layout className="page-shell bibliotecario-shell">
@@ -855,29 +920,33 @@ export default function BibliotecarioView() {
                             <List
                                 className="chat-history-list"
                                 dataSource={conversations}
-                                renderItem={(conversation) => (
-                                    <List.Item
-                                        className={`chat-history-item ${conversation.id === currentConversationId ? "active" : ""}`}
-                                        onClick={() => setCurrentConversationId(conversation.id)}
-                                    >
-                                        <div className="chat-history-item-content">
-                                            <Typography.Text className="chat-history-title">
-                                                {conversation.title || "Conversa sem título"}
-                                            </Typography.Text>
-                                            {conversation.summary ? (
-                                                <Typography.Text className="chat-history-summary" type="secondary">
-                                                    {conversation.summary}
+                                renderItem={(conversation) => {
+                                    const displayedStatus =
+                                        loadingConversationId === conversation.id ? "open" : conversation.status;
+                                    return (
+                                        <List.Item
+                                            className={`chat-history-item ${conversation.id === currentConversationId ? "active" : ""}`}
+                                            onClick={() => setCurrentConversationId(conversation.id)}
+                                        >
+                                            <div className="chat-history-item-content">
+                                                <Typography.Text className="chat-history-title">
+                                                    {conversation.title || "Conversa sem título"}
                                                 </Typography.Text>
-                                            ) : null}
-                                            <Tag
-                                                className="chat-history-status-tag"
-                                                color={getConversationStatusColor(conversation.status)}
-                                            >
-                                                {getConversationStatusLabel(conversation.status)}
-                                            </Tag>
-                                        </div>
-                                    </List.Item>
-                                )}
+                                                {conversation.summary ? (
+                                                    <Typography.Text className="chat-history-summary" type="secondary">
+                                                        {conversation.summary}
+                                                    </Typography.Text>
+                                                ) : null}
+                                                <Tag
+                                                    className="chat-history-status-tag"
+                                                    color={getConversationStatusColor(displayedStatus)}
+                                                >
+                                                    {getConversationStatusLabel(displayedStatus)}
+                                                </Tag>
+                                            </div>
+                                        </List.Item>
+                                    );
+                                }}
                             />
                         </div>
                         <div className="chat-history-footer">

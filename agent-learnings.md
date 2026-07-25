@@ -17,6 +17,19 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-25 - status tecnico do chat nao deve aparecer no loading visual
+- Descoberta:
+  - Eventos ou snapshots do backend podem trazer status tecnico (`running`, `queued`, `done`) enquanto a UI precisa traduzir apenas os estados de execucao para `Analisando...` ou `Em fila...`.
+  - `open` e `done` representam o ciclo de vida da conversa, nao uma etapa de espera da resposta; durante uma rodada, a tag local deve indicar conversa aberta/em andamento sem alimentar o loading.
+  - O scroll automatico precisa cobrir tanto a mensagem do usuario quanto a resposta do assistente.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/view/BibliotecarioView.tsx
+  - producao: conversa `965255b6-40d0-415d-b09f-c44afb45e31f`
+- Acao aplicada:
+  - Normalizei `queued` para `Em fila...` e `running` para `Analisando...`; ignorei `open`/`done` no loading, sobrepus a tag da conversa ativa para `Aberta` enquanto ha `loadingConversationId` e adicionei scroll para a ultima mensagem do usuario.
+- Impacto esperado:
+  - A UI deixa de mostrar `running`, nao marca visualmente a conversa ativa como concluida durante nova rodada e mantem o foco no inicio da mensagem recem-criada.
+
 ### 2026-07-24 - chat do bibliotecario bloqueia novo envio durante rodada ativa
 - Descoberta:
   - A rodada do bibliotecario continua ativa enquanto a UI aguarda o SSE/resposta final, mesmo depois de o `POST /chat/conversations` retornar.

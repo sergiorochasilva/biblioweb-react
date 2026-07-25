@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button, Empty, Input, Layout, List, Spin, Typography, message } from "antd";
+import { Button, Empty, Input, Layout, List, Spin, Tag, Typography, message } from "antd";
 import HeaderView from "./HeaderView";
 import "../styles/BibliotecarioView.css";
 import { useAuth } from "../contexts/useAuth";
@@ -36,6 +36,44 @@ function isAssistantMessage(message: ChatMessageRecord): boolean {
 
 function isUserMessage(message: ChatMessageRecord): boolean {
     return message.role === "user" && message.message_type === "user";
+}
+
+/**
+ * Converte o status interno da conversa para uma tag em português.
+ *
+ * @param status Status retornado pela API.
+ * @returns Texto curto para exibição no histórico.
+ */
+function getConversationStatusLabel(status?: string | null): string {
+    const normalized = String(status || "").trim().toLowerCase();
+    const labels: Record<string, string> = {
+        done: "Concluída",
+        queued: "Na fila",
+        open: "Aberta",
+        error: "Erro",
+        running: "Em análise",
+    };
+    return labels[normalized] || "Aberta";
+}
+
+/**
+ * Define a cor visual da tag de status da conversa.
+ *
+ * @param status Status retornado pela API.
+ * @returns Nome de cor aceito pelo Ant Design.
+ */
+function getConversationStatusColor(status?: string | null): string {
+    const normalized = String(status || "").trim().toLowerCase();
+    if (normalized === "done") {
+        return "green";
+    }
+    if (normalized === "error") {
+        return "red";
+    }
+    if (normalized === "queued" || normalized === "running") {
+        return "blue";
+    }
+    return "default";
 }
 
 /**
@@ -124,6 +162,22 @@ function mergeConversationMessages(
     return merged;
 }
 
+/**
+ * Verifica se o snapshot da conversa ja contem uma resposta final da rodada.
+ *
+ * @param conversation Conversa retornada pela API.
+ * @returns Verdadeiro quando a rodada pode ser considerada encerrada.
+ */
+function hasFinalConversationMessage(conversation: ChatConversationRecord): boolean {
+    const nextMessages = conversation.messages || [];
+    const hasFinalMessage = nextMessages.some(
+        (messageItem) =>
+            messageItem.role === "assistant" &&
+            (messageItem.message_type === "assistant" || messageItem.message_type === "done")
+    );
+    return conversation.status === "done" || conversation.status === "error" || hasFinalMessage;
+}
+
 export default function BibliotecarioView() {
     const { Content } = Layout;
     const navigate = useNavigate();
@@ -137,10 +191,18 @@ export default function BibliotecarioView() {
     const [messages, setMessages] = useState<ChatMessageRecord[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
+    const [fallbackPollingConversationId, setFallbackPollingConversationId] = useState<string | null>(null);
     const [loadingLabel, setLoadingLabel] = useState("Analisando...");
     const [loadingConversation, setLoadingConversation] = useState(false);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const messageStreamRef = useRef<HTMLDivElement | null>(null);
+    const pendingAssistantScrollRef = useRef(false);
+    const lastAutoScrolledAssistantIdRef = useRef<string | null>(null);
+    const currentConversationIdRef = useRef<string | null>(null);
+    const loadingConversationIdRef = useRef<string | null>(null);
+    const fallbackPollingConversationIdRef = useRef<string | null>(null);
     const loadingToolStartedAtRef = useRef<number | null>(null);
     const loadingDoneTimeoutRef = useRef<number | null>(null);
     const streamReconnectTimeoutRef = useRef<number | null>(null);
@@ -149,6 +211,22 @@ export default function BibliotecarioView() {
     const previousConversationIdRef = useRef<string | null>(null);
     const [pendingAutoSendMessage, setPendingAutoSendMessage] = useState<string | null>(null);
     const queryMessage = new URLSearchParams(location.search).get("message") || "";
+    const isCurrentConversationLoading = Boolean(
+        loading && currentConversationId && loadingConversationId === currentConversationId
+    );
+
+    useEffect(() => {
+        currentConversationIdRef.current = currentConversationId;
+    }, [currentConversationId]);
+
+    useEffect(() => {
+        loadingConversationIdRef.current = loadingConversationId;
+    }, [loadingConversationId]);
+
+    useEffect(() => {
+        fallbackPollingConversationIdRef.current = fallbackPollingConversationId;
+    }, [fallbackPollingConversationId]);
+
     /**
      * Limpa a conversa atual e prepara a tela para uma nova interação.
      *
@@ -170,6 +248,9 @@ export default function BibliotecarioView() {
         setCurrentConversationId(null);
         setMessages([]);
         setLoading(false);
+        setLoadingConversationId(null);
+        fallbackPollingConversationIdRef.current = null;
+        setFallbackPollingConversationId(null);
         setLoadingLabel("Analisando...");
     };
 
@@ -225,6 +306,9 @@ export default function BibliotecarioView() {
         try {
             const accessToken = await getAccessToken({ redirectOnFail: false });
             const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+            if (currentConversationIdRef.current !== conversationId) {
+                return;
+            }
             const nextMessages = conversation.messages || [];
             setMessages((previous) => {
                 if (previous.length === 0) {
@@ -249,6 +333,9 @@ export default function BibliotecarioView() {
     const syncConversationSnapshot = useCallback(async (conversationId: string): Promise<void> => {
         const accessToken = await getAccessToken({ redirectOnFail: false });
         const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+        if (currentConversationIdRef.current !== conversationId) {
+            return;
+        }
         const nextMessages = conversation.messages || [];
         setMessages((previous) => {
             if (previous.length === 0) {
@@ -264,17 +351,29 @@ export default function BibliotecarioView() {
     /**
      * Finaliza a análise atual, fechando o stream e recarregando a lista de conversas.
      *
+     * @param conversationId Identificador da conversa em processamento.
      * @param delayMs Atraso opcional antes de encerrar o loading.
      * @returns void
      */
-    const completeLoading = (delayMs = 0): void => {
+    const completeLoading = useCallback((conversationId: string | null, delayMs = 0): void => {
+        const targetConversationId = conversationId || loadingConversationIdRef.current;
         if (loadingDoneTimeoutRef.current) {
             window.clearTimeout(loadingDoneTimeoutRef.current);
             loadingDoneTimeoutRef.current = null;
         }
 
         const finish = (): void => {
+            if (
+                targetConversationId &&
+                loadingConversationIdRef.current &&
+                loadingConversationIdRef.current !== targetConversationId
+            ) {
+                return;
+            }
             setLoading(false);
+            setLoadingConversationId(null);
+            fallbackPollingConversationIdRef.current = null;
+            setFallbackPollingConversationId(null);
             setLoadingLabel("Analisando...");
             loadingToolStartedAtRef.current = null;
             eventSourceRef.current?.close();
@@ -294,7 +393,7 @@ export default function BibliotecarioView() {
         }
 
         finish();
-    };
+    }, [refreshConversations]);
 
     useEffect(() => {
         void refreshConversations();
@@ -353,6 +452,15 @@ export default function BibliotecarioView() {
      */
     const applyStreamEvent = (event: ChatSseEvent): void => {
         const messageType = String(event.message_type || event.event || "");
+        const eventConversationId = String(
+            event.conversation_id || loadingConversationIdRef.current || currentConversationIdRef.current || ""
+        );
+        const isVisibleConversation =
+            !eventConversationId || currentConversationIdRef.current === eventConversationId;
+        if (eventConversationId && fallbackPollingConversationIdRef.current === eventConversationId) {
+            fallbackPollingConversationIdRef.current = null;
+            setFallbackPollingConversationId(null);
+        }
         if (messageType === "status") {
             const payloadStatus =
                 event.payload &&
@@ -371,13 +479,17 @@ export default function BibliotecarioView() {
                 const hasToolLabel = loadingLabel.includes("(");
                 if (nextStatus.includes("(")) {
                     loadingToolStartedAtRef.current = Date.now();
-                    setLoadingLabel(nextStatus);
+                    if (isVisibleConversation) {
+                        setLoadingLabel(nextStatus);
+                    }
                     return;
                 }
                 if (hasToolLabel && nextStatus === "Analisando...") {
                     return;
                 }
-                setLoadingLabel(nextStatus);
+                if (isVisibleConversation) {
+                    setLoadingLabel(nextStatus);
+                }
             }
         }
         if (messageType === "tool_start") {
@@ -388,43 +500,47 @@ export default function BibliotecarioView() {
                       ? event.tool
                       : "";
             loadingToolStartedAtRef.current = Date.now();
-            setLoadingLabel(toolName ? `Analisando (${toolName})...` : "Analisando...");
+            if (isVisibleConversation) {
+                setLoadingLabel(toolName ? `Analisando (${toolName})...` : "Analisando...");
+            }
         }
         if (messageType === "assistant" || messageType === "status" || messageType === "tool_start" || messageType === "tool_result" || messageType === "action" || messageType === "done") {
             const eventId = String(event.id || crypto.randomUUID());
-            setMessages((previous) => {
-                if (previous.some((messageItem) => messageItem.id === eventId)) {
-                    return previous;
-                }
-                return [
-                    ...previous,
-                    {
-                        id: eventId,
-                        conversation_id: String(event.conversation_id || currentConversationId || ""),
-                        role: "assistant",
-                        message_type: messageType,
-                        content: typeof event.content === "string" ? event.content : messageType,
-                        payload: (event.payload as ChatTurnPayload | Record<string, unknown> | null) || null,
-                        tool_name:
-                            typeof event.tool_name === "string"
-                                ? event.tool_name
-                                : typeof event.tool === "string"
-                                  ? event.tool
-                                  : null,
-                        status: typeof event.status === "string" ? event.status : null,
-                        created_at: typeof event.created_at === "string" ? event.created_at : undefined,
-                    },
-                ];
-            });
+            if (isVisibleConversation) {
+                setMessages((previous) => {
+                    if (previous.some((messageItem) => messageItem.id === eventId)) {
+                        return previous;
+                    }
+                    return [
+                        ...previous,
+                        {
+                            id: eventId,
+                            conversation_id: eventConversationId,
+                            role: "assistant",
+                            message_type: messageType,
+                            content: typeof event.content === "string" ? event.content : messageType,
+                            payload: (event.payload as ChatTurnPayload | Record<string, unknown> | null) || null,
+                            tool_name:
+                                typeof event.tool_name === "string"
+                                    ? event.tool_name
+                                    : typeof event.tool === "string"
+                                      ? event.tool
+                                      : null,
+                            status: typeof event.status === "string" ? event.status : null,
+                            created_at: typeof event.created_at === "string" ? event.created_at : undefined,
+                        },
+                    ];
+                });
+            }
         }
         if (messageType === "done") {
             const startedAt = loadingToolStartedAtRef.current;
             const elapsed = startedAt ? Date.now() - startedAt : 0;
             const remaining = startedAt ? Math.max(0, 400 - elapsed) : 0;
-            completeLoading(remaining);
+            completeLoading(eventConversationId, remaining);
         }
-        if (messageType === "assistant" && loading) {
-            completeLoading(120);
+        if (messageType === "assistant" && loadingConversationIdRef.current === eventConversationId) {
+            completeLoading(eventConversationId, 120);
         }
     };
 
@@ -435,6 +551,12 @@ export default function BibliotecarioView() {
      * @returns void
      */
     function reopenConversationStream(conversationId: string): void {
+        if (
+            currentConversationIdRef.current !== conversationId ||
+            loadingConversationIdRef.current !== conversationId
+        ) {
+            return;
+        }
         eventSourceRef.current?.close();
         eventSourceRef.current = openChatConversationStream(
             conversationId,
@@ -451,22 +573,18 @@ export default function BibliotecarioView() {
      * @returns Promise<void>
      */
     async function recoverConversationStream(conversationId: string): Promise<void> {
-        if (streamRecoveringRef.current) {
+        if (streamRecoveringRef.current || loadingConversationIdRef.current !== conversationId) {
             return;
         }
+        fallbackPollingConversationIdRef.current = conversationId;
+        setFallbackPollingConversationId(conversationId);
         streamRecoveringRef.current = true;
         try {
             await syncConversationSnapshot(conversationId);
             const accessToken = await getAccessToken({ redirectOnFail: false });
             const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
-            const nextMessages = conversation.messages || [];
-            const hasFinalMessage = nextMessages.some((messageItem) =>
-                messageItem.role === "assistant" &&
-                (messageItem.message_type === "assistant" || messageItem.message_type === "done")
-            );
-            const finished = conversation.status === "done" || conversation.status === "error" || hasFinalMessage;
-            if (finished) {
-                completeLoading(120);
+            if (hasFinalConversationMessage(conversation)) {
+                completeLoading(conversationId, 120);
                 return;
             }
             if (streamReconnectTimeoutRef.current) {
@@ -498,13 +616,15 @@ export default function BibliotecarioView() {
      */
     const handleSend = useCallback(async (rawMessage: string): Promise<void> => {
         const normalized = rawMessage.trim();
-        if (!normalized || loadingConversation) {
+        if (!normalized || loading || loadingConversation) {
             return;
         }
         setLoadingConversation(true);
         setLoading(true);
+        setLoadingConversationId(currentConversationId);
         setLoadingLabel("Analisando...");
         loadingToolStartedAtRef.current = null;
+        pendingAssistantScrollRef.current = true;
         setInput("");
         try {
             const accessToken = await getAccessToken({ redirectOnFail: false });
@@ -522,6 +642,7 @@ export default function BibliotecarioView() {
                 },
                 accessToken || undefined
             );
+            setLoadingConversationId(response.conversation_id);
             setCurrentConversationId(response.conversation_id);
             setMessages((previous) => [
                 ...previous,
@@ -545,6 +666,9 @@ export default function BibliotecarioView() {
         } catch (error) {
             setInput(normalized);
             setLoading(false);
+            setLoadingConversationId(null);
+            fallbackPollingConversationIdRef.current = null;
+            setFallbackPollingConversationId(null);
             setLoadingLabel("Analisando...");
             loadingToolStartedAtRef.current = null;
             message.error(getChatErrorMessage(error));
@@ -552,7 +676,46 @@ export default function BibliotecarioView() {
         } finally {
             setLoadingConversation(false);
         }
-    }, [clientKey, currentConversationId, getAccessToken, library?.id, location.pathname, loadingConversation, queryMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [clientKey, currentConversationId, getAccessToken, library?.id, loading, location.pathname, loadingConversation, queryMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!loading || !fallbackPollingConversationId) {
+            return;
+        }
+
+        let stopped = false;
+        const pollConversation = async (): Promise<void> => {
+            if (loadingConversationIdRef.current !== fallbackPollingConversationId) {
+                return;
+            }
+            try {
+                const accessToken = await getAccessToken({ redirectOnFail: false });
+                const conversation = await fetchChatConversation(fallbackPollingConversationId, accessToken || undefined);
+                if (stopped || loadingConversationIdRef.current !== fallbackPollingConversationId) {
+                    return;
+                }
+                if (currentConversationIdRef.current === fallbackPollingConversationId) {
+                    const nextMessages = conversation.messages || [];
+                    setMessages((previous) => mergeConversationMessages(previous, nextMessages));
+                }
+                if (hasFinalConversationMessage(conversation)) {
+                    completeLoading(fallbackPollingConversationId, 120);
+                }
+            } catch (error) {
+                console.error("Falha ao sincronizar conversa em andamento", error);
+            }
+        };
+
+        const intervalId = window.setInterval(() => {
+            void pollConversation();
+        }, 5000);
+        void pollConversation();
+
+        return () => {
+            stopped = true;
+            window.clearInterval(intervalId);
+        };
+    }, [completeLoading, fallbackPollingConversationId, getAccessToken, loading]);
 
     useEffect(() => {
         const pendingMessage = pendingAutoSendMessage;
@@ -571,7 +734,7 @@ export default function BibliotecarioView() {
     }, [messages]);
 
     const activeLoadingLabel = useMemo(() => {
-        if (loading) {
+        if (isCurrentConversationLoading) {
             if (loadingLabel && loadingLabel !== "Analisando...") {
                 return loadingLabel;
             }
@@ -630,12 +793,46 @@ export default function BibliotecarioView() {
             }
         }
         return loadingLabel;
-    }, [messages, loading, loadingLabel]);
+    }, [messages, isCurrentConversationLoading, loadingLabel]);
 
     const visibleMessages = useMemo(
         () => messages.filter((messageItem) => isUserMessage(messageItem) || isAssistantMessage(messageItem)),
         [messages]
     );
+
+    const latestAssistantMessageId = useMemo(() => {
+        for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+            const messageItem = visibleMessages[index];
+            if (isAssistantMessage(messageItem)) {
+                return messageItem.id;
+            }
+        }
+        return null;
+    }, [visibleMessages]);
+
+    useEffect(() => {
+        if (
+            !pendingAssistantScrollRef.current ||
+            !latestAssistantMessageId ||
+            lastAutoScrolledAssistantIdRef.current === latestAssistantMessageId
+        ) {
+            return;
+        }
+
+        const escapedId = window.CSS?.escape
+            ? window.CSS.escape(latestAssistantMessageId)
+            : latestAssistantMessageId.replace(/["\\]/g, "\\$&");
+        const messageElement = messageStreamRef.current?.querySelector(
+            `[data-chat-message-id="${escapedId}"]`
+        );
+        if (!messageElement) {
+            return;
+        }
+
+        lastAutoScrolledAssistantIdRef.current = latestAssistantMessageId;
+        pendingAssistantScrollRef.current = false;
+        messageElement.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, [latestAssistantMessageId]);
 
     return (
         <Layout className="page-shell bibliotecario-shell">
@@ -647,6 +844,7 @@ export default function BibliotecarioView() {
                         <Button
                             block
                             className="chat-new-button"
+                            disabled={loading || loadingConversation}
                             onClick={() => {
                                 resetCurrentConversation();
                             }}
@@ -662,10 +860,22 @@ export default function BibliotecarioView() {
                                         className={`chat-history-item ${conversation.id === currentConversationId ? "active" : ""}`}
                                         onClick={() => setCurrentConversationId(conversation.id)}
                                     >
-                                        <List.Item.Meta
-                                            title={conversation.title || "Conversa sem título"}
-                                            description={conversation.summary || conversation.status || "Aberta"}
-                                        />
+                                        <div className="chat-history-item-content">
+                                            <Typography.Text className="chat-history-title">
+                                                {conversation.title || "Conversa sem título"}
+                                            </Typography.Text>
+                                            {conversation.summary ? (
+                                                <Typography.Text className="chat-history-summary" type="secondary">
+                                                    {conversation.summary}
+                                                </Typography.Text>
+                                            ) : null}
+                                            <Tag
+                                                className="chat-history-status-tag"
+                                                color={getConversationStatusColor(conversation.status)}
+                                            >
+                                                {getConversationStatusLabel(conversation.status)}
+                                            </Tag>
+                                        </div>
                                     </List.Item>
                                 )}
                             />
@@ -701,7 +911,7 @@ export default function BibliotecarioView() {
                             </Typography.Text>
                         </div>
 
-                        <div className="chat-message-stream">
+                        <div className="chat-message-stream" ref={messageStreamRef}>
                             {loadingHistory ? (
                                 <div className="chat-empty-state">
                                     <Spin size="large" />
@@ -714,6 +924,7 @@ export default function BibliotecarioView() {
                                 visibleMessages.map((chatMessage) => (
                                     <div
                                         key={chatMessage.id}
+                                        data-chat-message-id={chatMessage.id}
                                         className={`chat-bubble ${chatMessage.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
                                     >
                                         {chatMessage.role === "user" ? (
@@ -721,7 +932,7 @@ export default function BibliotecarioView() {
                                         ) : (
                                             <ChatResponseRenderer
                                                 payload={(chatMessage.payload as ChatTurnPayload) || null}
-                                                loading={chatMessage.message_type === "status" && loading}
+                                                loading={chatMessage.message_type === "status" && isCurrentConversationLoading}
                                                 loadingLabel={activeLoadingLabel}
                                                 onAction={(route) => navigate(route)}
                                             />
@@ -730,7 +941,7 @@ export default function BibliotecarioView() {
                                 ))
                             )}
 
-                            {loading && (
+                            {isCurrentConversationLoading && (
                                 <div className="chat-bubble chat-bubble-assistant">
                                     <ChatResponseRenderer
                                         payload={assistantPayload}
@@ -750,11 +961,18 @@ export default function BibliotecarioView() {
                                 onPressEnter={(event) => {
                                     if (!event.shiftKey) {
                                         event.preventDefault();
-                                        void handleSend(input);
+                                        if (!loading && !loadingConversation) {
+                                            void handleSend(input);
+                                        }
                                     }
                                 }}
                             />
-                            <Button type="primary" loading={loadingConversation} onClick={() => void handleSend(input)}>
+                            <Button
+                                type="primary"
+                                loading={loadingConversation || isCurrentConversationLoading}
+                                disabled={loading || loadingConversation || !input.trim()}
+                                onClick={() => void handleSend(input)}
+                            >
                                 Enviar
                             </Button>
                         </div>

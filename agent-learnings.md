@@ -17,6 +17,22 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-24 - chat do bibliotecario bloqueia novo envio durante rodada ativa
+- Descoberta:
+  - A rodada do bibliotecario continua ativa enquanto a UI aguarda o SSE/resposta final, mesmo depois de o `POST /chat/conversations` retornar.
+  - O historico deve exibir status tecnico em portugues, como tag discreta, sem ocupar uma linha propria do item.
+  - O SSE pode cair antes da resposta final; o loading precisa estar vinculado a conversa em processamento e a UI deve recuperar o snapshot por polling apenas como fallback apos queda do stream.
+  - Quando a resposta do assistente chega, a conversa deve rolar para o inicio do balao da resposta, nao permanecer parada nem pular para o fim.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/view/BibliotecarioView.tsx
+  - /home/sergio/@pessoal/biblioweb-react/src/styles/BibliotecarioView.css
+- Acao aplicada:
+  - O envio por botao, Enter e "Nova conversa" passou a respeitar `loading || loadingConversation`; os status `done`, `queued`, `open`, `error` e `running` foram traduzidos e renderizados em tag flutuante.
+  - Adicionei `loadingConversationId`, guards por conversa nos eventos/snapshots e polling de snapshot a cada 5s somente depois de `EventSource.onerror` acionar recuperacao do stream.
+  - Adicionei scroll automatico para o topo da nova resposta do assistente quando ela entra no historico.
+- Impacto esperado:
+  - A UI nao permite mensagens no meio da mesma rodada, nao mistura loading entre conversas e recupera a resposta quando o SSE cai antes do `done`.
+
 ### 2026-07-24 - e2e do bibliotecario deve cobrir segunda mensagem real com provider OpenAI
 - Descoberta:
   - O runner e2e ainda forcava `CHAT_PROVIDER=local`, mas o backend atual rejeita provider local; o e2e precisa herdar `CHAT_PROVIDER`, `CHAT_MODEL` e `OPENAI_API_KEY` do `.env` da API quando nao houver override explicito.

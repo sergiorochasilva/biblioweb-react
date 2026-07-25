@@ -46,7 +46,8 @@
 
 .chat-history-item {
     cursor: pointer;
-    padding: 12px 14px;
+    position: relative;
+    padding: 12px 14px 32px;
     border-radius: 16px;
     transition: background-color 160ms ease, transform 160ms ease;
 }
@@ -55,6 +56,39 @@
 .chat-history-item:hover {
     background: rgba(38, 111, 216, 0.12);
     transform: translateY(-1px);
+}
+
+.chat-history-item-content {
+    min-height: 58px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.chat-history-title {
+    display: block;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.chat-history-summary {
+    display: -webkit-box;
+    overflow: hidden;
+    line-height: 1.3;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.chat-history-status-tag {
+    position: absolute;
+    right: 12px;
+    bottom: 8px;
+    margin: 0;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    max-width: calc(100% - 24px);
 }
 
 .chat-new-button {

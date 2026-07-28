@@ -17,6 +17,20 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-07-27 - recuperação do chat deve ser vinculada à rodada atual
+- Descoberta:
+  - Uma conversa pode conter respostas anteriores, portanto a conclusão do fallback precisa ser procurada depois do `message_id` da mensagem atual.
+  - O SSE da rodada deve continuar ativo quando o usuário troca de conversa; ao voltar, o front precisa sincronizar e reabrir o stream se ele estiver fechado.
+  - Callbacks do `EventSource` podem preservar estado de uma renderização antiga; IDs e rótulos usados na recuperação precisam estar disponíveis em refs atualizadas.
+  - O `done` sintético com status `timeout` não representa sucesso e deve mostrar erro ao usuário.
+- Evidencias:
+  - /home/sergio/@pessoal/biblioweb-react/src/view/BibliotecarioView.tsx
+  - /home/sergio/@pessoal/biblioweb-api/fronesis/controller/chat_controller.py
+- Acao aplicada:
+  - Vinculei a detecção de conclusão ao `message_id` atual, mantive o stream durante a troca de conversa, corrigi o rótulo de tool para considerar somente a rodada atual e tratei timeout do SSE como erro recuperável para a próxima tentativa.
+- Impacto esperado:
+  - O fallback não encerra a segunda mensagem usando a resposta anterior, a conversa não fica abandonada ao navegar pelo histórico e a UI não exibe tool antiga nem interpreta timeout como conclusão.
+
 ### 2026-07-25 - status tecnico do chat nao deve aparecer no loading visual
 - Descoberta:
   - Eventos ou snapshots do backend podem trazer status tecnico (`running`, `queued`, `done`) enquanto a UI precisa traduzir apenas os estados de execucao para `Analisando...` ou `Em fila...`.

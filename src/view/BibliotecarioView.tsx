@@ -188,19 +188,43 @@ function mergeConversationMessages(
 }
 
 /**
- * Verifica se o snapshot da conversa ja contem uma resposta final da rodada.
+ * Verifica se o snapshot contém uma resposta final depois da mensagem atual.
  *
  * @param conversation Conversa retornada pela API.
+ * @param userMessageId Identificador da mensagem que iniciou a rodada atual.
  * @returns Verdadeiro quando a rodada pode ser considerada encerrada.
  */
-function hasFinalConversationMessage(conversation: ChatConversationRecord): boolean {
+function hasFinalConversationMessage(conversation: ChatConversationRecord, userMessageId: string): boolean {
     const nextMessages = conversation.messages || [];
-    const hasFinalMessage = nextMessages.some(
+    const userMessageIndex = nextMessages.findIndex((messageItem) => messageItem.id === userMessageId);
+    if (userMessageIndex < 0) {
+        return false;
+    }
+
+    return nextMessages.slice(userMessageIndex + 1).some(
         (messageItem) =>
             messageItem.role === "assistant" &&
-            (messageItem.message_type === "assistant" || messageItem.message_type === "done")
+            (messageItem.message_type === "assistant" ||
+                messageItem.message_type === "done" ||
+                messageItem.status === "error")
     );
-    return conversation.status === "done" || conversation.status === "error" || hasFinalMessage;
+}
+
+/**
+ * Identifica o encerramento artificial do SSE por limite de tempo.
+ *
+ * @param event Evento recebido do stream.
+ * @returns Verdadeiro quando o backend encerrou o stream por timeout.
+ */
+function isStreamTimeoutEvent(event: ChatSseEvent): boolean {
+    const payloadStatus =
+        event.payload &&
+        typeof event.payload === "object" &&
+        "status" in event.payload &&
+        typeof (event.payload as { status?: unknown }).status === "string"
+            ? String((event.payload as { status: string }).status).trim().toLowerCase()
+            : "";
+    return String(event.status || payloadStatus).trim().toLowerCase() === "timeout";
 }
 
 export default function BibliotecarioView() {
@@ -217,6 +241,7 @@ export default function BibliotecarioView() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
+    const [loadingMessageId, setLoadingMessageId] = useState<string | null>(null);
     const [fallbackPollingConversationId, setFallbackPollingConversationId] = useState<string | null>(null);
     const [loadingLabel, setLoadingLabel] = useState("Analisando...");
     const [loadingConversation, setLoadingConversation] = useState(false);
@@ -229,8 +254,10 @@ export default function BibliotecarioView() {
     const lastAutoScrolledUserIdRef = useRef<string | null>(null);
     const currentConversationIdRef = useRef<string | null>(null);
     const loadingConversationIdRef = useRef<string | null>(null);
+    const loadingMessageIdRef = useRef<string | null>(null);
     const fallbackPollingConversationIdRef = useRef<string | null>(null);
     const loadingToolStartedAtRef = useRef<number | null>(null);
+    const loadingLabelRef = useRef("Analisando...");
     const loadingDoneTimeoutRef = useRef<number | null>(null);
     const streamReconnectTimeoutRef = useRef<number | null>(null);
     const streamRecoveringRef = useRef(false);
@@ -249,6 +276,10 @@ export default function BibliotecarioView() {
     useEffect(() => {
         loadingConversationIdRef.current = loadingConversationId;
     }, [loadingConversationId]);
+
+    useEffect(() => {
+        loadingMessageIdRef.current = loadingMessageId;
+    }, [loadingMessageId]);
 
     useEffect(() => {
         fallbackPollingConversationIdRef.current = fallbackPollingConversationId;
@@ -276,8 +307,12 @@ export default function BibliotecarioView() {
         setMessages([]);
         setLoading(false);
         setLoadingConversationId(null);
+        setLoadingMessageId(null);
+        loadingConversationIdRef.current = null;
+        loadingMessageIdRef.current = null;
         fallbackPollingConversationIdRef.current = null;
         setFallbackPollingConversationId(null);
+        loadingLabelRef.current = "Analisando...";
         setLoadingLabel("Analisando...");
     };
 
@@ -382,45 +417,54 @@ export default function BibliotecarioView() {
      * @param delayMs Atraso opcional antes de encerrar o loading.
      * @returns void
      */
-    const completeLoading = useCallback((conversationId: string | null, delayMs = 0): void => {
-        const targetConversationId = conversationId || loadingConversationIdRef.current;
-        if (loadingDoneTimeoutRef.current) {
-            window.clearTimeout(loadingDoneTimeoutRef.current);
-            loadingDoneTimeoutRef.current = null;
-        }
-
-        const finish = (): void => {
-            if (
-                targetConversationId &&
-                loadingConversationIdRef.current &&
-                loadingConversationIdRef.current !== targetConversationId
-            ) {
+    const completeLoading = useCallback(
+        (conversationId: string | null, delayMs = 0, errorText?: string): void => {
+            const targetConversationId = conversationId || loadingConversationIdRef.current;
+            if (targetConversationId && loadingConversationIdRef.current !== targetConversationId) {
                 return;
             }
-            setLoading(false);
-            setLoadingConversationId(null);
-            fallbackPollingConversationIdRef.current = null;
-            setFallbackPollingConversationId(null);
-            setLoadingLabel("Analisando...");
-            loadingToolStartedAtRef.current = null;
-            eventSourceRef.current?.close();
-            eventSourceRef.current = null;
-            if (streamReconnectTimeoutRef.current) {
-                window.clearTimeout(streamReconnectTimeoutRef.current);
-                streamReconnectTimeoutRef.current = null;
+            if (loadingDoneTimeoutRef.current) {
+                window.clearTimeout(loadingDoneTimeoutRef.current);
+                loadingDoneTimeoutRef.current = null;
             }
-            streamRecoveringRef.current = false;
-            loadingDoneTimeoutRef.current = null;
-            void refreshConversations();
-        };
 
-        if (delayMs > 0) {
-            loadingDoneTimeoutRef.current = window.setTimeout(finish, delayMs);
-            return;
-        }
+            const finish = (): void => {
+                if (targetConversationId && loadingConversationIdRef.current !== targetConversationId) {
+                    return;
+                }
+                setLoading(false);
+                setLoadingConversationId(null);
+                setLoadingMessageId(null);
+                loadingConversationIdRef.current = null;
+                loadingMessageIdRef.current = null;
+                fallbackPollingConversationIdRef.current = null;
+                setFallbackPollingConversationId(null);
+                loadingLabelRef.current = "Analisando...";
+                setLoadingLabel("Analisando...");
+                loadingToolStartedAtRef.current = null;
+                eventSourceRef.current?.close();
+                eventSourceRef.current = null;
+                if (streamReconnectTimeoutRef.current) {
+                    window.clearTimeout(streamReconnectTimeoutRef.current);
+                    streamReconnectTimeoutRef.current = null;
+                }
+                streamRecoveringRef.current = false;
+                loadingDoneTimeoutRef.current = null;
+                if (errorText) {
+                    message.error(errorText);
+                }
+                void refreshConversations();
+            };
 
-        finish();
-    }, [refreshConversations]);
+            if (delayMs > 0) {
+                loadingDoneTimeoutRef.current = window.setTimeout(finish, delayMs);
+                return;
+            }
+
+            finish();
+        },
+        [refreshConversations]
+    );
 
     useEffect(() => {
         void refreshConversations();
@@ -444,20 +488,19 @@ export default function BibliotecarioView() {
     }, [location.key, queryMessage]);
 
     useEffect(() => {
-        if (
-            previousConversationIdRef.current &&
-            previousConversationIdRef.current !== currentConversationId
-        ) {
-            eventSourceRef.current?.close();
-            eventSourceRef.current = null;
-        }
         previousConversationIdRef.current = currentConversationId;
         if (currentConversationId) {
             void loadConversationHistory(currentConversationId);
+            if (
+                loadingConversationIdRef.current === currentConversationId &&
+                (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED)
+            ) {
+                void recoverConversationStream(currentConversationId);
+            }
         } else {
             setMessages([]);
         }
-    }, [currentConversationId, loadConversationHistory]);
+    }, [currentConversationId, loadConversationHistory]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         return () => {
@@ -504,10 +547,11 @@ export default function BibliotecarioView() {
                       : payloadStatus
             );
             if (nextStatus) {
-                const hasToolLabel = loadingLabel.includes("(");
+                const hasToolLabel = loadingLabelRef.current.includes("(");
                 if (nextStatus.includes("(")) {
                     loadingToolStartedAtRef.current = Date.now();
                     if (isVisibleConversation) {
+                        loadingLabelRef.current = nextStatus;
                         setLoadingLabel(nextStatus);
                     }
                     return;
@@ -516,6 +560,7 @@ export default function BibliotecarioView() {
                     return;
                 }
                 if (isVisibleConversation) {
+                    loadingLabelRef.current = nextStatus;
                     setLoadingLabel(nextStatus);
                 }
             }
@@ -529,8 +574,18 @@ export default function BibliotecarioView() {
                       : "";
             loadingToolStartedAtRef.current = Date.now();
             if (isVisibleConversation) {
-                setLoadingLabel(toolName ? `Analisando (${toolName})...` : "Analisando...");
+                const nextLabel = toolName ? `Analisando (${toolName})...` : "Analisando...";
+                loadingLabelRef.current = nextLabel;
+                setLoadingLabel(nextLabel);
             }
+        }
+        if (messageType === "done" && isStreamTimeoutEvent(event)) {
+            completeLoading(
+                eventConversationId,
+                0,
+                "Ocorreu um erro desconhecido durante a análise. Tente novamente mais tarde."
+            );
+            return;
         }
         if (messageType === "assistant" || messageType === "status" || messageType === "tool_start" || messageType === "tool_result" || messageType === "action" || messageType === "done") {
             const eventId = String(event.id || crypto.randomUUID());
@@ -579,10 +634,7 @@ export default function BibliotecarioView() {
      * @returns void
      */
     function reopenConversationStream(conversationId: string): void {
-        if (
-            currentConversationIdRef.current !== conversationId ||
-            loadingConversationIdRef.current !== conversationId
-        ) {
+        if (loadingConversationIdRef.current !== conversationId) {
             return;
         }
         eventSourceRef.current?.close();
@@ -611,17 +663,21 @@ export default function BibliotecarioView() {
             await syncConversationSnapshot(conversationId);
             const accessToken = await getAccessToken({ redirectOnFail: false });
             const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
-            if (hasFinalConversationMessage(conversation)) {
-                completeLoading(conversationId, 120);
+            const currentLoadingMessageId = loadingMessageIdRef.current;
+            if (!currentLoadingMessageId) {
                 return;
             }
-            if (streamReconnectTimeoutRef.current) {
-                window.clearTimeout(streamReconnectTimeoutRef.current);
+            if (!hasFinalConversationMessage(conversation, currentLoadingMessageId)) {
+                if (streamReconnectTimeoutRef.current) {
+                    window.clearTimeout(streamReconnectTimeoutRef.current);
+                }
+                streamReconnectTimeoutRef.current = window.setTimeout(() => {
+                    streamReconnectTimeoutRef.current = null;
+                    reopenConversationStream(conversationId);
+                }, 1500);
+                return;
             }
-            streamReconnectTimeoutRef.current = window.setTimeout(() => {
-                streamReconnectTimeoutRef.current = null;
-                reopenConversationStream(conversationId);
-            }, 1500);
+            completeLoading(conversationId, 120);
         } catch (error) {
             console.error("Falha ao recuperar stream do chat", error);
             if (streamReconnectTimeoutRef.current) {
@@ -650,7 +706,9 @@ export default function BibliotecarioView() {
         setLoadingConversation(true);
         setLoading(true);
         setLoadingConversationId(currentConversationId);
+        loadingConversationIdRef.current = currentConversationId;
         setLoadingLabel("Analisando...");
+        loadingLabelRef.current = "Analisando...";
         loadingToolStartedAtRef.current = null;
         pendingAssistantScrollRef.current = true;
         pendingUserScrollRef.current = true;
@@ -672,6 +730,9 @@ export default function BibliotecarioView() {
                 accessToken || undefined
             );
             setLoadingConversationId(response.conversation_id);
+            setLoadingMessageId(response.message_id);
+            loadingConversationIdRef.current = response.conversation_id;
+            loadingMessageIdRef.current = response.message_id;
             setCurrentConversationId(response.conversation_id);
             setMessages((previous) => [
                 ...previous,
@@ -696,8 +757,12 @@ export default function BibliotecarioView() {
             setInput(normalized);
             setLoading(false);
             setLoadingConversationId(null);
+            setLoadingMessageId(null);
+            loadingConversationIdRef.current = null;
+            loadingMessageIdRef.current = null;
             fallbackPollingConversationIdRef.current = null;
             setFallbackPollingConversationId(null);
+            loadingLabelRef.current = "Analisando...";
             setLoadingLabel("Analisando...");
             loadingToolStartedAtRef.current = null;
             message.error(getChatErrorMessage(error));
@@ -727,7 +792,8 @@ export default function BibliotecarioView() {
                     const nextMessages = conversation.messages || [];
                     setMessages((previous) => mergeConversationMessages(previous, nextMessages));
                 }
-                if (hasFinalConversationMessage(conversation)) {
+                const currentLoadingMessageId = loadingMessageIdRef.current;
+                if (currentLoadingMessageId && hasFinalConversationMessage(conversation, currentLoadingMessageId)) {
                     completeLoading(fallbackPollingConversationId, 120);
                 }
             } catch (error) {
@@ -767,7 +833,13 @@ export default function BibliotecarioView() {
             if (loadingLabel && loadingLabel !== "Analisando...") {
                 return loadingLabel;
             }
-            for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const loadingMessageIndex = loadingMessageId
+                ? messages.findIndex((messageItem) => messageItem.id === loadingMessageId)
+                : -1;
+            if (loadingMessageIndex < 0) {
+                return loadingLabel;
+            }
+            for (let index = messages.length - 1; index > loadingMessageIndex; index -= 1) {
                 const messageItem = messages[index];
                 if (messageItem.role !== "assistant") {
                     continue;
@@ -828,7 +900,7 @@ export default function BibliotecarioView() {
             }
         }
         return loadingLabel;
-    }, [messages, isCurrentConversationLoading, loadingLabel]);
+    }, [messages, isCurrentConversationLoading, loadingLabel, loadingMessageId]);
 
     const visibleMessages = useMemo(
         () => messages.filter((messageItem) => isUserMessage(messageItem) || isAssistantMessage(messageItem)),

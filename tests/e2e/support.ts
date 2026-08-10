@@ -266,6 +266,10 @@ async function forceDeleteUserFromDatabase(userId: string): Promise<void> {
         `delete from library_license_binding where user_id = '${userId}';`,
         `delete from log_book_access where user_id = '${userId}';`,
         `delete from log_license_expiration where user_id = '${userId}';`,
+        `delete from oauth_authorization_code where user_id = '${userId}';`,
+        `delete from oauth_refresh_token where user_id = '${userId}';`,
+        `delete from oauth_idempotency_key where user_id = '${userId}';`,
+        `delete from oauth_user_consent where user_id = '${userId}';`,
         `delete from user_account where id = '${userId}';`,
         "commit;",
     ].join(" ");
@@ -406,6 +410,92 @@ export async function createPublisher(
     });
 
     expect(response.ok()).toBeTruthy();
+}
+
+/**
+ * Cria um client OAuth de teste via API administrativa.
+ *
+ * @param request Contexto de requests do Playwright.
+ * @param token Token de acesso do administrador global.
+ * @param overrides Campos para sobrescrever os valores padrão do client.
+ * @returns Client criado, incluindo `id` e `secret_reveal_url`.
+ */
+export async function createOAuthClientApi(
+    request: APIRequestContext,
+    token: string,
+    overrides: {
+        name?: string;
+        redirect_uris?: string[];
+        grant_types?: string[];
+        scopes?: string[];
+        is_confidential?: boolean;
+    } = {}
+): Promise<{ id: string; name: string; secret_reveal_url: string }> {
+    const response = await request.post(`${API_BASE_URL}/oauth-clients`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+        data: {
+            name: overrides.name || `E2E OAuth Client ${randomUUID()}`,
+            redirect_uris: overrides.redirect_uris || [`${FRONT_BASE_URL}/oauth-test-callback`],
+            grant_types: overrides.grant_types || ["authorization_code", "refresh_token"],
+            scopes: overrides.scopes || ["openid", "biblioweb.profile.read"],
+            is_confidential: overrides.is_confidential ?? true,
+        },
+    });
+
+    expect(response.ok()).toBeTruthy();
+    return (await response.json()) as { id: string; name: string; secret_reveal_url: string };
+}
+
+/**
+ * Desativa um client OAuth de teste via API administrativa.
+ *
+ * @param request Contexto de requests do Playwright.
+ * @param token Token de acesso do administrador global.
+ * @param clientId Identificador do client a desativar.
+ * @returns void
+ */
+export async function deactivateOAuthClientApi(
+    request: APIRequestContext,
+    token: string,
+    clientId: string
+): Promise<void> {
+    const response = await request.delete(
+        `${API_BASE_URL}/oauth-clients/${encodeURIComponent(clientId)}`,
+        {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        }
+    );
+    expect([204, 404]).toContain(response.status());
+}
+
+/**
+ * Monta a URL de início do fluxo `GET /oauth/authorize` para um client de teste.
+ *
+ * @param clientId Identificador público do client.
+ * @param redirectUri URI de callback registrada no client.
+ * @param scope Escopos pedidos, separados por espaço (deve incluir "openid").
+ * @returns URL absoluta do endpoint `/oauth/authorize` na API.
+ */
+export function buildOAuthAuthorizeUrl(
+    clientId: string,
+    redirectUri: string,
+    scope: string
+): string {
+    const params = new URLSearchParams({
+        response_type: "code",
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope,
+        state: randomUUID().replace(/-/g, ""),
+        nonce: randomUUID().replace(/-/g, ""),
+        code_challenge: randomUUID().replace(/-/g, ""),
+        code_challenge_method: "S256",
+    });
+    return `${API_BASE_URL}/oauth/authorize?${params.toString()}`;
 }
 
 async function fetchFirstIdFromCollection(

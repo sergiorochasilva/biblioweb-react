@@ -12,6 +12,7 @@ import SelectionView from "./view/SelectionView";
 import CategoriesView from "./view/CategoriesView";
 import AuthorsView from "./view/AuthorsView";
 import ProfileView from "./view/ProfileView";
+import OAuthConsentView from "./view/OAuthConsentView";
 import BibliotecarioView from "./view/BibliotecarioView";
 import EbookMiniView from "./view/EbookMiniView";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -36,6 +37,7 @@ export default function App() {
                 <Route path="/ebook/:id" element={<EbookMiniView />} />
                 <Route path="/profile" element={<ProfileView />} />
                 <Route path="/meus-livros" element={<ProfileView />} />
+                <Route path="/oauth/consent" element={<OAuthConsentView />} />
                 <Route
                     element={
                         <RoleProtectedRoute

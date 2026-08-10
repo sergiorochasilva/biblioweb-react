@@ -1380,7 +1380,8 @@ export function useAdminController() {
             tabKey === "libraries" ||
             tabKey === "publishers" ||
             tabKey === "subjects" ||
-            tabKey === "authors"
+            tabKey === "authors" ||
+            tabKey === "oauth-clients"
         ) {
             setActiveTabState(tabKey);
             return;

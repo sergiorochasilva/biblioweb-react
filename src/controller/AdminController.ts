@@ -55,6 +55,14 @@ import {
     updateUserPassword,
 } from "../service/AdminService";
 import { validateStrongPassword } from "../service/passwordPolicy";
+import { OAuthClient, OAuthClientCreatePayload } from "../model/OAuthClient";
+import {
+    createOAuthClient,
+    deactivateOAuthClient,
+    listOAuthClients,
+    rotateOAuthClientSecret,
+    updateOAuthClient,
+} from "../service/oauthClientAdminService";
 
 type BookFormState = {
     id?: string;
@@ -144,7 +152,26 @@ type AdminTabKey =
     | "libraries"
     | "publishers"
     | "subjects"
-    | "authors";
+    | "authors"
+    | "oauth-clients";
+
+type OAuthClientFormState = {
+    name: string;
+    redirect_uris: string[];
+    grant_types: string[];
+    scopes: string[];
+    is_confidential: boolean;
+};
+
+type OAuthClientFieldErrorKey = keyof OAuthClientFormState;
+
+const emptyOAuthClientForm: OAuthClientFormState = {
+    name: "",
+    redirect_uris: [""],
+    grant_types: ["authorization_code"],
+    scopes: ["openid"],
+    is_confidential: true,
+};
 
 type BookFieldErrorKey =
     | "title"
@@ -601,6 +628,44 @@ function validatePublisherForm(
 }
 
 /**
+ * Valida campos do formulário de client OAuth.
+ *
+ * @param form Estado atual do formulário.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateOAuthClientForm(
+    form: OAuthClientFormState
+): ValidationResult<OAuthClientFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<OAuthClientFieldErrorKey, string>> = {};
+
+    if (!form.name.trim()) {
+        fieldErrors.name = "Nome obrigatório.";
+    }
+
+    const redirectUris = form.redirect_uris.map((uri) => uri.trim()).filter(Boolean);
+    if (redirectUris.length === 0) {
+        fieldErrors.redirect_uris = "Informe ao menos uma URI de redirecionamento.";
+    }
+
+    if (form.grant_types.length === 0) {
+        fieldErrors.grant_types = "Selecione ao menos um grant type.";
+    }
+
+    if (form.scopes.length === 0) {
+        fieldErrors.scopes = "Selecione ao menos um escopo.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
+/**
  * Valida campos do formulário de assunto.
  *
  * @param form Estado atual do formulário.
@@ -909,12 +974,14 @@ export function useAdminController() {
     const [isLoadingPublishers, setIsLoadingPublishers] = useState(false);
     const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
     const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
+    const [isLoadingOAuthClients, setIsLoadingOAuthClients] = useState(false);
     const [isSavingBook, setIsSavingBook] = useState(false);
     const [isSavingUser, setIsSavingUser] = useState(false);
     const [isSavingLibrary, setIsSavingLibrary] = useState(false);
     const [isSavingPublisher, setIsSavingPublisher] = useState(false);
     const [isSavingSubject, setIsSavingSubject] = useState(false);
     const [isSavingAuthor, setIsSavingAuthor] = useState(false);
+    const [isSavingOAuthClient, setIsSavingOAuthClient] = useState(false);
 
     const [books, setBooks] = useState<AdminBook[]>([]);
     const [booksNext, setBooksNext] = useState<string | null>(null);
@@ -927,6 +994,11 @@ export function useAdminController() {
     const [publisherRows, setPublisherRows] = useState<AdminPublisher[]>([]);
     const [subjectRows, setSubjectRows] = useState<AdminSubject[]>([]);
     const [authorRows, setAuthorRows] = useState<AdminAuthor[]>([]);
+    const [oauthClients, setOAuthClients] = useState<OAuthClient[]>([]);
+    const [showInactiveOAuthClients, setShowInactiveOAuthClients] = useState(false);
+    const [revealedSecretUrlByClientId, setRevealedSecretUrlByClientId] = useState<
+        Record<string, string>
+    >({});
 
     const [bookSearch, setBookSearch] = useState("");
     const [publisherFilter, setPublisherFilter] = useState("");
@@ -1001,6 +1073,15 @@ export function useAdminController() {
     const [authorModalError, setAuthorModalError] = useState("");
     const [authorFormErrors, setAuthorFormErrors] =
         useState<Partial<Record<AuthorFieldErrorKey, string>>>({});
+
+    const [oauthClientModalOpen, setOAuthClientModalOpen] = useState(false);
+    const [oauthClientModalMode, setOAuthClientModalMode] = useState<"create" | "edit">("create");
+    const [oauthClientEditingId, setOAuthClientEditingId] = useState<string | null>(null);
+    const [oauthClientForm, setOAuthClientForm] =
+        useState<OAuthClientFormState>(emptyOAuthClientForm);
+    const [oauthClientModalError, setOAuthClientModalError] = useState("");
+    const [oauthClientFormErrors, setOAuthClientFormErrors] =
+        useState<Partial<Record<OAuthClientFieldErrorKey, string>>>({});
 
     const hasMoreBooks = useMemo(() => Boolean(booksNext), [booksNext]);
 
@@ -1192,6 +1273,26 @@ export function useAdminController() {
      *
      * @returns Promise<void>.
      */
+    const loadOAuthClients = useCallback(async (): Promise<void> => {
+        setIsLoadingOAuthClients(true);
+        setError("");
+
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await listOAuthClients(token);
+            setOAuthClients(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar clients OAuth."));
+        } finally {
+            setIsLoadingOAuthClients(false);
+        }
+    }, [getAccessToken]);
+
     const loadPublisherRows = useCallback(async (): Promise<void> => {
         setIsLoadingPublishers(true);
         setError("");
@@ -1317,6 +1418,11 @@ export function useAdminController() {
             return;
         }
 
+        if (activeTab === "oauth-clients") {
+            await loadOAuthClients();
+            return;
+        }
+
         await loadReferenceData();
         await loadBooks();
     }, [
@@ -1324,6 +1430,7 @@ export function useAdminController() {
         loadBooks,
         loadAuthorRows,
         loadLibraryRows,
+        loadOAuthClients,
         loadPublisherRows,
         loadReferenceData,
         loadSubjectRows,
@@ -1634,6 +1741,14 @@ export function useAdminController() {
 
         void loadAuthorRows();
     }, [activeTab, isAuthenticated, loadAuthorRows]);
+
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "oauth-clients") {
+            return;
+        }
+
+        void loadOAuthClients();
+    }, [activeTab, isAuthenticated, loadOAuthClients]);
 
     /**
      * Aplica filtros da listagem de livros.
@@ -2812,6 +2927,183 @@ export function useAdminController() {
         }
     }
 
+    /**
+     * Abre modal de criação de client OAuth.
+     *
+     * @returns void.
+     */
+    function openCreateOAuthClientModal(): void {
+        setOAuthClientModalMode("create");
+        setOAuthClientEditingId(null);
+        setOAuthClientForm(emptyOAuthClientForm);
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+        setOAuthClientModalOpen(true);
+    }
+
+    /**
+     * Abre modal de edição de client OAuth.
+     *
+     * @param item Client selecionado.
+     * @returns void.
+     */
+    function openEditOAuthClientModal(item: OAuthClient): void {
+        setOAuthClientModalMode("edit");
+        setOAuthClientEditingId(item.id);
+        setOAuthClientForm({
+            name: item.name,
+            redirect_uris: item.redirect_uris.length > 0 ? item.redirect_uris : [""],
+            grant_types: item.grant_types,
+            scopes: item.scopes,
+            is_confidential: item.is_confidential,
+        });
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+        setOAuthClientModalOpen(true);
+    }
+
+    /**
+     * Fecha modal de client OAuth.
+     *
+     * @returns void.
+     */
+    function closeOAuthClientModal(): void {
+        setOAuthClientModalOpen(false);
+        setOAuthClientEditingId(null);
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+    }
+
+    /**
+     * Remove erro de um campo do formulário de client OAuth.
+     *
+     * @param field Campo a ser limpo.
+     * @returns void.
+     */
+    function clearOAuthClientFieldError(field: OAuthClientFieldErrorKey): void {
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors((previous) => {
+            if (!previous[field]) {
+                return previous;
+            }
+            const next = { ...previous };
+            delete next[field];
+            return next;
+        });
+    }
+
+    /**
+     * Persiste formulário de client OAuth (criação ou edição). Ao criar,
+     * guarda o `secret_reveal_url` retornado para exibição efêmera inline
+     * na lista — nunca o `client_secret` em si.
+     *
+     * @param event Evento de submit.
+     * @returns Promise<void>.
+     */
+    async function saveOAuthClient(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+
+        const validationError = validateOAuthClientForm(oauthClientForm);
+        if (validationError) {
+            setOAuthClientModalError(validationError.message);
+            setOAuthClientFormErrors(validationError.fieldErrors);
+            return;
+        }
+
+        setIsSavingOAuthClient(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setOAuthClientModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const payload: OAuthClientCreatePayload = {
+                name: oauthClientForm.name.trim(),
+                redirect_uris: oauthClientForm.redirect_uris
+                    .map((uri) => uri.trim())
+                    .filter(Boolean),
+                grant_types: oauthClientForm.grant_types as OAuthClientCreatePayload["grant_types"],
+                scopes: oauthClientForm.scopes as OAuthClientCreatePayload["scopes"],
+                is_confidential: oauthClientForm.is_confidential,
+            };
+
+            if (oauthClientModalMode === "edit" && oauthClientEditingId) {
+                await updateOAuthClient(token, oauthClientEditingId, payload);
+            } else {
+                const created = await createOAuthClient(token, payload);
+                setRevealedSecretUrlByClientId((previous) => ({
+                    ...previous,
+                    [created.id]: created.secret_reveal_url,
+                }));
+            }
+
+            setOAuthClientModalOpen(false);
+            setOAuthClientEditingId(null);
+            setOAuthClientForm(emptyOAuthClientForm);
+            await loadOAuthClients();
+        } catch (err) {
+            setOAuthClientModalError(normalizeErrorMessage(err, "Erro ao salvar client OAuth."));
+        } finally {
+            setIsSavingOAuthClient(false);
+        }
+    }
+
+    /**
+     * Desativa um client OAuth (remoção lógica; não há endpoint de reversão).
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function removeOAuthClient(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await deactivateOAuthClient(token, clientId);
+            setRevealedSecretUrlByClientId((previous) => {
+                const next = { ...previous };
+                delete next[clientId];
+                return next;
+            });
+            await loadOAuthClients();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao desativar client OAuth."));
+        }
+    }
+
+    /**
+     * Rotaciona o segredo de um client OAuth, substituindo qualquer link
+     * de revelação anterior pelo novo.
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function rotateOAuthClientSecretById(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await rotateOAuthClientSecret(token, clientId);
+            setRevealedSecretUrlByClientId((previous) => ({
+                ...previous,
+                [clientId]: result.secret_reveal_url,
+            }));
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao rotacionar segredo do client OAuth."));
+        }
+    }
+
     return {
         state: {
             books,
@@ -2887,6 +3179,16 @@ export function useAdminController() {
             authorForm,
             authorModalError,
             authorFormErrors,
+            oauthClients,
+            showInactiveOAuthClients,
+            revealedSecretUrlByClientId,
+            isLoadingOAuthClients,
+            isSavingOAuthClient,
+            oauthClientModalOpen,
+            oauthClientModalMode,
+            oauthClientForm,
+            oauthClientModalError,
+            oauthClientFormErrors,
         },
         actions: {
             setBookSearch,
@@ -2971,6 +3273,16 @@ export function useAdminController() {
             setAuthorForm,
             saveAuthor,
             removeAuthor,
+            setShowInactiveOAuthClients,
+            loadOAuthClients,
+            openCreateOAuthClientModal,
+            openEditOAuthClientModal,
+            closeOAuthClientModal,
+            setOAuthClientForm,
+            clearOAuthClientFieldError,
+            saveOAuthClient,
+            removeOAuthClient,
+            rotateOAuthClientSecretById,
         },
     };
 }

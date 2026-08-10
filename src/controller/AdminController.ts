@@ -1269,7 +1269,7 @@ export function useAdminController() {
     }, [appliedLibrarySearch, getAccessToken]);
 
     /**
-     * Carrega editoras para aba de manutenção.
+     * Carrega clients OAuth para a aba de manutenção.
      *
      * @returns Promise<void>.
      */
@@ -1293,6 +1293,11 @@ export function useAdminController() {
         }
     }, [getAccessToken]);
 
+    /**
+     * Carrega editoras para aba de manutenção.
+     *
+     * @returns Promise<void>.
+     */
     const loadPublisherRows = useCallback(async (): Promise<void> => {
         setIsLoadingPublishers(true);
         setError("");

@@ -29,6 +29,9 @@ import {
 } from "../service/BookService";
 import BookCard from "../components/BookCard";
 import LoanedBookCard from "../components/LoanedBookCard";
+import { listConsents, revokeConsent } from "../service/oauthConsentService";
+import { OAuthConnectedApp } from "../model/OAuthConsent";
+import { translateOAuthScope } from "../model/OAuthScopes";
 import "../styles/AdminView.css";
 import "../styles/ProfileView.css";
 
@@ -69,6 +72,30 @@ function getUserIdFromToken(token: string | null): string | null {
     const payload = getTokenPayload(token);
     const value = payload?.sub;
     return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Converte um timestamp UTC "cru" (sem `Z`/offset) vindo da API em `Date`.
+ *
+ * @param value Timestamp no formato `YYYY-MM-DDTHH:mm:ss`, sem indicador de fuso.
+ * @returns Instância de `Date` correta em UTC.
+ */
+function parseUtcTimestamp(value: string): Date {
+    return new Date(`${value}Z`);
+}
+
+/**
+ * Formata a data de conexão/atualização de um app conectado.
+ *
+ * @param value Timestamp UTC cru vindo da API.
+ * @returns Data e hora locais formatadas em pt-BR, ou o valor bruto se inválido.
+ */
+function formatConnectedAppDate(value: string): string {
+    const parsed = parseUtcTimestamp(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return value;
+    }
+    return parsed.toLocaleString("pt-BR");
 }
 
 type SelfPasswordFormState = {
@@ -139,7 +166,7 @@ function validateSelfPasswordForm(
 export default function ProfileView() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { message } = AntdApp.useApp();
+    const { message, modal } = AntdApp.useApp();
     const { Content } = Layout;
     const { profile, setProfile, publisher, library, getAccessToken } = useAuth();
     const currentLibraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
@@ -159,6 +186,11 @@ export default function ProfileView() {
     const [loanedBookLoadingId, setLoanedBookLoadingId] = useState<string | null>(null);
     const [purchasedBookLoadingId, setPurchasedBookLoadingId] = useState<string | null>(null);
     const [returnLoadingId, setReturnLoadingId] = useState<string | null>(null);
+    const [connectedApps, setConnectedApps] = useState<OAuthConnectedApp[]>([]);
+    const [isLoadingConnectedApps, setIsLoadingConnectedApps] = useState(false);
+    const [revokingConnectedAppClientId, setRevokingConnectedAppClientId] = useState<
+        string | null
+    >(null);
     const isMountedRef = useRef(true);
 
     function openSelfPasswordModal(): void {
@@ -266,6 +298,38 @@ export default function ProfileView() {
         };
     }, [loadProfile]);
 
+    const loadConnectedApps = useCallback(async (): Promise<void> => {
+        setIsLoadingConnectedApps(true);
+        try {
+            const accessToken = await getAccessToken();
+            if (!accessToken) {
+                return;
+            }
+
+            const apps = await listConsents(accessToken);
+            if (isMountedRef.current) {
+                setConnectedApps(apps);
+            }
+        } catch (error) {
+            if (isMountedRef.current) {
+                message.error("Erro ao carregar apps conectados.");
+            }
+            console.error("Failed to load connected apps", error);
+        } finally {
+            if (isMountedRef.current) {
+                setIsLoadingConnectedApps(false);
+            }
+        }
+    }, [getAccessToken, message]);
+
+    useEffect(() => {
+        if (isBooksOnlyView) {
+            return;
+        }
+
+        void loadConnectedApps();
+    }, [isBooksOnlyView, loadConnectedApps]);
+
     const publishers = useMemo(() => currentProfile?.publishers || [], [currentProfile]);
     const libraries = useMemo(() => currentProfile?.libraries || [], [currentProfile]);
     const loanedBooks = useMemo(() => currentProfile?.loaned_books || [], [currentProfile]);
@@ -358,6 +422,43 @@ export default function ProfileView() {
                     message.error("Não foi possível devolver este livro.");
                 } finally {
                     setReturnLoadingId(null);
+                }
+            },
+        });
+    }
+
+    /**
+     * Exibe confirmação e, se aprovada, revoga o consentimento de um app.
+     *
+     * @param app App conectado a desconectar.
+     * @returns void.
+     */
+    function confirmRevokeConnectedApp(app: OAuthConnectedApp): void {
+        modal.confirm({
+            title: "Desconectar aplicativo",
+            content: `Desconectar "${app.client_name}"? O acesso será removido imediatamente. Para reconectar, será preciso autorizar de novo.`,
+            okText: "Desconectar",
+            okButtonProps: { danger: true },
+            cancelText: "Cancelar",
+            onOk: async () => {
+                const accessToken = await getAccessToken();
+                if (!accessToken) {
+                    navigate(`/login?next=${encodeURIComponent(location.pathname)}`);
+                    return;
+                }
+
+                setRevokingConnectedAppClientId(app.client_id);
+                try {
+                    await revokeConsent(app.client_id, accessToken);
+                    setConnectedApps((previous) =>
+                        previous.filter((item) => item.client_id !== app.client_id)
+                    );
+                    message.success("Aplicativo desconectado.");
+                } catch (error) {
+                    console.error("Failed to revoke OAuth consent", error);
+                    message.error("Não foi possível desconectar este aplicativo.");
+                } finally {
+                    setRevokingConnectedAppClientId(null);
                 }
             },
         });
@@ -528,6 +629,61 @@ export default function ProfileView() {
                                         </Row>
                                     )}
                                 </div>
+
+                                {!isBooksOnlyView && (
+                                    <div className="profile-block">
+                                        <Typography.Text className="profile-block-title">
+                                            Apps conectados
+                                        </Typography.Text>
+                                        {isLoadingConnectedApps ? (
+                                            <Spin size="small" />
+                                        ) : connectedApps.length === 0 ? (
+                                            <Typography.Text type="secondary">
+                                                Nenhum app conectado à sua conta.
+                                            </Typography.Text>
+                                        ) : (
+                                            <div className="connected-app-list">
+                                                {connectedApps.map((app) => (
+                                                    <div key={app.client_id} className="connected-app-card">
+                                                        <div className="connected-app-info">
+                                                            <Typography.Text strong>
+                                                                {app.client_name}
+                                                            </Typography.Text>
+                                                            <div className="profile-tag-list connected-app-scopes">
+                                                                {app.scopes
+                                                                    .filter((scope) => scope !== "openid")
+                                                                    .map((scope) => (
+                                                                        <Tag key={scope} color="blue">
+                                                                            {translateOAuthScope(scope)}
+                                                                        </Tag>
+                                                                    ))}
+                                                            </div>
+                                                            <Typography.Text
+                                                                type="secondary"
+                                                                className="connected-app-meta"
+                                                            >
+                                                                Conectado em{" "}
+                                                                {formatConnectedAppDate(app.granted_at)}
+                                                                {app.updated_at !== app.granted_at
+                                                                    ? ` · atualizado em ${formatConnectedAppDate(app.updated_at)}`
+                                                                    : ""}
+                                                            </Typography.Text>
+                                                        </div>
+                                                        <Button
+                                                            danger
+                                                            loading={
+                                                                revokingConnectedAppClientId === app.client_id
+                                                            }
+                                                            onClick={() => confirmRevokeConnectedApp(app)}
+                                                        >
+                                                            Desconectar
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="profile-actions">
                                     {!isBooksOnlyView && (

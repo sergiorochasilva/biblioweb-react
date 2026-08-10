@@ -3,6 +3,7 @@ import {
     Alert,
     Button,
     Card,
+    Checkbox,
     Empty,
     Input,
     Layout,
@@ -12,12 +13,14 @@ import {
     Select,
     Switch,
     Tabs,
+    Tag,
     Typography,
     Upload,
 } from "antd";
 import {
     DeleteOutlined,
     EditOutlined,
+    KeyOutlined,
     LockOutlined,
     PlusOutlined,
     ReloadOutlined,
@@ -28,6 +31,7 @@ import BookLibraryPolicyGrid from "../components/BookLibraryPolicyGrid";
 import LibraryLimitGrid from "../components/LibraryLimitGrid";
 import { useAdminController } from "../controller/AdminController";
 import { getBookAuthorsText } from "../model/Book";
+import { ALLOWED_OAUTH_GRANT_TYPES, ALLOWED_OAUTH_SCOPES, translateOAuthScope } from "../model/OAuthScopes";
 import "../styles/AdminView.css";
 
 /**
@@ -62,6 +66,8 @@ export default function AdminView() {
                         ? state.isLoadingSubjects
                         : state.activeTab === "authors"
                             ? state.isLoadingAuthors
+                            : state.activeTab === "oauth-clients"
+                                ? state.isLoadingOAuthClients
                     : state.isLoadingBooks;
 
     const publisherOptions = useMemo(
@@ -699,6 +705,146 @@ export default function AdminView() {
                                                 )}
                                             />
                                         )}
+                                    </Card>
+                                ),
+                            },
+                            {
+                                key: "oauth-clients",
+                                label: "Clients OAuth",
+                                children: (
+                                    <Card
+                                        className="glass-card admin-panel admin-tab-card"
+                                        title="Clients OAuth"
+                                        extra={
+                                            <Button
+                                                type="primary"
+                                                icon={<PlusOutlined />}
+                                                onClick={actions.openCreateOAuthClientModal}
+                                            >
+                                                Novo client
+                                            </Button>
+                                        }
+                                    >
+                                        <div className="users-toolbar">
+                                            <Switch
+                                                checked={state.showInactiveOAuthClients}
+                                                onChange={actions.setShowInactiveOAuthClients}
+                                            />
+                                            <span>Mostrar inativos</span>
+                                        </div>
+
+                                        {(() => {
+                                            const visibleClients = state.oauthClients.filter(
+                                                (client) => state.showInactiveOAuthClients || client.active
+                                            );
+
+                                            if (visibleClients.length === 0 && !state.isLoadingOAuthClients) {
+                                                return <Empty description="Nenhum client OAuth encontrado." />;
+                                            }
+
+                                            return (
+                                                <List
+                                                    className="admin-list"
+                                                    loading={state.isLoadingOAuthClients}
+                                                    dataSource={visibleClients}
+                                                    renderItem={(client) => {
+                                                        const revealedUrl =
+                                                            state.revealedSecretUrlByClientId[client.id];
+                                                        return (
+                                                            <List.Item
+                                                                className="admin-list-item"
+                                                                actions={
+                                                                    client.active
+                                                                        ? [
+                                                                              <Button
+                                                                                  key="edit"
+                                                                                  icon={<EditOutlined />}
+                                                                                  onClick={() =>
+                                                                                      actions.openEditOAuthClientModal(client)
+                                                                                  }
+                                                                              >
+                                                                                  Editar
+                                                                              </Button>,
+                                                                              <Popconfirm
+                                                                                  key="rotate"
+                                                                                  title="Rotacionar segredo"
+                                                                                  description="O segredo atual deixa de funcionar imediatamente."
+                                                                                  okText="Rotacionar"
+                                                                                  cancelText="Cancelar"
+                                                                                  onConfirm={() => {
+                                                                                      void actions.rotateOAuthClientSecretById(
+                                                                                          client.id
+                                                                                      );
+                                                                                  }}
+                                                                              >
+                                                                                  <Button icon={<KeyOutlined />}>
+                                                                                      Rotacionar segredo
+                                                                                  </Button>
+                                                                              </Popconfirm>,
+                                                                              <Popconfirm
+                                                                                  key="delete"
+                                                                                  title="Desativar client"
+                                                                                  description="Essa ação não pode ser desfeita."
+                                                                                  okText="Desativar"
+                                                                                  cancelText="Cancelar"
+                                                                                  onConfirm={() => {
+                                                                                      void actions.removeOAuthClient(client.id);
+                                                                                  }}
+                                                                              >
+                                                                                  <Button danger icon={<DeleteOutlined />}>
+                                                                                      Desativar
+                                                                                  </Button>
+                                                                              </Popconfirm>,
+                                                                          ]
+                                                                        : []
+                                                                }
+                                                            >
+                                                                <List.Item.Meta
+                                                                    title={
+                                                                        <span>
+                                                                            {client.name}
+                                                                            {!client.active && (
+                                                                                <Tag color="default" style={{ marginLeft: 8 }}>
+                                                                                    Inativo
+                                                                                </Tag>
+                                                                            )}
+                                                                        </span>
+                                                                    }
+                                                                    description={
+                                                                        <div className="oauth-client-meta">
+                                                                            <span>ID: {client.id}</span>
+                                                                            <div className="profile-tag-list">
+                                                                                {client.scopes.map((scope) => (
+                                                                                    <Tag key={scope} color="blue">
+                                                                                        {translateOAuthScope(scope)}
+                                                                                    </Tag>
+                                                                                ))}
+                                                                            </div>
+                                                                            {revealedUrl && (
+                                                                                <Alert
+                                                                                    type="warning"
+                                                                                    showIcon
+                                                                                    className="oauth-secret-reveal-banner"
+                                                                                    message="Link de revelação do segredo (válido por 72h, abre uma única vez)"
+                                                                                    description={
+                                                                                        <Typography.Text
+                                                                                            code
+                                                                                            copyable={{ text: revealedUrl }}
+                                                                                        >
+                                                                                            {revealedUrl}
+                                                                                        </Typography.Text>
+                                                                                    }
+                                                                                />
+                                                                            )}
+                                                                        </div>
+                                                                    }
+                                                                />
+                                                            </List.Item>
+                                                        );
+                                                    }}
+                                                />
+                                            );
+                                        })()}
                                     </Card>
                                 ),
                             },
@@ -1612,6 +1758,169 @@ export default function AdminView() {
                     <div className="modal-actions">
                         <Button onClick={actions.closeAuthorModal}>Cancelar</Button>
                         <Button type="primary" htmlType="submit" loading={state.isSavingAuthor}>
+                            Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                title={
+                    state.oauthClientModalMode === "create"
+                        ? "Novo client OAuth"
+                        : "Editar client OAuth"
+                }
+                open={state.oauthClientModalOpen}
+                onCancel={actions.closeOAuthClientModal}
+                footer={null}
+                width={640}
+                destroyOnClose
+            >
+                <form className="admin-form" onSubmit={(event) => void actions.saveOAuthClient(event)}>
+                    {state.oauthClientModalError && (
+                        <Alert
+                            type="error"
+                            showIcon
+                            message={state.oauthClientModalError}
+                            className="admin-modal-alert"
+                        />
+                    )}
+                    <div className="form-field">
+                        <label className="field-label">Nome (*)</label>
+                        <Input
+                            className="admin-input"
+                            status={state.oauthClientFormErrors.name ? "error" : undefined}
+                            value={state.oauthClientForm.name}
+                            onChange={(event) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    name: event.target.value,
+                                }));
+                                actions.clearOAuthClientFieldError("name");
+                            }}
+                        />
+                        {state.oauthClientFormErrors.name && (
+                            <span className="form-field-error">{state.oauthClientFormErrors.name}</span>
+                        )}
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">URIs de redirecionamento (*)</label>
+                        {state.oauthClientForm.redirect_uris.map((uri, index) => (
+                            <div key={`redirect-uri-${index}`} className="oauth-redirect-uri-row">
+                                <Input
+                                    className="admin-input"
+                                    value={uri}
+                                    placeholder="https://parceiro.example/callback"
+                                    onChange={(event) => {
+                                        const value = event.target.value;
+                                        actions.setOAuthClientForm((previous) => {
+                                            const next = [...previous.redirect_uris];
+                                            next[index] = value;
+                                            return { ...previous, redirect_uris: next };
+                                        });
+                                        actions.clearOAuthClientFieldError("redirect_uris");
+                                    }}
+                                />
+                                <Button
+                                    danger
+                                    disabled={state.oauthClientForm.redirect_uris.length <= 1}
+                                    onClick={() => {
+                                        actions.setOAuthClientForm((previous) => ({
+                                            ...previous,
+                                            redirect_uris: previous.redirect_uris.filter(
+                                                (_, itemIndex) => itemIndex !== index
+                                            ),
+                                        }));
+                                    }}
+                                >
+                                    Remover
+                                </Button>
+                            </div>
+                        ))}
+                        <Button
+                            onClick={() => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    redirect_uris: [...previous.redirect_uris, ""],
+                                }));
+                            }}
+                        >
+                            + Adicionar URI
+                        </Button>
+                        {state.oauthClientFormErrors.redirect_uris && (
+                            <span className="form-field-error">
+                                {state.oauthClientFormErrors.redirect_uris}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Grant types (*)</label>
+                        <Checkbox.Group
+                            options={ALLOWED_OAUTH_GRANT_TYPES.map((grantType) => ({
+                                label: grantType,
+                                value: grantType,
+                            }))}
+                            value={state.oauthClientForm.grant_types}
+                            onChange={(values) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    grant_types: values as string[],
+                                }));
+                                actions.clearOAuthClientFieldError("grant_types");
+                            }}
+                        />
+                        {state.oauthClientFormErrors.grant_types && (
+                            <span className="form-field-error">
+                                {state.oauthClientFormErrors.grant_types}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Escopos (*)</label>
+                        <div className="oauth-scope-checkbox-list">
+                            {ALLOWED_OAUTH_SCOPES.map((scope) => (
+                                <Checkbox
+                                    key={scope}
+                                    checked={state.oauthClientForm.scopes.includes(scope)}
+                                    onChange={(event) => {
+                                        const checked = event.target.checked;
+                                        actions.setOAuthClientForm((previous) => ({
+                                            ...previous,
+                                            scopes: checked
+                                                ? [...previous.scopes, scope]
+                                                : previous.scopes.filter((item) => item !== scope),
+                                        }));
+                                        actions.clearOAuthClientFieldError("scopes");
+                                    }}
+                                >
+                                    {scope} — {translateOAuthScope(scope)}
+                                </Checkbox>
+                            ))}
+                        </div>
+                        {state.oauthClientFormErrors.scopes && (
+                            <span className="form-field-error">{state.oauthClientFormErrors.scopes}</span>
+                        )}
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Client confidencial</label>
+                        <Switch
+                            checked={state.oauthClientForm.is_confidential}
+                            onChange={(checked) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    is_confidential: checked,
+                                }));
+                            }}
+                        />
+                    </div>
+
+                    <div className="modal-actions">
+                        <Button onClick={actions.closeOAuthClientModal}>Cancelar</Button>
+                        <Button type="primary" htmlType="submit" loading={state.isSavingOAuthClient}>
                             Salvar
                         </Button>
                     </div>

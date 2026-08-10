@@ -508,3 +508,29 @@
         justify-content: flex-start;
     }
 }
+
+.oauth-redirect-uri-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.oauth-redirect-uri-row .admin-input {
+    flex: 1;
+}
+
+.oauth-scope-checkbox-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.oauth-client-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.oauth-secret-reveal-banner {
+    margin-top: 8px;
+}

@@ -1383,9 +1383,13 @@ export function useAdminController() {
             tabKey === "authors" ||
             tabKey === "oauth-clients"
         ) {
+            if (tabKey !== "oauth-clients") {
+                setRevealedSecretUrlByClientId({});
+            }
             setActiveTabState(tabKey);
             return;
         }
+        setRevealedSecretUrlByClientId({});
         setActiveTabState("books");
     }
 

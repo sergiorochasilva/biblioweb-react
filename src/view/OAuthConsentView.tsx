@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, Button, Spin, Tag, Typography } from "antd";
 import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../contexts/useAuth";
 import { getErrorMessage } from "../service/errorMessage";
+import type { ApiError } from "../service/api";
 import {
     approveAuthorizeRequest,
     denyAuthorizeRequest,
@@ -53,10 +54,20 @@ export default function OAuthConsentView() {
         window.location.href = redirectUri;
     }, []);
 
+    // `loadRequest` depende de `getAccessToken`, cuja identidade muda quando o
+    // token é renovado/backfillado (ver AuthContext). Isso recria `loadRequest`
+    // e re-dispara o efeito abaixo. Sem esta guarda, o caminho de auto-aprovação
+    // (`consent_required: false`) poderia disparar um segundo `POST /approve`
+    // para a mesma `requestId` — que já é de uso único no backend — e o 404
+    // resultante sobrescreveria a tela com um erro genérico em cima de um
+    // redirecionamento que já pode estar em andamento.
+    const startedRequestIdRef = useRef<string | null>(null);
+
     const loadRequest = useCallback(async (): Promise<void> => {
-        if (!requestId) {
+        if (!requestId || startedRequestIdRef.current === requestId) {
             return;
         }
+        startedRequestIdRef.current = requestId;
 
         try {
             const token = await getAccessToken();
@@ -78,9 +89,19 @@ export default function OAuthConsentView() {
 
             setViewState({ status: "ready", info });
         } catch (error) {
+            const status = (error as ApiError).status;
+            if (status === 401) {
+                navigate(
+                    `/login?next=${encodeURIComponent(`/oauth/consent?request_id=${requestId}`)}`
+                );
+                return;
+            }
             setViewState({
                 status: "error",
-                message: getErrorMessage(error, GENERIC_EXPIRED_MESSAGE),
+                message:
+                    status === 404
+                        ? GENERIC_EXPIRED_MESSAGE
+                        : getErrorMessage(error, GENERIC_EXPIRED_MESSAGE),
             });
         }
     }, [getAccessToken, navigate, redirectToPartner, requestId]);
@@ -117,9 +138,19 @@ export default function OAuthConsentView() {
                     : await denyAuthorizeRequest(requestId, token);
             redirectToPartner(response.redirect_uri);
         } catch (error) {
+            const status = (error as ApiError).status;
+            if (status === 401) {
+                navigate(
+                    `/login?next=${encodeURIComponent(`/oauth/consent?request_id=${requestId}`)}`
+                );
+                return;
+            }
             setViewState({
                 status: "error",
-                message: getErrorMessage(error, GENERIC_EXPIRED_MESSAGE),
+                message:
+                    status === 404
+                        ? GENERIC_EXPIRED_MESSAGE
+                        : getErrorMessage(error, GENERIC_EXPIRED_MESSAGE),
             });
         }
     }

@@ -298,7 +298,18 @@ export default function ProfileView() {
         };
     }, [loadProfile]);
 
+    // `loadConnectedApps` depende de `getAccessToken`, cuja identidade muda
+    // quando o token é renovado/backfillado (ver AuthContext), o que recria
+    // esta função e re-dispara o efeito abaixo. A guarda evita um segundo
+    // GET redundante para a mesma montagem do componente.
+    const hasLoadedConnectedAppsRef = useRef(false);
+
     const loadConnectedApps = useCallback(async (): Promise<void> => {
+        if (hasLoadedConnectedAppsRef.current) {
+            return;
+        }
+        hasLoadedConnectedAppsRef.current = true;
+
         setIsLoadingConnectedApps(true);
         try {
             const accessToken = await getAccessToken();

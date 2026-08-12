@@ -80,7 +80,9 @@ function resolvePostgresContainerName(): string {
         .map((line) => line.split("\t"))
         .filter((parts) => parts.length >= 2);
 
-    const preferred = containers.find(([, image]) => image === "postgres:16.11");
+    const preferred = containers.find(
+        ([, image]) => image === "postgres:16.11" || image.startsWith("pgvector/pgvector:")
+    );
     if (preferred?.[0]) {
         return preferred[0];
     }

@@ -4,6 +4,7 @@ import {
     OAuthClientCreatePayload,
     OAuthClientCreateResponse,
     OAuthClientListResponse,
+    OAuthClientSecretPayload,
     OAuthClientSecretRevealResponse,
     OAuthClientUpdatePayload,
 } from "../model/OAuthClient";
@@ -77,4 +78,21 @@ export async function rotateOAuthClientSecret(
         {},
         token
     );
+}
+
+/**
+ * Revela o `client_secret` em texto puro a partir do token de um link de
+ * revelação única — endpoint público, sem autenticação (protegido só pela
+ * posse do token de alta entropia). Funciona uma única vez; chamadas
+ * subsequentes com o mesmo token retornam `404`.
+ *
+ * @param revealToken Token extraído do fragmento da URL de revelação.
+ * @returns O `client_secret` em texto puro.
+ */
+export async function revealOAuthClientSecret(
+    revealToken: string
+): Promise<OAuthClientSecretPayload> {
+    return api.post<OAuthClientSecretPayload>("/oauth-clients/secret-reveal", {
+        token: revealToken,
+    });
 }

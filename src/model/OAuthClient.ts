@@ -32,3 +32,13 @@ export type OAuthClientSecretRevealResponse = {
 };
 
 export type OAuthClientCreateResponse = OAuthClient & OAuthClientSecretRevealResponse;
+
+/**
+ * Resposta de `POST /oauth-clients/secret-reveal` — a única estrutura no
+ * codebase onde um `client_secret` em texto puro aparece legitimamente,
+ * e só na página pública de revelação única (nunca na área administrativa
+ * logada).
+ */
+export type OAuthClientSecretPayload = {
+    client_secret: string;
+};

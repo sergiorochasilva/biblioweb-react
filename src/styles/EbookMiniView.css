@@ -78,15 +78,12 @@
     font-size: 60px;
 }
 
-.ebook-badge {
+.ebook-book-type-tag.ant-tag {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     margin-bottom: 12px;
     padding: 5px 12px;
     border-radius: 999px;
-    color: var(--ebook-accent);
-    background: var(--ebook-surface-soft);
     font-size: 12px;
     font-weight: 800;
 }

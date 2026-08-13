@@ -8,17 +8,23 @@ import {
     SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { Alert, Button, Layout, Spin, Typography, message } from "antd";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { getBookAuthorsText, type Book } from "../model/Book";
+import BookTypeTag from "../components/BookTypeTag";
 import {
     DEFAULT_PUBLIC_LIBRARY_ID,
     downloadPurchasedBook,
     fetchBookDetails,
+    lendBook,
+    registerBookAccessWithType,
 } from "../service/BookService";
+import { savePendingLendAction } from "../service/postLoginAction";
 import "../styles/EbookMiniView.css";
 
 const MANUAL_URL = "/pos-download/manual.html";
+const FREE_BOOKS_BASE_URL = (import.meta.env.VITE_BOOKS_BASE_URL ||
+    "https://storage.googleapis.com/fronesis_bucket/").trim();
 
 type EnvironmentKey = "windows" | "mac" | "linux" | "android" | "ios";
 
@@ -187,13 +193,19 @@ function EbookCover({ book }: { book: Book }) {
 function EbookHero({
     book,
     authorLabel,
-    downloading,
+    reading,
+    showWebVersion,
+    webVersionLabel,
     onReadNow,
+    onReadWebVersion,
 }: {
     book: Book;
     authorLabel: string;
-    downloading: boolean;
+    reading: boolean;
+    showWebVersion: boolean;
+    webVersionLabel: string;
     onReadNow: () => void;
+    onReadWebVersion: () => void;
 }) {
     return (
         <header className="ebook-hero">
@@ -201,10 +213,7 @@ function EbookHero({
                 <EbookCover book={book} />
             </div>
             <div className="ebook-hero-copy">
-                <span className="ebook-badge">
-                    <SafetyCertificateOutlined aria-hidden="true" />
-                    Livro protegido
-                </span>
+                <BookTypeTag type={book.type} className="ebook-book-type-tag" />
                 <Typography.Title level={1} className="ebook-title">
                     {book.title}
                 </Typography.Title>
@@ -218,7 +227,7 @@ function EbookHero({
                         type="primary"
                         size="large"
                         icon={<DownloadOutlined />}
-                        loading={downloading}
+                        loading={reading}
                         onClick={onReadNow}
                     >
                         Ler agora
@@ -232,6 +241,11 @@ function EbookHero({
                     >
                         Manual completo
                     </Button>
+                    {showWebVersion ? (
+                        <Button size="large" onClick={onReadWebVersion}>
+                            {webVersionLabel}
+                        </Button>
+                    ) : null}
                 </div>
             </div>
         </header>
@@ -328,14 +342,26 @@ function UsageRules() {
 
 export default function EbookMiniView() {
     const { id } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
     const { getAccessToken, library, token } = useAuth();
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
-    const [downloading, setDownloading] = useState(false);
+    const [reading, setReading] = useState(false);
     const [messageApi, contextHolder] = message.useMessage();
 
     const libraryId = resolveLibraryId(library?.id);
     const authorLabel = book ? getAuthorLabel(book) : "";
+    const resolvedType = (book?.type || "protected").toLowerCase();
+    const resolvedLoanState = (book?.loan_state || "default").toLowerCase();
+    const normalizedHtmlVersionUrl = book?.html_version_url?.trim() || "";
+    const hasWebVersion =
+        (resolvedType === "external" || resolvedType === "free") &&
+        Boolean(normalizedHtmlVersionUrl);
+    const webVersionLabel =
+        resolvedLoanState === "recent" && normalizedHtmlVersionUrl
+            ? "Continuar lendo versão web"
+            : "Ler versão web";
 
     useEffect(() => {
         let active = true;
@@ -368,26 +394,152 @@ export default function EbookMiniView() {
         };
     }, [getAccessToken, id, libraryId, token]);
 
-    const handleReadNow = useCallback(async (): Promise<void> => {
-        if (!id) return;
+    /**
+     * Salva o empréstimo pendente e redireciona para a autenticação, preservando a rota atual.
+     *
+     * @returns `true` quando o redirecionamento foi iniciado.
+     */
+    const redirectToLoginForLend = useCallback((): boolean => {
+        if (!id) {
+            return false;
+        }
 
-        setDownloading(true);
-        try {
-            const accessToken = await getAccessToken();
-            if (!accessToken) {
-                throw new Error("Sessão expirada. Faça login novamente.");
+        const returnTo = `${location.pathname}${location.search}`;
+        savePendingLendAction({
+            type: "lend",
+            bookId: id,
+            libraryId,
+            returnTo,
+        });
+        navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+        return true;
+    }, [id, libraryId, location.pathname, location.search, navigate]);
+
+    /**
+     * Registra o acesso e abre a URL de leitura em uma nova aba.
+     *
+     * @param url URL externa ou pública do livro.
+     * @returns Promise<void>.
+     */
+    const registerAccessAndOpen = useCallback(
+        async (actionType: "read_now" | "read_web", url?: string): Promise<void> => {
+            if (!id || !url) {
+                messageApi.error("URL não cadastrada para este livro.");
+                return;
             }
 
-            await downloadPurchasedBook(id, libraryId, accessToken);
+            let accessToken: string | undefined = token || undefined;
+            if (token) {
+                accessToken = (await getAccessToken({ redirectOnFail: false })) || token;
+            }
+
+            try {
+                await registerBookAccessWithType(id, actionType, libraryId, accessToken);
+            } catch (error) {
+                console.warn("Failed to register book access", error);
+            }
+
+            const readingWindow = window.open(url, "_blank", "noopener,noreferrer");
+            if (!readingWindow) {
+                messageApi.error("Não foi possível abrir a nova aba. Verifique o bloqueio de pop-ups.");
+            }
+        },
+        [getAccessToken, id, libraryId, messageApi, token]
+    );
+
+    /**
+     * Executa o mesmo fluxo principal de leitura da página de detalhes do livro.
+     *
+     * @returns Promise<void>.
+     */
+    const handleReadNow = useCallback(async (): Promise<void> => {
+        if (!id || !book) {
+            return;
+        }
+
+        setReading(true);
+        try {
+            if ((book.loan_state || "").toLowerCase() === "unavailable") {
+                messageApi.warning("Não há licença disponível para este livro no momento.");
+                return;
+            }
+
+            if (book.purchased_by_user) {
+                let accessToken: string | undefined = token || undefined;
+                if (token) {
+                    accessToken = (await getAccessToken({ redirectOnFail: false })) || token;
+                }
+
+                if (!accessToken) {
+                    const returnTo = `${location.pathname}${location.search}`;
+                    navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                    return;
+                }
+
+                await downloadPurchasedBook(id, libraryId, accessToken);
+                messageApi.success("Certificado do livro baixado.");
+                return;
+            }
+
+            if (resolvedType === "external") {
+                await registerAccessAndOpen("read_now", book.external_url);
+                return;
+            }
+
+            if (resolvedType === "free") {
+                const baseUrl = FREE_BOOKS_BASE_URL.endsWith("/")
+                    ? FREE_BOOKS_BASE_URL
+                    : `${FREE_BOOKS_BASE_URL}/`;
+                await registerAccessAndOpen(
+                    "read_now",
+                    book.file_name ? `${baseUrl}${book.file_name}` : ""
+                );
+                return;
+            }
+
+            if (!token) {
+                redirectToLoginForLend();
+                return;
+            }
+
+            const accessToken = await getAccessToken({ redirectOnFail: false });
+            if (!accessToken) {
+                redirectToLoginForLend();
+                return;
+            }
+
+            await lendBook(id, libraryId, accessToken);
             messageApi.success("Certificado do livro baixado.");
         } catch (error) {
             messageApi.error(
-                error instanceof Error ? error.message : "Não foi possível baixar o livro."
+                error instanceof Error ? error.message : "Não foi possível iniciar a leitura."
             );
         } finally {
-            setDownloading(false);
+            setReading(false);
         }
-    }, [getAccessToken, id, libraryId, messageApi]);
+    }, [
+        book,
+        getAccessToken,
+        id,
+        libraryId,
+        location.pathname,
+        location.search,
+        messageApi,
+        navigate,
+        redirectToLoginForLend,
+        registerAccessAndOpen,
+        resolvedType,
+        token,
+    ]);
+
+    /**
+     * Abre a versão web quando o livro externo ou livre a disponibiliza.
+     *
+     * @returns Promise<void>.
+     */
+    const handleWebVersionAction = useCallback(async (): Promise<void> => {
+        await registerAccessAndOpen("read_web", normalizedHtmlVersionUrl);
+    }, [normalizedHtmlVersionUrl, registerAccessAndOpen]);
 
     return (
         <Layout className="page-shell ebook-shell">
@@ -409,8 +561,11 @@ export default function EbookMiniView() {
                         <EbookHero
                             book={book}
                             authorLabel={authorLabel}
-                            downloading={downloading}
+                            reading={reading}
+                            showWebVersion={hasWebVersion}
+                            webVersionLabel={webVersionLabel}
                             onReadNow={() => void handleReadNow()}
+                            onReadWebVersion={() => void handleWebVersionAction()}
                         />
                         <main className="ebook-main-layout">
                             <EnvironmentGuide />

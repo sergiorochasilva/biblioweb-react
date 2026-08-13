@@ -11,6 +11,7 @@ import { Alert, Button, Layout, Spin, Typography, message } from "antd";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { getBookAuthorsText, type Book } from "../model/Book";
+import BookTypeTag from "../components/BookTypeTag";
 import {
     DEFAULT_PUBLIC_LIBRARY_ID,
     downloadPurchasedBook,
@@ -193,12 +194,18 @@ function EbookHero({
     book,
     authorLabel,
     reading,
+    showWebVersion,
+    webVersionLabel,
     onReadNow,
+    onReadWebVersion,
 }: {
     book: Book;
     authorLabel: string;
     reading: boolean;
+    showWebVersion: boolean;
+    webVersionLabel: string;
     onReadNow: () => void;
+    onReadWebVersion: () => void;
 }) {
     return (
         <header className="ebook-hero">
@@ -206,10 +213,7 @@ function EbookHero({
                 <EbookCover book={book} />
             </div>
             <div className="ebook-hero-copy">
-                <span className="ebook-badge">
-                    <SafetyCertificateOutlined aria-hidden="true" />
-                    Livro protegido
-                </span>
+                <BookTypeTag type={book.type} className="ebook-book-type-tag" />
                 <Typography.Title level={1} className="ebook-title">
                     {book.title}
                 </Typography.Title>
@@ -237,6 +241,11 @@ function EbookHero({
                     >
                         Manual completo
                     </Button>
+                    {showWebVersion ? (
+                        <Button size="large" onClick={onReadWebVersion}>
+                            {webVersionLabel}
+                        </Button>
+                    ) : null}
                 </div>
             </div>
         </header>
@@ -344,6 +353,15 @@ export default function EbookMiniView() {
     const libraryId = resolveLibraryId(library?.id);
     const authorLabel = book ? getAuthorLabel(book) : "";
     const resolvedType = (book?.type || "protected").toLowerCase();
+    const resolvedLoanState = (book?.loan_state || "default").toLowerCase();
+    const normalizedHtmlVersionUrl = book?.html_version_url?.trim() || "";
+    const hasWebVersion =
+        (resolvedType === "external" || resolvedType === "free") &&
+        Boolean(normalizedHtmlVersionUrl);
+    const webVersionLabel =
+        resolvedLoanState === "recent" && normalizedHtmlVersionUrl
+            ? "Continuar lendo versão web"
+            : "Ler versão web";
 
     useEffect(() => {
         let active = true;
@@ -404,7 +422,7 @@ export default function EbookMiniView() {
      * @returns Promise<void>.
      */
     const registerAccessAndOpen = useCallback(
-        async (url?: string): Promise<void> => {
+        async (actionType: "read_now" | "read_web", url?: string): Promise<void> => {
             if (!id || !url) {
                 messageApi.error("URL não cadastrada para este livro.");
                 return;
@@ -416,7 +434,7 @@ export default function EbookMiniView() {
             }
 
             try {
-                await registerBookAccessWithType(id, "read_now", libraryId, accessToken);
+                await registerBookAccessWithType(id, actionType, libraryId, accessToken);
             } catch (error) {
                 console.warn("Failed to register book access", error);
             }
@@ -464,7 +482,7 @@ export default function EbookMiniView() {
             }
 
             if (resolvedType === "external") {
-                await registerAccessAndOpen(book.external_url);
+                await registerAccessAndOpen("read_now", book.external_url);
                 return;
             }
 
@@ -472,7 +490,10 @@ export default function EbookMiniView() {
                 const baseUrl = FREE_BOOKS_BASE_URL.endsWith("/")
                     ? FREE_BOOKS_BASE_URL
                     : `${FREE_BOOKS_BASE_URL}/`;
-                await registerAccessAndOpen(book.file_name ? `${baseUrl}${book.file_name}` : "");
+                await registerAccessAndOpen(
+                    "read_now",
+                    book.file_name ? `${baseUrl}${book.file_name}` : ""
+                );
                 return;
             }
 
@@ -511,6 +532,15 @@ export default function EbookMiniView() {
         token,
     ]);
 
+    /**
+     * Abre a versão web quando o livro externo ou livre a disponibiliza.
+     *
+     * @returns Promise<void>.
+     */
+    const handleWebVersionAction = useCallback(async (): Promise<void> => {
+        await registerAccessAndOpen("read_web", normalizedHtmlVersionUrl);
+    }, [normalizedHtmlVersionUrl, registerAccessAndOpen]);
+
     return (
         <Layout className="page-shell ebook-shell">
             {contextHolder}
@@ -532,7 +562,10 @@ export default function EbookMiniView() {
                             book={book}
                             authorLabel={authorLabel}
                             reading={reading}
+                            showWebVersion={hasWebVersion}
+                            webVersionLabel={webVersionLabel}
                             onReadNow={() => void handleReadNow()}
+                            onReadWebVersion={() => void handleWebVersionAction()}
                         />
                         <main className="ebook-main-layout">
                             <EnvironmentGuide />

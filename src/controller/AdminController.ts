@@ -60,6 +60,7 @@ import {
     createOAuthClient,
     deactivateOAuthClient,
     listOAuthClients,
+    reactivateOAuthClient,
     rotateOAuthClientSecret,
     updateOAuthClient,
 } from "../service/oauthClientAdminService";
@@ -161,6 +162,11 @@ type OAuthClientFormState = {
     grant_types: string[];
     scopes: string[];
     is_confidential: boolean;
+    description: string;
+    organization: string;
+    technical_contacts: { name: string; email: string }[];
+    expires_at: string;
+    library_ids: string[];
 };
 
 type OAuthClientFieldErrorKey = keyof OAuthClientFormState;
@@ -171,6 +177,11 @@ const emptyOAuthClientForm: OAuthClientFormState = {
     grant_types: ["authorization_code"],
     scopes: ["openid"],
     is_confidential: true,
+    description: "",
+    organization: "",
+    technical_contacts: [],
+    expires_at: "",
+    library_ids: [],
 };
 
 type BookFieldErrorKey =
@@ -2966,6 +2977,11 @@ export function useAdminController() {
             grant_types: item.grant_types,
             scopes: item.scopes,
             is_confidential: item.is_confidential,
+            description: item.description ?? "",
+            organization: item.organization ?? "",
+            technical_contacts: item.technical_contacts ?? [],
+            expires_at: item.expires_at ?? "",
+            library_ids: (item.library_ids ?? []).map(String),
         });
         setOAuthClientModalError("");
         setOAuthClientFormErrors({});
@@ -3038,6 +3054,11 @@ export function useAdminController() {
                 grant_types: oauthClientForm.grant_types as OAuthClientCreatePayload["grant_types"],
                 scopes: oauthClientForm.scopes as OAuthClientCreatePayload["scopes"],
                 is_confidential: oauthClientForm.is_confidential,
+                description: oauthClientForm.description.trim() || null,
+                organization: oauthClientForm.organization.trim() || null,
+                technical_contacts: oauthClientForm.technical_contacts,
+                expires_at: oauthClientForm.expires_at || null,
+                library_ids: oauthClientForm.library_ids.map(Number),
             };
 
             if (oauthClientModalMode === "edit" && oauthClientEditingId) {
@@ -3085,6 +3106,28 @@ export function useAdminController() {
             await loadOAuthClients();
         } catch (err) {
             setError(normalizeErrorMessage(err, "Erro ao desativar client OAuth."));
+        }
+    }
+
+    /**
+     * Reativa um client OAuth previamente desativado.
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function reactivateOAuthClientById(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await reactivateOAuthClient(token, clientId);
+            await loadOAuthClients();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao reativar client OAuth."));
         }
     }
 
@@ -3292,6 +3335,7 @@ export function useAdminController() {
             clearOAuthClientFieldError,
             saveOAuthClient,
             removeOAuthClient,
+            reactivateOAuthClientById,
             rotateOAuthClientSecretById,
         },
     };

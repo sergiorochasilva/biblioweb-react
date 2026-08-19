@@ -1,5 +1,11 @@
 import { OAuthGrantType, OAuthScope } from "./OAuthScopes";
 
+/** Contato técnico responsável por um client OAuth. */
+export type OAuthClientTechnicalContact = {
+    name: string;
+    email: string;
+};
+
 /** Client OAuth tal como devolvido pela API administrativa (sem segredo). */
 export type OAuthClient = {
     id: string;
@@ -10,6 +16,11 @@ export type OAuthClient = {
     is_confidential: boolean;
     active: boolean;
     created_at: string | null;
+    description: string | null;
+    organization: string | null;
+    technical_contacts: OAuthClientTechnicalContact[];
+    expires_at: string | null;
+    library_ids: number[];
 };
 
 export type OAuthClientListResponse = {
@@ -22,6 +33,11 @@ export type OAuthClientCreatePayload = {
     grant_types: OAuthGrantType[];
     scopes: OAuthScope[];
     is_confidential: boolean;
+    description?: string | null;
+    organization?: string | null;
+    technical_contacts?: OAuthClientTechnicalContact[];
+    expires_at?: string | null;
+    library_ids?: number[];
 };
 
 export type OAuthClientUpdatePayload = OAuthClientCreatePayload;

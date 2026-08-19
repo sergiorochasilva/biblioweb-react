@@ -62,6 +62,21 @@ export async function deactivateOAuthClient(token: string, clientId: string): Pr
 }
 
 /**
+ * Reativa um client OAuth previamente desativado.
+ *
+ * @param token Token JWT de administrador global.
+ * @param clientId Identificador do client.
+ * @returns Client reativado.
+ */
+export async function reactivateOAuthClient(token: string, clientId: string): Promise<OAuthClient> {
+    return api.post<OAuthClient>(
+        `/oauth-clients/${encodeURIComponent(clientId)}/reactivate`,
+        {},
+        token
+    );
+}
+
+/**
  * Gera um novo `client_secret` para um client existente, invalidando o
  * anterior imediatamente.
  *

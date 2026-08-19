@@ -796,7 +796,24 @@ export default function AdminView() {
                                                                                   </Button>
                                                                               </Popconfirm>,
                                                                           ]
-                                                                        : []
+                                                                        : [
+                                                                              <Popconfirm
+                                                                                  key="reactivate"
+                                                                                  title="Reativar client"
+                                                                                  description="O client volta a poder autenticar e emitir/renovar tokens."
+                                                                                  okText="Reativar"
+                                                                                  cancelText="Cancelar"
+                                                                                  onConfirm={() => {
+                                                                                      void actions.reactivateOAuthClientById(
+                                                                                          client.id
+                                                                                      );
+                                                                                  }}
+                                                                              >
+                                                                                  <Button icon={<ReloadOutlined />}>
+                                                                                      Reativar
+                                                                                  </Button>
+                                                                              </Popconfirm>,
+                                                                          ]
                                                                 }
                                                             >
                                                                 <List.Item.Meta
@@ -813,6 +830,9 @@ export default function AdminView() {
                                                                     description={
                                                                         <div className="oauth-client-meta">
                                                                             <span>ID: {client.id}</span>
+                                                                            {client.organization && (
+                                                                                <span>Organização: {client.organization}</span>
+                                                                            )}
                                                                             <div className="profile-tag-list">
                                                                                 {client.scopes.map((scope) => (
                                                                                     <Tag key={scope} color="blue">
@@ -1903,6 +1923,133 @@ export default function AdminView() {
                         {state.oauthClientFormErrors.scopes && (
                             <span className="form-field-error">{state.oauthClientFormErrors.scopes}</span>
                         )}
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Descrição</label>
+                        <Input.TextArea
+                            className="admin-input"
+                            value={state.oauthClientForm.description}
+                            onChange={(event) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    description: event.target.value,
+                                }));
+                            }}
+                        />
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Organização responsável</label>
+                        <Input
+                            className="admin-input"
+                            value={state.oauthClientForm.organization}
+                            onChange={(event) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    organization: event.target.value,
+                                }));
+                            }}
+                        />
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Contatos técnicos</label>
+                        {state.oauthClientForm.technical_contacts.map((contact, index) => (
+                            <div key={`technical-contact-${index}`} className="oauth-redirect-uri-row">
+                                <Input
+                                    className="admin-input"
+                                    placeholder="Nome"
+                                    value={contact.name}
+                                    onChange={(event) => {
+                                        const value = event.target.value;
+                                        actions.setOAuthClientForm((previous) => {
+                                            const next = [...previous.technical_contacts];
+                                            next[index] = { ...next[index], name: value };
+                                            return { ...previous, technical_contacts: next };
+                                        });
+                                    }}
+                                />
+                                <Input
+                                    className="admin-input"
+                                    placeholder="E-mail"
+                                    value={contact.email}
+                                    onChange={(event) => {
+                                        const value = event.target.value;
+                                        actions.setOAuthClientForm((previous) => {
+                                            const next = [...previous.technical_contacts];
+                                            next[index] = { ...next[index], email: value };
+                                            return { ...previous, technical_contacts: next };
+                                        });
+                                    }}
+                                />
+                                <Button
+                                    danger
+                                    onClick={() => {
+                                        actions.setOAuthClientForm((previous) => ({
+                                            ...previous,
+                                            technical_contacts: previous.technical_contacts.filter(
+                                                (_, itemIndex) => itemIndex !== index
+                                            ),
+                                        }));
+                                    }}
+                                >
+                                    Remover
+                                </Button>
+                            </div>
+                        ))}
+                        <Button
+                            onClick={() => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    technical_contacts: [
+                                        ...previous.technical_contacts,
+                                        { name: "", email: "" },
+                                    ],
+                                }));
+                            }}
+                        >
+                            + Adicionar contato
+                        </Button>
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Bibliotecas autorizadas</label>
+                        <Select
+                            allowClear
+                            mode="multiple"
+                            className="admin-select"
+                            placeholder="Selecione uma ou mais bibliotecas"
+                            value={state.oauthClientForm.library_ids}
+                            options={libraryOptions}
+                            onChange={(values: string[]) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    library_ids: values,
+                                }));
+                            }}
+                            optionFilterProp="label"
+                            showSearch
+                        />
+                        <span className="form-field-helper">
+                            Sem nenhuma biblioteca selecionada, o client fica bloqueado em qualquer
+                            endpoint de catálogo/empréstimo que exija library_id.
+                        </span>
+                    </div>
+
+                    <div className="form-field">
+                        <label className="field-label">Expira em</label>
+                        <Input
+                            className="admin-input"
+                            type="datetime-local"
+                            value={state.oauthClientForm.expires_at}
+                            onChange={(event) => {
+                                actions.setOAuthClientForm((previous) => ({
+                                    ...previous,
+                                    expires_at: event.target.value,
+                                }));
+                            }}
+                        />
                     </div>
 
                     <div className="form-field">

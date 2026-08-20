@@ -7,6 +7,13 @@
     min-height: 160px;
 }
 
+.oauth-consent-client-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
 .oauth-scope-list {
     display: flex;
     flex-wrap: wrap;

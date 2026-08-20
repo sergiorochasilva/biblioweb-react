@@ -17,6 +17,27 @@ import "../styles/OAuthConsentView.css";
 const GENERIC_EXPIRED_MESSAGE =
     "Este link de autorização expirou ou já foi usado. Peça para o aplicativo iniciar o processo novamente.";
 
+const MAX_LIBRARY_NAMES_SHOWN = 5;
+
+/**
+ * Formata a lista de bibliotecas autorizadas do client para exibição:
+ * nomes por extenso quando poucas, contagem quando muitas (evita a tela
+ * de consentimento crescer sem limite para clients com dezenas de
+ * bibliotecas vinculadas).
+ *
+ * @param libraries Bibliotecas autorizadas para o client.
+ * @returns Texto pronto para exibição, ou `null` se não houver nenhuma.
+ */
+function formatLibrariesText(libraries: OAuthAuthorizeRequestInfo["libraries"]): string | null {
+    if (libraries.length === 0) {
+        return null;
+    }
+    if (libraries.length <= MAX_LIBRARY_NAMES_SHOWN) {
+        return libraries.map((library) => library.name).join(", ");
+    }
+    return `${libraries.length} bibliotecas`;
+}
+
 type ViewState =
     | { status: "missing_request_id" }
     | { status: "loading" }
@@ -203,6 +224,7 @@ export default function OAuthConsentView() {
     );
     const isScopeUpgrade = alreadyGrantedScopes.length > 0;
     const clientName = info.client_name || "Um aplicativo parceiro";
+    const librariesText = formatLibrariesText(info.libraries);
 
     return (
         <AuthLayout
@@ -213,6 +235,21 @@ export default function OAuthConsentView() {
                     : `${clientName} quer acessar sua conta BiblioWeb:`
             }
         >
+            {(info.organization || librariesText) && (
+                <div className="oauth-consent-client-meta">
+                    {info.organization && (
+                        <Typography.Text type="secondary">
+                            Organização: {info.organization}
+                        </Typography.Text>
+                    )}
+                    {librariesText && (
+                        <Typography.Text type="secondary">
+                            {info.libraries.length === 1 ? "Biblioteca" : "Bibliotecas"}: {librariesText}
+                        </Typography.Text>
+                    )}
+                </div>
+            )}
+
             <div className="oauth-scope-list">
                 {newScopes.map((scope) => (
                     <Tag key={scope} color="blue" className="oauth-scope-item">

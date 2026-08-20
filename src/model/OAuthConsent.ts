@@ -1,3 +1,9 @@
+/** Biblioteca autorizada para o client, exibida na tela de consentimento. */
+export type OAuthAuthorizeLibrary = {
+    id: number;
+    name: string;
+};
+
 /**
  * Resposta de `GET /oauth/authorize/requests/<id>`. `scope`,
  * `already_granted_scopes` e `new_scopes` são strings de escopos
@@ -7,6 +13,8 @@
 export type OAuthAuthorizeRequestInfo = {
     client_id: string;
     client_name: string | null;
+    organization: string | null;
+    libraries: OAuthAuthorizeLibrary[];
     scope: string;
     consent_required: boolean;
     already_granted_scopes: string;

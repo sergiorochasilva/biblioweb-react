@@ -429,6 +429,8 @@ export async function createOAuthClientApi(
         grant_types?: string[];
         scopes?: string[];
         is_confidential?: boolean;
+        organization?: string;
+        library_ids?: number[];
     } = {}
 ): Promise<{ id: string; name: string; secret_reveal_url: string }> {
     const response = await request.post(`${API_BASE_URL}/oauth-clients`, {
@@ -441,11 +443,39 @@ export async function createOAuthClientApi(
             grant_types: overrides.grant_types || ["authorization_code", "refresh_token"],
             scopes: overrides.scopes || ["openid", "biblioweb.profile.read"],
             is_confidential: overrides.is_confidential ?? true,
+            organization: overrides.organization,
+            library_ids: overrides.library_ids,
         },
     });
 
     expect(response.ok()).toBeTruthy();
     return (await response.json()) as { id: string; name: string; secret_reveal_url: string };
+}
+
+/**
+ * Busca uma biblioteca já existente no ambiente de teste, para uso em
+ * testes que precisam de um `library_id` real (ex.: vincular um client
+ * OAuth a uma biblioteca). Não cria nada — reaproveita o dado que já
+ * existe no banco de dev/teste.
+ *
+ * @param request Contexto de requests do Playwright.
+ * @param token Token de acesso do administrador global.
+ * @returns A primeira biblioteca cadastrada (`id` e `nome`).
+ */
+export async function getFirstLibraryApi(
+    request: APIRequestContext,
+    token: string
+): Promise<{ id: number; nome: string }> {
+    const response = await request.get(`${API_BASE_URL}/libraries?limit=1`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    expect(response.ok()).toBeTruthy();
+    const body = (await response.json()) as { result: { id: number; nome: string }[] };
+    expect(body.result.length).toBeGreaterThan(0);
+    return body.result[0];
 }
 
 /**

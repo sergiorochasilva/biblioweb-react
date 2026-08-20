@@ -6,6 +6,7 @@ import {
     createTestUser,
     deactivateOAuthClientApi,
     deleteUser,
+    getFirstLibraryApi,
     loginAsAdminApi,
     loginWithPassword,
 } from "./support";
@@ -74,6 +75,36 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
 
             const finalUrl = new URL(page.url());
             expect(finalUrl.searchParams.get("error")).toBe("access_denied");
+        } finally {
+            await deleteUser(request, created.adminToken, created.user.id);
+            await deactivateOAuthClientApi(request, adminToken, client.id);
+        }
+    });
+
+    test("tela de consentimento mostra organização e biblioteca do client", async ({
+        page,
+        request,
+    }) => {
+        const adminToken = await loginAsAdminApi(request);
+        const library = await getFirstLibraryApi(request, adminToken);
+        const client = await createOAuthClientApi(request, adminToken, {
+            scopes: ["openid"],
+            organization: "Parceiro E2E Consentimento Ltda",
+            library_ids: [library.id],
+        });
+        const created = await createTestUser(request);
+
+        try {
+            await loginWithPassword(page, created.email, created.loginPassword);
+
+            const authorizeUrl = buildOAuthAuthorizeUrl(client.id, TEST_REDIRECT_URI, "openid");
+            await page.goto(authorizeUrl);
+            await expect(page).toHaveURL(/\/oauth\/consent\?request_id=/);
+
+            await expect(
+                page.getByText("Organização: Parceiro E2E Consentimento Ltda")
+            ).toBeVisible();
+            await expect(page.getByText(`Biblioteca: ${library.nome}`)).toBeVisible();
         } finally {
             await deleteUser(request, created.adminToken, created.user.id);
             await deactivateOAuthClientApi(request, adminToken, client.id);

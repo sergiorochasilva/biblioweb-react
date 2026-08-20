@@ -6,7 +6,9 @@ import {
     fillFormField,
     loginAsAdminApi,
     loginWithPassword,
+    locateFormField,
     locateListRow,
+    selectFirstOptionInField,
 } from "./support";
 
 test.describe.serial("Administração de clients OAuth", () => {
@@ -100,14 +102,32 @@ test.describe.serial("Administração de clients OAuth", () => {
             // clicar nele aqui — clicar de novo apenas o desmarcaria.
             await fillFormField(page, "Descrição", "Integração de teste E2E");
             await fillFormField(page, "Organização responsável", "Parceiro E2E Ltda");
+            await selectFirstOptionInField(page, "Bibliotecas autorizadas");
+            const selectedLibrary = (
+                await locateFormField(page, "Bibliotecas autorizadas")
+                    .locator(".ant-select-selection-item")
+                    .first()
+                    .innerText()
+            ).trim();
             await page.getByRole("button", { name: "Salvar" }).click();
 
             const row = locateListRow(page, clientName);
             await expect(row).toBeVisible();
             await expect(row.getByText("Organização: Parceiro E2E Ltda")).toBeVisible();
+            await expect(row.getByText("Sem bibliotecas")).toHaveCount(0);
 
             const clientIdText = await row.getByText(/^ID: /).innerText();
             createdClientId = clientIdText.replace("ID: ", "").trim();
+
+            // Reabre em modo edição para provar que os `library_ids` (number[] na
+            // API) sobrevivem à conversão para string[] no estado do formulário.
+            await row.getByRole("button", { name: "Editar" }).click();
+            await expect(
+                locateFormField(page, "Bibliotecas autorizadas")
+                    .locator(".ant-select-selection-item")
+                    .first()
+            ).toHaveText(selectedLibrary);
+            await page.getByRole("button", { name: "Cancelar" }).click();
 
             await row.getByRole("button", { name: "Desativar" }).click();
             await page

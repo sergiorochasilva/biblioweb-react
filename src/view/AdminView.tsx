@@ -750,6 +750,12 @@ export default function AdminView() {
                                                     renderItem={(client) => {
                                                         const revealedUrl =
                                                             state.revealedSecretUrlByClientId[client.id];
+                                                        const isExpired = Boolean(
+                                                            client.expires_at &&
+                                                                new Date(client.expires_at) < new Date()
+                                                        );
+                                                        const hasNoLibraries =
+                                                            client.library_ids.length === 0;
                                                         return (
                                                             <List.Item
                                                                 className="admin-list-item"
@@ -784,7 +790,7 @@ export default function AdminView() {
                                                                               <Popconfirm
                                                                                   key="delete"
                                                                                   title="Desativar client"
-                                                                                  description="Essa ação não pode ser desfeita."
+                                                                                  description="O client deixa de conseguir autenticar até ser reativado."
                                                                                   okText="Desativar"
                                                                                   cancelText="Cancelar"
                                                                                   onConfirm={() => {
@@ -800,7 +806,7 @@ export default function AdminView() {
                                                                               <Popconfirm
                                                                                   key="reactivate"
                                                                                   title="Reativar client"
-                                                                                  description="O client volta a poder autenticar e emitir/renovar tokens."
+                                                                                  description="O client volta a ficar ativo. Se houver uma data de expiração configurada, ela continua valendo."
                                                                                   okText="Reativar"
                                                                                   cancelText="Cancelar"
                                                                                   onConfirm={() => {
@@ -832,6 +838,18 @@ export default function AdminView() {
                                                                             <span>ID: {client.id}</span>
                                                                             {client.organization && (
                                                                                 <span>Organização: {client.organization}</span>
+                                                                            )}
+                                                                            {(hasNoLibraries || isExpired) && (
+                                                                                <div className="profile-tag-list">
+                                                                                    {hasNoLibraries && (
+                                                                                        <Tag color="warning">
+                                                                                            Sem bibliotecas
+                                                                                        </Tag>
+                                                                                    )}
+                                                                                    {isExpired && (
+                                                                                        <Tag color="error">Expirado</Tag>
+                                                                                    )}
+                                                                                </div>
                                                                             )}
                                                                             <div className="profile-tag-list">
                                                                                 {client.scopes.map((scope) => (
@@ -2011,6 +2029,11 @@ export default function AdminView() {
                         >
                             + Adicionar contato
                         </Button>
+                        {state.oauthClientFormErrors.technical_contacts && (
+                            <span className="form-field-error">
+                                {state.oauthClientFormErrors.technical_contacts}
+                            </span>
+                        )}
                     </div>
 
                     <div className="form-field">
@@ -2050,6 +2073,7 @@ export default function AdminView() {
                                 }));
                             }}
                         />
+                        <span className="form-field-helper">Horário em UTC.</span>
                     </div>
 
                     <div className="form-field">

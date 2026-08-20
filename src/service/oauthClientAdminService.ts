@@ -51,7 +51,8 @@ export async function updateOAuthClient(
 }
 
 /**
- * Desativa um client OAuth (remoção lógica; não há endpoint de reversão).
+ * Desativa um client OAuth (remoção lógica; reversível via
+ * `reactivateOAuthClient`).
  *
  * @param token Token JWT de administrador global.
  * @param clientId Identificador do client.

@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { message } from "antd";
+import { Modal, message } from "antd";
 import { useAuth } from "../contexts/useAuth";
 import {
     BookLibraryForm,
@@ -638,6 +638,27 @@ function validatePublisherForm(
     return null;
 }
 
+/** Verificação simples de formato de e-mail (sem pretensão de RFC 5322). */
+const EMAIL_PATTERN = /\S+@\S+\.\S+/;
+
+/**
+ * Prefixos de escopo cujo acesso depende de bibliotecas vinculadas ao
+ * client — sem nenhuma biblioteca, a API bloqueia esses endpoints.
+ */
+const LIBRARY_SCOPED_SCOPE_PREFIXES = ["biblioweb.catalog.", "biblioweb.loans."];
+
+/**
+ * Indica se a lista de escopos inclui algum escopo dependente de biblioteca.
+ *
+ * @param scopes Escopos selecionados no formulário.
+ * @returns ``true`` quando há escopo de catálogo/empréstimo.
+ */
+function hasLibraryScopedScope(scopes: string[]): boolean {
+    return scopes.some((scope) =>
+        LIBRARY_SCOPED_SCOPE_PREFIXES.some((prefix) => scope.startsWith(prefix))
+    );
+}
+
 /**
  * Valida campos do formulário de client OAuth.
  *
@@ -664,6 +685,16 @@ function validateOAuthClientForm(
 
     if (form.scopes.length === 0) {
         fieldErrors.scopes = "Selecione ao menos um escopo.";
+    }
+
+    const hasIncompleteContact = form.technical_contacts.some(
+        (contact) => !contact.name.trim() || !contact.email.trim()
+    );
+    if (hasIncompleteContact) {
+        fieldErrors.technical_contacts =
+            "Preencha nome e e-mail de todos os contatos, ou remova a linha em branco.";
+    } else if (form.technical_contacts.some((contact) => !EMAIL_PATTERN.test(contact.email.trim()))) {
+        fieldErrors.technical_contacts = "Informe um e-mail válido em todos os contatos técnicos.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -3038,6 +3069,32 @@ export function useAdminController() {
             return;
         }
 
+        const willBeBlocked =
+            oauthClientForm.library_ids.length === 0 &&
+            hasLibraryScopedScope(oauthClientForm.scopes);
+        if (willBeBlocked) {
+            Modal.confirm({
+                title: "Salvar sem biblioteca vinculada?",
+                content:
+                    "Este client tem escopos de catálogo/empréstimo, mas nenhuma biblioteca " +
+                    "vinculada. Ele ficará bloqueado nesses endpoints até que ao menos uma " +
+                    "biblioteca seja vinculada.",
+                okText: "Salvar mesmo assim",
+                cancelText: "Cancelar",
+                onOk: () => submitOAuthClientForm(),
+            });
+            return;
+        }
+
+        await submitOAuthClientForm();
+    }
+
+    /**
+     * Envia o formulário de client OAuth já validado para a API.
+     *
+     * @returns Promise<void>.
+     */
+    async function submitOAuthClientForm(): Promise<void> {
         setIsSavingOAuthClient(true);
         try {
             const token = await getAccessToken();
@@ -3083,7 +3140,8 @@ export function useAdminController() {
     }
 
     /**
-     * Desativa um client OAuth (remoção lógica; não há endpoint de reversão).
+     * Desativa um client OAuth (remoção lógica; reversível via
+     * `reactivateOAuthClientById`).
      *
      * @param clientId ID do client.
      * @returns Promise<void>.

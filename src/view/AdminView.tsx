@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import {
     Alert,
     Button,
@@ -49,7 +50,27 @@ function formatTokenUsage(used: number, limit: number): string {
  */
 export default function AdminView() {
     const { Content } = Layout;
+    const location = useLocation();
     const { state, actions } = useAdminController();
+    const handledEditBookIdRef = useRef<string | null>(null);
+    const requestedEditBookId = useMemo(() => {
+        const query = new URLSearchParams(location.search);
+        return query.get("book")?.trim() || "";
+    }, [location.search]);
+
+    useEffect(() => {
+        if (!requestedEditBookId) {
+            handledEditBookIdRef.current = null;
+            return;
+        }
+
+        if (handledEditBookIdRef.current === requestedEditBookId) {
+            return;
+        }
+
+        handledEditBookIdRef.current = requestedEditBookId;
+        void actions.openBookForEditById(requestedEditBookId);
+    }, [actions, requestedEditBookId]);
 
     const isRefreshingCurrentTab =
         state.activeTab === "users"

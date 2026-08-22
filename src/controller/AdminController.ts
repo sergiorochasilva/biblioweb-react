@@ -1881,6 +1881,41 @@ export function useAdminController() {
     }
 
     /**
+     * Localiza um livro pelo identificador, aplica sua busca e abre o cadastro em edição.
+     *
+     * @param bookId Identificador do livro informado pela rota de detalhes.
+     * @returns Promise<void>.
+     */
+    async function openBookForEditById(bookId: string): Promise<void> {
+        const normalizedBookId = bookId.trim();
+        if (!normalizedBookId) {
+            return;
+        }
+
+        setActiveTabState("books");
+        setError("");
+
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const selectedBook = await fetchBookById(token, normalizedBookId);
+            const searchTerm = selectedBook.title?.trim() || normalizedBookId;
+            setBookSearch(searchTerm);
+            setAppliedFilters({
+                ...emptyFilters,
+                search: searchTerm,
+            });
+            await openEditBookModal(selectedBook);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar dados do livro."));
+        }
+    }
+
+    /**
      * Fecha modal de livro e limpa estado transitório.
      *
      * @returns void.
@@ -2927,6 +2962,7 @@ export function useAdminController() {
             refreshCurrentTab,
             openCreateBookModal,
             openEditBookModal,
+            openBookForEditById,
             closeBookModal,
             setBookForm,
             setBookLibrarySelection,

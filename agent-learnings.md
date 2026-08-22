@@ -17,6 +17,20 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-08-21 - edição administrativa a partir do detalhe público
+- Descoberta:
+  - O detalhe `/book/:id` é público; a ação de edição só deve ser exibida após validar a permissão global no `profile` autenticado.
+  - Para abrir o cadastro correto sem depender de busca textual ambígua, a rota deve transmitir o identificador do livro e o painel deve consultá-lo antes de abrir o modal.
+- Evidencias:
+  - `src/view/BookDetailsView.tsx`
+  - `src/view/AdminView.tsx`
+  - `src/controller/AdminController.ts`
+  - `src/service/postLoginRoute.ts`
+- Acao aplicada:
+  - O botão de edição global encaminha para `/admin?book=<id>&mode=edit`; a tela administrativa seleciona a aba de livros, preenche a busca pelo título e abre o modal de edição a partir da consulta pelo ID.
+- Impacto esperado:
+  - Administradores alcançam diretamente o registro exibido, enquanto leitores e administradores de editora não recebem acesso indevido ao painel global.
+
 ### 2026-08-12 - leitura no atalho de ebook deve respeitar o tipo do livro
 - Descoberta:
   - A rota protegida `/ebook/:id` não pode assumir que todo livro é uma cópia comprada com LCP; livros `external` devem registrar o acesso e abrir `external_url`, como no detalhe `/book/:id`.

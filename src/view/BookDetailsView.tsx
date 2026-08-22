@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftOutlined, QuestionCircleOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, EditOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import {
     App as AntdApp,
     Button,
@@ -31,6 +31,7 @@ import BookTypeTag from "../components/BookTypeTag";
 import "../styles/BookDetailsView.css";
 import { useAuth } from "../contexts/useAuth";
 import { savePendingLendAction } from "../service/postLoginAction";
+import { hasGlobalAdminPermission } from "../service/permissions";
 import HeaderView from "./HeaderView";
 
 interface BookDetailsViewProps {
@@ -424,7 +425,7 @@ export default function BookDetailsView({
     const [referenceFormat, setReferenceFormat] = useState<ReferenceFormat>("apa");
     const unavailableModalShownRef = useRef(false);
     const { Content } = Layout;
-    const { token, library, getAccessToken } = useAuth();
+    const { token, library, profile, getAccessToken } = useAuth();
     const { message } = AntdApp.useApp();
     const resolvedType = (bookType || "protected").toLowerCase();
     const resolvedLoanState = (loan_state || "default").toLowerCase();
@@ -486,6 +487,7 @@ export default function BookDetailsView({
             ? "Continuar lendo versão web"
             : "Ler versão web";
     const isInactiveBook = active === false;
+    const canEditBook = hasGlobalAdminPermission(profile);
 
     useEffect(() => {
         unavailableModalShownRef.current = false;
@@ -854,6 +856,16 @@ export default function BookDetailsView({
         });
     }
 
+    /**
+     * Abre o painel global já filtrado e com o livro atual em modo de edição.
+     *
+     * @returns void.
+     */
+    function openBookEditFromDetails(): void {
+        const query = new URLSearchParams({ book: id, mode: "edit" });
+        navigate(`/admin?${query.toString()}`);
+    }
+
     return (
         <Layout className={`page-shell book-details-shell book-details-shell--${resolvedLoanState}`}>
             <HeaderView />
@@ -1041,6 +1053,16 @@ export default function BookDetailsView({
                                         }}
                                     >
                                         {purchaseButtonLabel}
+                                    </Button>
+                                )}
+                                {canEditBook && (
+                                    <Button
+                                        size="large"
+                                        className="book-details-secondary"
+                                        icon={<EditOutlined />}
+                                        onClick={openBookEditFromDetails}
+                                    >
+                                        Editar cadastro do livro
                                     </Button>
                                 )}
                             </div>

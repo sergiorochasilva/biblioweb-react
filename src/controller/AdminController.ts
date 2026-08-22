@@ -56,6 +56,8 @@ import {
 } from "../service/AdminService";
 import { validateStrongPassword } from "../service/passwordPolicy";
 import { OAuthClient, OAuthClientCreatePayload } from "../model/OAuthClient";
+import { OAuthClientHistoryEvent } from "../model/OAuthAudit";
+import { fetchClientHistory } from "../service/oauthAuditService";
 import {
     createOAuthClient,
     deactivateOAuthClient,
@@ -1124,6 +1126,10 @@ export function useAdminController() {
     const [oauthClientModalError, setOAuthClientModalError] = useState("");
     const [oauthClientFormErrors, setOAuthClientFormErrors] =
         useState<Partial<Record<OAuthClientFieldErrorKey, string>>>({});
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [historyClientId, setHistoryClientId] = useState<string | null>(null);
+    const [historyEvents, setHistoryEvents] = useState<OAuthClientHistoryEvent[]>([]);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
     const hasMoreBooks = useMemo(() => Boolean(booksNext), [booksNext]);
 
@@ -3215,6 +3221,42 @@ export function useAdminController() {
         }
     }
 
+    /**
+     * Abre o modal de histórico de um client OAuth e carrega a primeira página.
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function openClientHistory(clientId: string): Promise<void> {
+        setHistoryClientId(clientId);
+        setHistoryModalOpen(true);
+        setIsLoadingHistory(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+            const response = await fetchClientHistory(token, clientId);
+            setHistoryEvents(response.items);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar histórico do client."));
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    }
+
+    /**
+     * Fecha o modal de histórico de client.
+     *
+     * @returns void.
+     */
+    function closeClientHistory(): void {
+        setHistoryModalOpen(false);
+        setHistoryClientId(null);
+        setHistoryEvents([]);
+    }
+
     return {
         state: {
             books,
@@ -3300,6 +3342,10 @@ export function useAdminController() {
             oauthClientForm,
             oauthClientModalError,
             oauthClientFormErrors,
+            historyModalOpen,
+            historyClientId,
+            historyEvents,
+            isLoadingHistory,
         },
         actions: {
             setBookSearch,
@@ -3395,6 +3441,8 @@ export function useAdminController() {
             removeOAuthClient,
             reactivateOAuthClientById,
             rotateOAuthClientSecretById,
+            openClientHistory,
+            closeClientHistory,
         },
     };
 }

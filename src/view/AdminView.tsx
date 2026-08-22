@@ -771,6 +771,14 @@ export default function AdminView() {
                                                                               >
                                                                                   Editar
                                                                               </Button>,
+                                                                              <Button
+                                                                                  key="history"
+                                                                                  onClick={() =>
+                                                                                      void actions.openClientHistory(client.id)
+                                                                                  }
+                                                                              >
+                                                                                  Histórico
+                                                                              </Button>,
                                                                               <Popconfirm
                                                                                   key="rotate"
                                                                                   title="Rotacionar segredo"
@@ -2096,6 +2104,34 @@ export default function AdminView() {
                         </Button>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal
+                title="Histórico de alterações"
+                open={state.historyModalOpen}
+                onCancel={actions.closeClientHistory}
+                footer={null}
+            >
+                <List
+                    loading={state.isLoadingHistory}
+                    dataSource={state.historyEvents}
+                    locale={{ emptyText: "Nenhum evento registrado." }}
+                    renderItem={(event) => (
+                        <List.Item>
+                            <List.Item.Meta
+                                title={event.event_type}
+                                description={
+                                    <span>
+                                        {event.created_at
+                                            ? new Date(event.created_at + "Z").toLocaleString("pt-BR")
+                                            : ""}
+                                        {event.reason && ` — ${event.reason}`}
+                                    </span>
+                                }
+                            />
+                        </List.Item>
+                    )}
+                />
             </Modal>
         </Layout>
     );

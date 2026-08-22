@@ -149,6 +149,12 @@ test.describe.serial("Fluxos de administração", () => {
                 await page.getByRole("button", { name: "Salvar" }).click();
                 const createResponse = await createResponsePromise;
                 expect(createResponse.ok()).toBeTruthy();
+                const createPayload = createResponse.request().postDataJSON() as {
+                    base64_content?: string;
+                    file_extension?: string;
+                };
+                expect(createPayload.base64_content).toBeTruthy();
+                expect(createPayload.file_extension).toBe("pdf");
 
                 await expect(page.getByText(createdTitle, { exact: true })).toBeVisible();
                 const createBody = (await createResponse.json()) as { id?: string };

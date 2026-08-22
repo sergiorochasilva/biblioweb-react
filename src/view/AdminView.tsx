@@ -29,6 +29,7 @@ import BookLibraryPolicyGrid from "../components/BookLibraryPolicyGrid";
 import LibraryLimitGrid from "../components/LibraryLimitGrid";
 import { useAdminController } from "../controller/AdminController";
 import { getBookAuthorsText } from "../model/Book";
+import { BOOK_UPLOAD_MAX_FILE_SIZE_LABEL } from "../service/bookUpload";
 import "../styles/AdminView.css";
 
 /**
@@ -1160,6 +1161,9 @@ export default function AdminView() {
                             >
                                 <Button icon={<UploadOutlined />}>Selecionar arquivo</Button>
                             </Upload>
+                            <Typography.Text type="secondary">
+                                Tamanho máximo: {BOOK_UPLOAD_MAX_FILE_SIZE_LABEL}.
+                            </Typography.Text>
                             {state.bookFormErrors.file && (
                                 <span className="form-field-error">{state.bookFormErrors.file}</span>
                             )}

@@ -17,6 +17,20 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-08-21 - limite de arquivo do cadastro precisa anteceder a conversão base64
+- Descoberta:
+  - A tela de cadastro transforma o arquivo em `base64_content`, portanto deve impedir arquivos acima de 100 MiB antes de alocar a representação maior em memória.
+  - O e2e do cadastro deve verificar o corpo efetivamente enviado, e não só a presença do livro na lista.
+- Evidencias:
+  - `src/service/bookUpload.ts`
+  - `src/service/AdminService.ts`
+  - `src/service/PublisherAdminService.ts`
+  - `tests/e2e/book-upload-ui.spec.ts`
+- Acao aplicada:
+  - Centralizei o teto de 100 MiB no serviço de upload, apresentei-o nos dois formulários e acrescentei cobertura Playwright que seleciona um arquivo, salva e confere o base64 enviado ao `POST /books`.
+- Impacto esperado:
+  - O usuário recebe erro antes da conversão de um arquivo grande e o contrato real de envio da interface fica protegido contra regressões.
+
 ### 2026-08-21 - edição administrativa a partir do detalhe público
 - Descoberta:
   - O detalhe `/book/:id` é público; a ação de edição só deve ser exibida após validar a permissão global no `profile` autenticado.

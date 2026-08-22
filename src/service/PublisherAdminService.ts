@@ -2,6 +2,7 @@ import { Book } from "../model/Book";
 import type { BookLibraryLink, BookLibraryPayload } from "../model/BookLibrary";
 import { normalizeBookLibraryLinks } from "../model/BookLibrary";
 import { api, buildAuthHeaders } from "./api";
+import { validateBookUploadFileSize } from "./bookUpload";
 
 export type PublisherSubject = {
     id: number;
@@ -415,6 +416,12 @@ export function getFileParts(file: File) {
  */
 export function readFileAsBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
+        try {
+            validateBookUploadFileSize(file);
+        } catch (error) {
+            reject(error);
+            return;
+        }
         const reader = new FileReader();
         reader.onload = () => {
             const result = reader.result;

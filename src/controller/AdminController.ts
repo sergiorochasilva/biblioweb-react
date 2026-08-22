@@ -56,8 +56,13 @@ import {
 } from "../service/AdminService";
 import { validateStrongPassword } from "../service/passwordPolicy";
 import { OAuthClient, OAuthClientCreatePayload } from "../model/OAuthClient";
-import { OAuthClientHistoryEvent } from "../model/OAuthAudit";
-import { fetchClientHistory } from "../service/oauthAuditService";
+import {
+    OAuthAuditEvent,
+    OAuthAuditFilters,
+    OAuthAuditPagination,
+    OAuthClientHistoryEvent,
+} from "../model/OAuthAudit";
+import { fetchAuditEvents, fetchClientHistory } from "../service/oauthAuditService";
 import {
     createOAuthClient,
     deactivateOAuthClient,
@@ -156,7 +161,8 @@ type AdminTabKey =
     | "publishers"
     | "subjects"
     | "authors"
-    | "oauth-clients";
+    | "oauth-clients"
+    | "oauth-audit";
 
 type OAuthClientFormState = {
     name: string;
@@ -1130,6 +1136,10 @@ export function useAdminController() {
     const [historyClientId, setHistoryClientId] = useState<string | null>(null);
     const [historyEvents, setHistoryEvents] = useState<OAuthClientHistoryEvent[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [auditEvents, setAuditEvents] = useState<OAuthAuditEvent[]>([]);
+    const [auditPagination, setAuditPagination] = useState<OAuthAuditPagination | null>(null);
+    const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+    const [auditFilters, setAuditFilters] = useState<OAuthAuditFilters>({ page: 1, page_size: 20 });
 
     const hasMoreBooks = useMemo(() => Boolean(booksNext), [booksNext]);
 
@@ -1342,6 +1352,29 @@ export function useAdminController() {
     }, [getAccessToken]);
 
     /**
+     * Carrega a página atual de eventos de auditoria, conforme os filtros ativos.
+     *
+     * @returns Promise<void>.
+     */
+    const loadAuditEvents = useCallback(async (): Promise<void> => {
+        setIsLoadingAudit(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+            const response = await fetchAuditEvents(token, auditFilters);
+            setAuditEvents(response.items);
+            setAuditPagination(response.pagination);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar eventos de auditoria."));
+        } finally {
+            setIsLoadingAudit(false);
+        }
+    }, [auditFilters, getAccessToken]);
+
+    /**
      * Carrega editoras para aba de manutenção.
      *
      * @returns Promise<void>.
@@ -1429,7 +1462,8 @@ export function useAdminController() {
             tabKey === "publishers" ||
             tabKey === "subjects" ||
             tabKey === "authors" ||
-            tabKey === "oauth-clients"
+            tabKey === "oauth-clients" ||
+            tabKey === "oauth-audit"
         ) {
             if (tabKey !== "oauth-clients") {
                 setRevealedSecretUrlByClientId({});
@@ -1481,10 +1515,16 @@ export function useAdminController() {
             return;
         }
 
+        if (activeTab === "oauth-audit") {
+            await loadAuditEvents();
+            return;
+        }
+
         await loadReferenceData();
         await loadBooks();
     }, [
         activeTab,
+        loadAuditEvents,
         loadBooks,
         loadAuthorRows,
         loadLibraryRows,
@@ -1807,6 +1847,14 @@ export function useAdminController() {
 
         void loadOAuthClients();
     }, [activeTab, isAuthenticated, loadOAuthClients]);
+
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "oauth-audit") {
+            return;
+        }
+
+        void loadAuditEvents();
+    }, [activeTab, auditFilters, isAuthenticated, loadAuditEvents]);
 
     /**
      * Aplica filtros da listagem de livros.
@@ -3346,6 +3394,10 @@ export function useAdminController() {
             historyClientId,
             historyEvents,
             isLoadingHistory,
+            auditEvents,
+            auditPagination,
+            isLoadingAudit,
+            auditFilters,
         },
         actions: {
             setBookSearch,
@@ -3443,6 +3495,8 @@ export function useAdminController() {
             rotateOAuthClientSecretById,
             openClientHistory,
             closeClientHistory,
+            setAuditFilters,
+            loadAuditEvents,
         },
     };
 }

@@ -45,3 +45,24 @@ export type OAuthAuditFilters = {
     page?: number;
     page_size?: number;
 };
+
+/** Os 17 tipos de evento de auditoria OAuth suportados pela API. */
+export const OAUTH_AUDIT_EVENT_TYPES: string[] = [
+    "CLIENT_CREATED",
+    "CLIENT_UPDATED",
+    "CLIENT_SECRET_ROTATED",
+    "CLIENT_DISABLED",
+    "CLIENT_REACTIVATED",
+    "AUTHORIZATION_STARTED",
+    "AUTHORIZATION_GRANTED",
+    "AUTHORIZATION_DENIED",
+    "TOKEN_ISSUED",
+    "TOKEN_REFRESHED",
+    "TOKEN_REVOKED",
+    "TOKEN_REUSE_DETECTED",
+    "RESOURCE_ALLOWED",
+    "RESOURCE_DENIED",
+    "LOAN_CREATED",
+    "LOAN_RETURNED",
+    "LICENSE_ACCESSED",
+];

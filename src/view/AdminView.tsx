@@ -9,6 +9,7 @@ import {
     Layout,
     List,
     Modal,
+    Pagination,
     Popconfirm,
     Select,
     Switch,
@@ -32,6 +33,7 @@ import LibraryLimitGrid from "../components/LibraryLimitGrid";
 import { useAdminController } from "../controller/AdminController";
 import { getBookAuthorsText } from "../model/Book";
 import { ALLOWED_OAUTH_GRANT_TYPES, ALLOWED_OAUTH_SCOPES, translateOAuthScope } from "../model/OAuthScopes";
+import { OAUTH_AUDIT_EVENT_TYPES } from "../model/OAuthAudit";
 import "../styles/AdminView.css";
 
 /**
@@ -68,6 +70,8 @@ export default function AdminView() {
                             ? state.isLoadingAuthors
                             : state.activeTab === "oauth-clients"
                                 ? state.isLoadingOAuthClients
+                                : state.activeTab === "oauth-audit"
+                                    ? state.isLoadingAudit
                     : state.isLoadingBooks;
 
     const publisherOptions = useMemo(
@@ -891,6 +895,90 @@ export default function AdminView() {
                                                 />
                                             );
                                         })()}
+                                    </Card>
+                                ),
+                            },
+                            {
+                                key: "oauth-audit",
+                                label: "Auditoria",
+                                children: (
+                                    <Card className="glass-card admin-panel admin-tab-card" title="Auditoria OAuth">
+                                        <div className="users-toolbar">
+                                            <Select
+                                                allowClear
+                                                placeholder="Tipo de evento"
+                                                style={{ minWidth: 220 }}
+                                                value={state.auditFilters.event_type}
+                                                onChange={(value) =>
+                                                    actions.setAuditFilters((previous) => ({
+                                                        ...previous,
+                                                        event_type: value,
+                                                        page: 1,
+                                                    }))
+                                                }
+                                                options={OAUTH_AUDIT_EVENT_TYPES.map((type) => ({
+                                                    value: type,
+                                                    label: type,
+                                                }))}
+                                            />
+                                            <Button type="primary" onClick={() => void actions.loadAuditEvents()}>
+                                                Filtrar
+                                            </Button>
+                                        </div>
+
+                                        <List
+                                            loading={state.isLoadingAudit}
+                                            dataSource={state.auditEvents}
+                                            locale={{ emptyText: "Nenhum evento encontrado." }}
+                                            renderItem={(event) => (
+                                                <List.Item>
+                                                    <List.Item.Meta
+                                                        title={
+                                                            <span>
+                                                                {event.event_type}{" "}
+                                                                <Tag
+                                                                    color={
+                                                                        event.result === "denied" ||
+                                                                        event.result === "failure"
+                                                                            ? "error"
+                                                                            : "success"
+                                                                    }
+                                                                >
+                                                                    {event.result}
+                                                                </Tag>
+                                                            </span>
+                                                        }
+                                                        description={
+                                                            <span>
+                                                                {event.created_at
+                                                                    ? new Date(event.created_at + "Z").toLocaleString(
+                                                                          "pt-BR"
+                                                                      )
+                                                                    : ""}
+                                                                {event.client_id && ` — client: ${event.client_id}`}
+                                                                {event.reason && ` — ${event.reason}`}
+                                                            </span>
+                                                        }
+                                                    />
+                                                </List.Item>
+                                            )}
+                                        />
+
+                                        {state.auditPagination && (
+                                            <Pagination
+                                                current={state.auditPagination.page}
+                                                pageSize={state.auditPagination.page_size}
+                                                total={state.auditPagination.total}
+                                                onChange={(page, pageSize) => {
+                                                    actions.setAuditFilters((previous) => ({
+                                                        ...previous,
+                                                        page,
+                                                        page_size: pageSize,
+                                                    }));
+                                                    void actions.loadAuditEvents();
+                                                }}
+                                            />
+                                        )}
                                     </Card>
                                 ),
                             },

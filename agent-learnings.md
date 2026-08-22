@@ -21,6 +21,8 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 - Descoberta:
   - A rota protegida `/ebook/:id` não pode assumir que todo livro é uma cópia comprada com LCP; livros `external` devem registrar o acesso e abrir `external_url`, como no detalhe `/book/:id`.
   - O selo e a ação `Ler versão web` da rota `/ebook/:id` precisam usar as mesmas regras de tipo e `html_version_url` da tela `/book/:id`.
+  - A equivalência do atalho de ebook também inclui os estados de empréstimo, compra e indisponibilidade: rótulos de leitura, devolução, checkout, expiração e último acesso não podem ficar restritos ao detalhe completo.
+  - Capas com URLs ausentes ou inválidas precisam usar o mesmo ícone de fallback, sem ocultar a ação de leitura.
   - A cobertura e2e que localiza o PostgreSQL deve reconhecer imagens `pgvector/pgvector`, usadas pela stack local.
 - Evidencias:
   - `src/view/EbookMiniView.tsx`
@@ -28,6 +30,6 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
   - `tests/e2e/ebook-mini-view.spec.ts`
   - `tests/e2e/support.ts`
 - Acao aplicada:
-  - Ação principal, selo de tipo e versão web do ebook passaram a seguir os tipos protegido, comprado, externo e gratuito; o e2e valida abertura das URLs externa e web após registro de acesso.
+  - Ação principal, selo de tipo, estados de empréstimo/compra, versão web e fallback de capa do ebook passaram a seguir o detalhe completo; o e2e valida abertura das URLs externa e web, status de compra e fallback após registro de acesso.
 - Impacto esperado:
-  - Links do OPALS para livros externos não passam pelo endpoint de compra e continuam registrando a leitura.
+  - Links do OPALS para livros externos não passam pelo endpoint de compra e continuam registrando a leitura, enquanto cópias protegidas preservam os controles de empréstimo, devolução e compra.

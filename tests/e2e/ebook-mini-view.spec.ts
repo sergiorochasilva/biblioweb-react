@@ -6,12 +6,20 @@ const EXTERNAL_BOOK_URL =
     "https://www.grace-ebooks.com/library/index.php?dir=Alexander%20Maclaren&file=05%20-%20Expositions%20of%20Holy%20Scripture.pdf";
 const WEB_VERSION_URL =
     "https://storage.googleapis.com/fronesis_bucket/books_html/Alexander%20Maclaren/05%20-%20Expositions%20of%20Holy%20Scripture.html";
+const EXTERNAL_COVER_URL =
+    "https://storage.googleapis.com/fronesis_bucket/05%20-%20Expositions%20of%20Holy%20Scripture.jpeg";
+const PURCHASED_BOOK_ID = "6e5abf04-6ad0-4ec5-bca3-01c9679c50f8";
+const MISSING_COVER_BOOK_ID = "db00f374-060e-4e08-be38-82e2587ba172";
 
 test("Ler agora abre o endereço de um livro externo sem exigir compra", async ({ page }) => {
     await loginWithPassword(page, ADMIN_EMAIL, ADMIN_PASSWORD);
     await page.goto(`/ebook/${EXTERNAL_BOOK_ID}`);
 
     await expect(page.getByText("Externo", { exact: true })).toBeVisible();
+    await expect(
+        page.getByRole("img", { name: "Capa de 05 - Expositions of Holy Scripture" })
+    ).toHaveAttribute("src", EXTERNAL_COVER_URL);
+    await expect(page.getByText("Este livro é disponibilizado por uma fonte externa.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Manual completo" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Ler versão web" })).toBeVisible();
 
@@ -63,4 +71,22 @@ test("Ler agora abre o endereço de um livro externo sem exigir compra", async (
     expect(webResponse.request().postDataJSON()).toMatchObject({ action_type: "read_web" });
     expect(requestedWebUrl.url()).toBe(WEB_VERSION_URL);
     await webPopup.close();
+});
+
+test("mostra o estado de compra e usa fallback quando a capa não é uma URL válida", async ({
+    page,
+}) => {
+    await loginWithPassword(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+
+    await page.goto(`/ebook/${PURCHASED_BOOK_ID}`);
+    await expect(page.getByText("Já comprado", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ler sua cópia" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Comprar/ })).toHaveCount(0);
+
+    await page.goto(`/ebook/${MISSING_COVER_BOOK_ID}`, { waitUntil: "domcontentloaded" });
+    const fallbackCover = page.getByRole("img", {
+        name: "Capa de Art of divine contentment: An exposition of Philippians 4:11",
+    });
+    await expect(fallbackCover).toBeVisible();
+    await expect(fallbackCover).toHaveAttribute("src", /book_icon(?:-|\.png)/);
 });

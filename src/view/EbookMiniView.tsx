@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-    BookOutlined,
     CheckCircleOutlined,
     DownloadOutlined,
     InfoCircleOutlined,
     QuestionCircleOutlined,
     SafetyCertificateOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Layout, Spin, Typography, message } from "antd";
+import { Alert, Button, Image, Layout, Modal, Spin, Tag, Typography, message } from "antd";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { getBookAuthorsText, type Book } from "../model/Book";
 import BookTypeTag from "../components/BookTypeTag";
 import {
+    createMercadoPagoCheckout,
     DEFAULT_PUBLIC_LIBRARY_ID,
     downloadPurchasedBook,
     fetchBookDetails,
     lendBook,
     registerBookAccessWithType,
+    returnBookLoan,
 } from "../service/BookService";
 import { savePendingLendAction } from "../service/postLoginAction";
+import bookIcon from "../assets/book_icon.png";
 import "../styles/EbookMiniView.css";
 
 const MANUAL_URL = "/pos-download/manual.html";
@@ -155,10 +157,22 @@ const USAGE_RULES = [
     },
 ];
 
+/**
+ * Resolve a biblioteca efetiva da sessão ou o acervo público padrão.
+ *
+ * @param libraryId Identificador opcional da biblioteca selecionada.
+ * @returns Identificador de biblioteca utilizável pela API.
+ */
 function resolveLibraryId(libraryId?: number): number {
     return libraryId ?? DEFAULT_PUBLIC_LIBRARY_ID;
 }
 
+/**
+ * Detecta o sistema operacional para destacar o guia compatível.
+ *
+ * @param userAgent User agent do navegador atual.
+ * @returns Chave do guia correspondente.
+ */
 function detectEnvironment(userAgent: string): EnvironmentKey {
     if (/iPad|iPhone|iPod/i.test(userAgent)) return "ios";
     if (/Android/i.test(userAgent)) return "android";
@@ -168,70 +182,156 @@ function detectEnvironment(userAgent: string): EnvironmentKey {
     return "windows";
 }
 
+/**
+ * Resolve o texto de autoria exibido no cabeçalho do ebook.
+ *
+ * @param book Livro carregado da API.
+ * @returns Autores ou autor corporativo normalizado.
+ */
 function getAuthorLabel(book: Book): string {
     return getBookAuthorsText(book) || book.corporate_author?.trim() || "";
 }
 
-function EbookCover({ book }: { book: Book }) {
-    if (book.image_url) {
-        return (
-            <img
-                className="ebook-cover-image"
-                src={book.image_url}
-                alt={`Capa de ${book.title}`}
-            />
-        );
+/**
+ * Formata a data de empréstimo ou acesso no padrão local.
+ *
+ * @param value Data bruta devolvida pela API.
+ * @returns Data pronta para exibição ou string vazia.
+ */
+function formatDisplayDate(value?: string): string {
+    const rawValue = typeof value === "string" ? value.trim() : "";
+    if (!rawValue) {
+        return "";
     }
 
+    const parsedDate = new Date(rawValue);
+    return Number.isNaN(parsedDate.getTime()) ? rawValue : parsedDate.toLocaleDateString("pt-BR");
+}
+
+/**
+ * Converte um preço recebido da API para número utilizável.
+ *
+ * @param value Preço bruto do livro.
+ * @returns Valor positivo ou `null` quando não houver preço de compra.
+ */
+function normalizeMoneyValue(value?: number | string | null): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const normalized =
+        typeof value === "number" ? value : Number(String(value).replace(",", ".").trim());
+    return Number.isFinite(normalized) && normalized > 0 ? normalized : null;
+}
+
+/**
+ * Formata um preço em real brasileiro.
+ *
+ * @param value Valor monetário positivo.
+ * @returns Preço formatado para o botão de compra.
+ */
+function formatCurrency(value: number): string {
+    return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+    }).format(value);
+}
+
+/**
+ * Exibe a capa recebida da API, usando o mesmo fallback da página de detalhes.
+ *
+ * @param props Livro e possíveis etiquetas de estado da cópia.
+ * @returns Bloco da capa do ebook.
+ */
+function EbookCover({ book, statusTag }: { book: Book; statusTag?: ReactNode }) {
     return (
-        <div className="ebook-cover-placeholder" role="img" aria-label="Capa indisponível">
-            <BookOutlined aria-hidden="true" />
+        <div className="ebook-cover-frame">
+            {statusTag}
+            <Image
+                className="ebook-cover-image"
+                src={book.image_url?.trim() || bookIcon}
+                fallback={bookIcon}
+                alt={`Capa de ${book.title}`}
+                preview={false}
+            />
         </div>
     );
 }
 
+/**
+ * Renderiza o cabeçalho e os controles de leitura do ebook.
+ *
+ * @param props Dados do livro e callbacks das ações disponíveis.
+ * @returns Cabeçalho pronto para a rota `/ebook/:id`.
+ */
 function EbookHero({
     book,
     authorLabel,
     reading,
+    returning,
+    purchasing,
+    primaryButtonLabel,
+    primaryActionDisabled,
+    readingDescription,
+    showInactiveStatus,
     showWebVersion,
     webVersionLabel,
+    showReturnButton,
+    showPurchaseButton,
+    purchaseButtonLabel,
+    coverStatusTag,
     onReadNow,
     onReadWebVersion,
+    onReturnBook,
+    onPurchaseBook,
 }: {
     book: Book;
     authorLabel: string;
     reading: boolean;
+    returning: boolean;
+    purchasing: boolean;
+    primaryButtonLabel: string;
+    primaryActionDisabled: boolean;
+    readingDescription: string;
+    showInactiveStatus: boolean;
     showWebVersion: boolean;
     webVersionLabel: string;
+    showReturnButton: boolean;
+    showPurchaseButton: boolean;
+    purchaseButtonLabel: string;
+    coverStatusTag?: ReactNode;
     onReadNow: () => void;
     onReadWebVersion: () => void;
+    onReturnBook: () => void;
+    onPurchaseBook: () => void;
 }) {
     return (
         <header className="ebook-hero">
-            <div className="ebook-cover-frame">
-                <EbookCover book={book} />
-            </div>
+            <EbookCover book={book} statusTag={coverStatusTag} />
             <div className="ebook-hero-copy">
                 <BookTypeTag type={book.type} className="ebook-book-type-tag" />
+                {showInactiveStatus ? <Tag color="default">Inativo</Tag> : null}
                 <Typography.Title level={1} className="ebook-title">
                     {book.title}
                 </Typography.Title>
                 {authorLabel ? <p className="ebook-author">{authorLabel}</p> : null}
-                <p className="ebook-description">
-                    Este livro usa proteção LCP. Baixe o certificado, abra-o em um leitor
-                    compatível e siga o guia abaixo para começar a leitura.
-                </p>
+                <p className="ebook-description">{readingDescription}</p>
                 <div className="ebook-actions">
                     <Button
                         type="primary"
                         size="large"
                         icon={<DownloadOutlined />}
                         loading={reading}
+                        disabled={primaryActionDisabled}
                         onClick={onReadNow}
                     >
-                        Ler agora
+                        {primaryButtonLabel}
                     </Button>
+                    {showReturnButton ? (
+                        <Button size="large" loading={returning} onClick={onReturnBook}>
+                            Devolver
+                        </Button>
+                    ) : null}
                     <Button
                         size="large"
                         icon={<QuestionCircleOutlined />}
@@ -244,6 +344,16 @@ function EbookHero({
                     {showWebVersion ? (
                         <Button size="large" onClick={onReadWebVersion}>
                             {webVersionLabel}
+                        </Button>
+                    ) : null}
+                    {showPurchaseButton ? (
+                        <Button
+                            type="primary"
+                            size="large"
+                            loading={purchasing}
+                            onClick={onPurchaseBook}
+                        >
+                            {purchaseButtonLabel}
                         </Button>
                     ) : null}
                 </div>
@@ -348,12 +458,24 @@ export default function EbookMiniView() {
     const [book, setBook] = useState<Book | null>(null);
     const [loading, setLoading] = useState(true);
     const [reading, setReading] = useState(false);
+    const [returning, setReturning] = useState(false);
+    const [purchasing, setPurchasing] = useState(false);
     const [messageApi, contextHolder] = message.useMessage();
+    const unavailableModalShownRef = useRef(false);
 
     const libraryId = resolveLibraryId(library?.id);
     const authorLabel = book ? getAuthorLabel(book) : "";
     const resolvedType = (book?.type || "protected").toLowerCase();
     const resolvedLoanState = (book?.loan_state || "default").toLowerCase();
+    const isLoanedBook = resolvedLoanState === "loaned";
+    const isRecentBook = resolvedLoanState === "recent";
+    const isUnavailableBook = resolvedLoanState === "unavailable";
+    const isPurchasedByUser = Boolean(book?.purchased_by_user);
+    const isInactiveBook = book?.active === false;
+    const formattedLoanExpiresAt = formatDisplayDate(book?.loan_expires_at);
+    const formattedLastAccessAt = formatDisplayDate(book?.last_access_at);
+    const purchasePrice = normalizeMoneyValue(book?.preco_compra);
+    const hasPurchasePrice = purchasePrice !== null;
     const normalizedHtmlVersionUrl = book?.html_version_url?.trim() || "";
     const hasWebVersion =
         (resolvedType === "external" || resolvedType === "free") &&
@@ -362,37 +484,69 @@ export default function EbookMiniView() {
         resolvedLoanState === "recent" && normalizedHtmlVersionUrl
             ? "Continuar lendo versão web"
             : "Ler versão web";
+    const primaryButtonLabel = isPurchasedByUser
+        ? "Ler sua cópia"
+        : isLoanedBook
+        ? "Baixar novamente"
+        : isRecentBook
+        ? "Continuar lendo"
+        : "Ler agora";
+    const purchaseButtonLabel = hasPurchasePrice ? `Comprar - ${formatCurrency(purchasePrice)}` : "Comprar";
+    const readingDescription =
+        resolvedType === "protected"
+            ? "Este livro usa proteção LCP. Baixe o certificado, abra-o em um leitor compatível e siga o guia abaixo para começar a leitura."
+            : resolvedType === "external"
+            ? "Este livro é disponibilizado por uma fonte externa. Use “Ler agora” para abrir a leitura original."
+            : "Este livro está disponível para leitura. Use “Ler agora” para abrir o arquivo.";
 
-    useEffect(() => {
-        let active = true;
-
-        async function loadBook(): Promise<void> {
-            if (!id) {
-                setBook(null);
-                setLoading(false);
-                return;
-            }
-
-            setLoading(true);
-            try {
-                const accessToken = token ? await getAccessToken({ redirectOnFail: false }) : null;
-                const loadedBook = await fetchBookDetails(id, libraryId, accessToken ?? undefined);
-                if (active) {
-                    setBook(loadedBook);
-                }
-            } finally {
-                if (active) {
-                    setLoading(false);
-                }
-            }
+    /**
+     * Busca os detalhes contextualizados do livro e atualiza o estado da rota.
+     *
+     * @returns Livro carregado ou `null` quando não for encontrado.
+     */
+    const loadBook = useCallback(async (): Promise<Book | null> => {
+        if (!id) {
+            setBook(null);
+            setLoading(false);
+            return null;
         }
 
-        void loadBook();
-
-        return () => {
-            active = false;
-        };
+        setLoading(true);
+        try {
+            const accessToken = token ? await getAccessToken({ redirectOnFail: false }) : null;
+            const loadedBook = await fetchBookDetails(id, libraryId, accessToken ?? undefined);
+            setBook(loadedBook);
+            return loadedBook;
+        } finally {
+            setLoading(false);
+        }
     }, [getAccessToken, id, libraryId, token]);
+
+    useEffect(() => {
+        void loadBook();
+    }, [loadBook]);
+
+    useEffect(() => {
+        unavailableModalShownRef.current = false;
+    }, [id]);
+
+    useEffect(() => {
+        if (!isUnavailableBook || unavailableModalShownRef.current) {
+            return;
+        }
+
+        unavailableModalShownRef.current = true;
+        Modal.info({
+            title: "Licença indisponível",
+            content: (
+                <span>
+                    Não temos licença disponível para empréstimo deste livro, pois ele está
+                    emprestado com {book?.unavailable_users_count || 0} outros usuários no momento.
+                </span>
+            ),
+            okText: "Ok",
+        });
+    }, [book?.unavailable_users_count, isUnavailableBook]);
 
     /**
      * Salva o empréstimo pendente e redireciona para a autenticação, preservando a rota atual.
@@ -541,6 +695,94 @@ export default function EbookMiniView() {
         await registerAccessAndOpen("read_web", normalizedHtmlVersionUrl);
     }, [normalizedHtmlVersionUrl, registerAccessAndOpen]);
 
+    /**
+     * Confirma e devolve o empréstimo protegido ativo, como na tela de detalhes.
+     *
+     * @returns void.
+     */
+    const confirmReturnBook = useCallback((): void => {
+        if (!id) {
+            return;
+        }
+
+        Modal.confirm({
+            title: "Devolver livro",
+            content: "Tem certeza de que deseja devolver este livro?",
+            okText: "Devolver",
+            cancelText: "Cancelar",
+            onOk: async () => {
+                setReturning(true);
+                try {
+                    const accessToken = await getAccessToken({ redirectOnFail: false });
+                    if (!accessToken) {
+                        const returnTo = `${location.pathname}${location.search}`;
+                        navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+                        return;
+                    }
+
+                    await returnBookLoan(id, libraryId, accessToken);
+                    messageApi.success("Livro devolvido com sucesso.");
+                    await loadBook();
+                } catch (error: unknown) {
+                    messageApi.error(
+                        error instanceof Error ? error.message : "Erro ao devolver o livro."
+                    );
+                } finally {
+                    setReturning(false);
+                }
+            },
+        });
+    }, [getAccessToken, id, libraryId, loadBook, location.pathname, location.search, messageApi, navigate]);
+
+    /**
+     * Inicia o checkout da cópia protegida quando ela possui preço de compra.
+     *
+     * @returns Promise<void>.
+     */
+    const handlePurchaseAction = useCallback(async (): Promise<void> => {
+        if (!id || !hasPurchasePrice || isPurchasedByUser || resolvedType !== "protected") {
+            return;
+        }
+
+        let accessToken: string | undefined = token || undefined;
+        if (token) {
+            accessToken = (await getAccessToken({ redirectOnFail: false })) || token;
+        }
+
+        if (!accessToken) {
+            const returnTo = `${location.pathname}${location.search}`;
+            navigate(`/login?next=${encodeURIComponent(returnTo)}`);
+            return;
+        }
+
+        setPurchasing(true);
+        try {
+            const checkout = await createMercadoPagoCheckout(
+                { book_id: id, library: libraryId },
+                accessToken
+            );
+            if (!checkout.checkout_url) {
+                throw new Error("Mercado Pago não retornou a URL de checkout.");
+            }
+
+            window.location.assign(checkout.checkout_url);
+        } catch (error: unknown) {
+            messageApi.error(error instanceof Error ? error.message : "Erro ao iniciar a compra.");
+        } finally {
+            setPurchasing(false);
+        }
+    }, [getAccessToken, hasPurchasePrice, id, isPurchasedByUser, libraryId, location.pathname, location.search, messageApi, navigate, resolvedType, token]);
+
+    const coverStatusTag = isPurchasedByUser ? (
+        <Tag color="orange" className="ebook-cover-status-tag">
+            Já comprado
+        </Tag>
+    ) : isLoanedBook && formattedLoanExpiresAt ? (
+        <Tag color="blue" className="ebook-cover-status-tag">
+            Expira em: {formattedLoanExpiresAt}
+        </Tag>
+    ) : null;
+
     return (
         <Layout className="page-shell ebook-shell">
             {contextHolder}
@@ -562,11 +804,35 @@ export default function EbookMiniView() {
                             book={book}
                             authorLabel={authorLabel}
                             reading={reading}
+                            returning={returning}
+                            purchasing={purchasing}
+                            primaryButtonLabel={primaryButtonLabel}
+                            primaryActionDisabled={isUnavailableBook}
+                            readingDescription={readingDescription}
+                            showInactiveStatus={isInactiveBook}
                             showWebVersion={hasWebVersion}
                             webVersionLabel={webVersionLabel}
+                            showReturnButton={isLoanedBook && resolvedType === "protected"}
+                            showPurchaseButton={
+                                resolvedType === "protected" && hasPurchasePrice && !isPurchasedByUser
+                            }
+                            purchaseButtonLabel={purchaseButtonLabel}
+                            coverStatusTag={coverStatusTag}
                             onReadNow={() => void handleReadNow()}
                             onReadWebVersion={() => void handleWebVersionAction()}
+                            onReturnBook={confirmReturnBook}
+                            onPurchaseBook={() => void handlePurchaseAction()}
                         />
+                        {isRecentBook && formattedLastAccessAt ? (
+                            <Typography.Text className="ebook-last-access" type="secondary">
+                                Último acesso: {formattedLastAccessAt}
+                            </Typography.Text>
+                        ) : null}
+                        {isUnavailableBook ? (
+                            <Tag color="default" className="ebook-unavailable-status">
+                                Licença indisponível no momento
+                            </Tag>
+                        ) : null}
                         <main className="ebook-main-layout">
                             <EnvironmentGuide />
                             <UsageRules />

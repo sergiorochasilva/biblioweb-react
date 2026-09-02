@@ -11,8 +11,12 @@ function resolveApiHost(): string {
         import.meta.env.VITE_API_BASE_URL || "https://biblioweb.online:8080"
     ).trim();
     const currentHostname = window.location.hostname;
+    const isHomologMode = import.meta.env.MODE === "homolog";
 
-    if (currentHostname === "localhost" || currentHostname === "127.0.0.1") {
+    if (
+        (currentHostname === "localhost" || currentHostname === "127.0.0.1") &&
+        !isHomologMode
+    ) {
         return "http://localhost:15000";
     }
 

@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:homolog": "vite --mode homolog",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "pretest:e2e": "npx playwright install chromium",
     "test:e2e": "node scripts/run-e2e-stack.mjs",
     "test:e2e:playwright": "playwright test",
@@ -33,6 +35,7 @@
     "eslint-plugin-react-refresh": "^0.4.18",
     "gh-pages": "^6.3.0",
     "globals": "^15.14.0",
+    "tsx": "^4.23.13",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.22.0",
     "vite": "^7.0.0"

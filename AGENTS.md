@@ -98,6 +98,13 @@ Objetivo: evoluir UI/fluxos sem quebrar contratos com a API.
   - atualizar `AGENTS.md` e/ou criar/ajustar skill correspondente de forma objetiva.
 - Essas evolucoes devem ser incrementais, sem quebrar regras ja estabelecidas neste arquivo.
 
+## 6.4) Padroes de streaming SSE (chat/bibliotecario)
+- `EventSource.onerror` dispara tanto em encerramento normal do stream quanto em queda real; a UI so deve tratar como erro recuperavel quando a conversa ainda nao chegou em `done` no backend.
+- Sempre que o SSE cair antes do evento final, sincronizar por snapshot/polling (com dedupe por id de evento) antes de reabrir o stream, em vez de assumir sucesso ou falha.
+- Vincular deteccao de conclusao/loading ao `message_id`/`conversation_id` da rodada atual, nunca a resposta mais recente em memoria — uma conversa pode conter respostas anteriores.
+- Nao restaurar automaticamente a ultima conversa ao entrar direto na tela do bibliotecario; o atalho de busca sempre inicia uma conversa nova.
+- Status tecnico (`queued`, `running`, `done`, `open`) deve ser traduzido para rotulos em portugues (`Em fila...`, `Analisando...`) e nao deve vazar para a UI como texto tecnico.
+
 ## 7) Checklist final (obrigatorio)
 - [ ] Requisito funcional implementado.
 - [ ] Rotas `"/publisher-admin"` e `"/admin"` continuam protegidas.

@@ -42,3 +42,136 @@
 .profile-switch-context-button {
     align-self: flex-start;
 }
+
+.connected-apps-block {
+    gap: 12px;
+}
+
+.connected-apps-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.connected-apps-description {
+    max-width: 720px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.connected-app-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.connected-app-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 16px;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: var(--glass-bg);
+}
+
+.connected-app-info {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.connected-app-name {
+    font-size: 15px;
+}
+
+.connected-app-access-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.connected-app-access-label {
+    color: var(--text-strong);
+    font-weight: 600;
+}
+
+.connected-app-no-permissions {
+    font-size: 13px;
+}
+
+.connected-app-permissions-toggle {
+    width: fit-content;
+    height: auto;
+    padding: 0;
+    font-size: 13px;
+}
+
+.connected-app-permissions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 20px;
+    margin-top: 2px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.24);
+}
+
+.connected-app-permission-section {
+    min-width: 0;
+}
+
+.connected-app-permission-title {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+}
+
+.connected-app-permission-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.connected-app-permission-list li {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+.connected-app-meta {
+    font-size: 12px;
+}
+
+.connected-app-revoke-button {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+    .connected-app-card {
+        flex-direction: column;
+        gap: 14px;
+        padding: 14px;
+    }
+
+    .connected-app-permissions {
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .connected-app-revoke-button {
+        width: 100%;
+    }
+}

@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { message } from "antd";
+import { Modal, message } from "antd";
 import { useAuth } from "../contexts/useAuth";
 import {
     BookLibraryForm,
@@ -55,6 +55,21 @@ import {
     updateUserPassword,
 } from "../service/AdminService";
 import { validateStrongPassword } from "../service/passwordPolicy";
+import { OAuthClient, OAuthClientCreatePayload } from "../model/OAuthClient";
+import {
+    OAuthAuditEvent,
+    OAuthAuditFilters,
+    OAuthAuditPagination,
+} from "../model/OAuthAudit";
+import { fetchAuditEvents } from "../service/oauthAuditService";
+import {
+    createOAuthClient,
+    deactivateOAuthClient,
+    listOAuthClients,
+    reactivateOAuthClient,
+    rotateOAuthClientSecret,
+    updateOAuthClient,
+} from "../service/oauthClientAdminService";
 
 type BookFormState = {
     id?: string;
@@ -144,7 +159,37 @@ type AdminTabKey =
     | "libraries"
     | "publishers"
     | "subjects"
-    | "authors";
+    | "authors"
+    | "oauth-clients"
+    | "oauth-audit";
+
+type OAuthClientFormState = {
+    name: string;
+    redirect_uris: string[];
+    grant_types: string[];
+    scopes: string[];
+    is_confidential: boolean;
+    description: string;
+    organization: string;
+    technical_contacts: { name: string; email: string }[];
+    expires_at: string;
+    library_ids: string[];
+};
+
+type OAuthClientFieldErrorKey = keyof OAuthClientFormState;
+
+const emptyOAuthClientForm: OAuthClientFormState = {
+    name: "",
+    redirect_uris: [""],
+    grant_types: ["authorization_code"],
+    scopes: ["openid"],
+    is_confidential: true,
+    description: "",
+    organization: "",
+    technical_contacts: [],
+    expires_at: "",
+    library_ids: [],
+};
 
 type BookFieldErrorKey =
     | "title"
@@ -600,6 +645,75 @@ function validatePublisherForm(
     return null;
 }
 
+/** Verificação simples de formato de e-mail (sem pretensão de RFC 5322). */
+const EMAIL_PATTERN = /\S+@\S+\.\S+/;
+
+/**
+ * Prefixos de escopo cujo acesso depende de bibliotecas vinculadas ao
+ * client — sem nenhuma biblioteca, a API bloqueia esses endpoints.
+ */
+const LIBRARY_SCOPED_SCOPE_PREFIXES = ["biblioweb.catalog.", "biblioweb.loans."];
+
+/**
+ * Indica se a lista de escopos inclui algum escopo dependente de biblioteca.
+ *
+ * @param scopes Escopos selecionados no formulário.
+ * @returns ``true`` quando há escopo de catálogo/empréstimo.
+ */
+function hasLibraryScopedScope(scopes: string[]): boolean {
+    return scopes.some((scope) =>
+        LIBRARY_SCOPED_SCOPE_PREFIXES.some((prefix) => scope.startsWith(prefix))
+    );
+}
+
+/**
+ * Valida campos do formulário de client OAuth.
+ *
+ * @param form Estado atual do formulário.
+ * @returns Estrutura de erro com mensagem/campos inválidos ou ``null``.
+ */
+function validateOAuthClientForm(
+    form: OAuthClientFormState
+): ValidationResult<OAuthClientFieldErrorKey> | null {
+    const fieldErrors: Partial<Record<OAuthClientFieldErrorKey, string>> = {};
+
+    if (!form.name.trim()) {
+        fieldErrors.name = "Nome obrigatório.";
+    }
+
+    const redirectUris = form.redirect_uris.map((uri) => uri.trim()).filter(Boolean);
+    if (redirectUris.length === 0) {
+        fieldErrors.redirect_uris = "Informe ao menos uma URL de retorno.";
+    }
+
+    if (form.grant_types.length === 0) {
+        fieldErrors.grant_types = "Selecione ao menos um tipo de integração.";
+    }
+
+    if (form.scopes.length === 0) {
+        fieldErrors.scopes = "Selecione ao menos uma permissão.";
+    }
+
+    const hasIncompleteContact = form.technical_contacts.some(
+        (contact) => !contact.name.trim() || !contact.email.trim()
+    );
+    if (hasIncompleteContact) {
+        fieldErrors.technical_contacts =
+            "Preencha nome e e-mail de todos os contatos, ou remova a linha em branco.";
+    } else if (form.technical_contacts.some((contact) => !EMAIL_PATTERN.test(contact.email.trim()))) {
+        fieldErrors.technical_contacts = "Informe um e-mail válido em todos os contatos técnicos.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            message: "Preencha os campos obrigatórios destacados.",
+            fieldErrors,
+        };
+    }
+
+    return null;
+}
+
 /**
  * Valida campos do formulário de assunto.
  *
@@ -909,12 +1023,14 @@ export function useAdminController() {
     const [isLoadingPublishers, setIsLoadingPublishers] = useState(false);
     const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
     const [isLoadingAuthors, setIsLoadingAuthors] = useState(false);
+    const [isLoadingOAuthClients, setIsLoadingOAuthClients] = useState(false);
     const [isSavingBook, setIsSavingBook] = useState(false);
     const [isSavingUser, setIsSavingUser] = useState(false);
     const [isSavingLibrary, setIsSavingLibrary] = useState(false);
     const [isSavingPublisher, setIsSavingPublisher] = useState(false);
     const [isSavingSubject, setIsSavingSubject] = useState(false);
     const [isSavingAuthor, setIsSavingAuthor] = useState(false);
+    const [isSavingOAuthClient, setIsSavingOAuthClient] = useState(false);
 
     const [books, setBooks] = useState<AdminBook[]>([]);
     const [booksNext, setBooksNext] = useState<string | null>(null);
@@ -927,6 +1043,11 @@ export function useAdminController() {
     const [publisherRows, setPublisherRows] = useState<AdminPublisher[]>([]);
     const [subjectRows, setSubjectRows] = useState<AdminSubject[]>([]);
     const [authorRows, setAuthorRows] = useState<AdminAuthor[]>([]);
+    const [oauthClients, setOAuthClients] = useState<OAuthClient[]>([]);
+    const [showInactiveOAuthClients, setShowInactiveOAuthClients] = useState(false);
+    const [revealedSecretUrlByClientId, setRevealedSecretUrlByClientId] = useState<
+        Record<string, string>
+    >({});
 
     const [bookSearch, setBookSearch] = useState("");
     const [publisherFilter, setPublisherFilter] = useState("");
@@ -1001,6 +1122,19 @@ export function useAdminController() {
     const [authorModalError, setAuthorModalError] = useState("");
     const [authorFormErrors, setAuthorFormErrors] =
         useState<Partial<Record<AuthorFieldErrorKey, string>>>({});
+
+    const [oauthClientModalOpen, setOAuthClientModalOpen] = useState(false);
+    const [oauthClientModalMode, setOAuthClientModalMode] = useState<"create" | "edit">("create");
+    const [oauthClientEditingId, setOAuthClientEditingId] = useState<string | null>(null);
+    const [oauthClientForm, setOAuthClientForm] =
+        useState<OAuthClientFormState>(emptyOAuthClientForm);
+    const [oauthClientModalError, setOAuthClientModalError] = useState("");
+    const [oauthClientFormErrors, setOAuthClientFormErrors] =
+        useState<Partial<Record<OAuthClientFieldErrorKey, string>>>({});
+    const [auditEvents, setAuditEvents] = useState<OAuthAuditEvent[]>([]);
+    const [auditPagination, setAuditPagination] = useState<OAuthAuditPagination | null>(null);
+    const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+    const [auditFilters, setAuditFilters] = useState<OAuthAuditFilters>({ page: 1, page_size: 20 });
 
     const hasMoreBooks = useMemo(() => Boolean(booksNext), [booksNext]);
 
@@ -1188,6 +1322,58 @@ export function useAdminController() {
     }, [appliedLibrarySearch, getAccessToken]);
 
     /**
+     * Carrega clients OAuth para a aba de manutenção.
+     *
+     * @returns Promise<void>.
+     */
+    const loadOAuthClients = useCallback(async (): Promise<void> => {
+        setIsLoadingOAuthClients(true);
+        setError("");
+
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await listOAuthClients(token);
+            setOAuthClients(result);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar parceiros."));
+        } finally {
+            setIsLoadingOAuthClients(false);
+        }
+    }, [getAccessToken]);
+
+    /**
+     * Carrega uma página de eventos de auditoria. Quando filtros explícitos são
+     * informados, usa esse snapshot para evitar consultas com estado defasado
+     * logo após o administrador alterar filtros ou paginação.
+     *
+     * @param filtersOverride Snapshot opcional de filtros a consultar imediatamente.
+     * @returns Promise<void>.
+     */
+    const loadAuditEvents = useCallback(async (filtersOverride?: OAuthAuditFilters): Promise<void> => {
+        setIsLoadingAudit(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+            const effectiveFilters = filtersOverride ?? auditFilters;
+            const response = await fetchAuditEvents(token, effectiveFilters);
+            setAuditEvents(response.items);
+            setAuditPagination(response.pagination);
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao carregar eventos de auditoria."));
+        } finally {
+            setIsLoadingAudit(false);
+        }
+    }, [auditFilters, getAccessToken]);
+
+    /**
      * Carrega editoras para aba de manutenção.
      *
      * @returns Promise<void>.
@@ -1274,11 +1460,17 @@ export function useAdminController() {
             tabKey === "libraries" ||
             tabKey === "publishers" ||
             tabKey === "subjects" ||
-            tabKey === "authors"
+            tabKey === "authors" ||
+            tabKey === "oauth-clients" ||
+            tabKey === "oauth-audit"
         ) {
+            if (tabKey !== "oauth-clients") {
+                setRevealedSecretUrlByClientId({});
+            }
             setActiveTabState(tabKey);
             return;
         }
+        setRevealedSecretUrlByClientId({});
         setActiveTabState("books");
     }
 
@@ -1317,13 +1509,25 @@ export function useAdminController() {
             return;
         }
 
+        if (activeTab === "oauth-clients") {
+            await loadOAuthClients();
+            return;
+        }
+
+        if (activeTab === "oauth-audit") {
+            await loadAuditEvents();
+            return;
+        }
+
         await loadReferenceData();
         await loadBooks();
     }, [
         activeTab,
+        loadAuditEvents,
         loadBooks,
         loadAuthorRows,
         loadLibraryRows,
+        loadOAuthClients,
         loadPublisherRows,
         loadReferenceData,
         loadSubjectRows,
@@ -1634,6 +1838,22 @@ export function useAdminController() {
 
         void loadAuthorRows();
     }, [activeTab, isAuthenticated, loadAuthorRows]);
+
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "oauth-clients") {
+            return;
+        }
+
+        void loadOAuthClients();
+    }, [activeTab, isAuthenticated, loadOAuthClients]);
+
+    useEffect(() => {
+        if (!isAuthenticated || activeTab !== "oauth-audit") {
+            return;
+        }
+
+        void loadAuditEvents();
+    }, [activeTab, auditFilters, isAuthenticated, loadAuditEvents]);
 
     /**
      * Aplica filtros da listagem de livros.
@@ -2812,6 +3032,243 @@ export function useAdminController() {
         }
     }
 
+    /**
+     * Abre modal de criação de client OAuth.
+     *
+     * @returns void.
+     */
+    function openCreateOAuthClientModal(): void {
+        setOAuthClientModalMode("create");
+        setOAuthClientEditingId(null);
+        setOAuthClientForm(emptyOAuthClientForm);
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+        setOAuthClientModalOpen(true);
+    }
+
+    /**
+     * Abre modal de edição de client OAuth.
+     *
+     * @param item Client selecionado.
+     * @returns void.
+     */
+    function openEditOAuthClientModal(item: OAuthClient): void {
+        setOAuthClientModalMode("edit");
+        setOAuthClientEditingId(item.id);
+        setOAuthClientForm({
+            name: item.name,
+            redirect_uris: item.redirect_uris.length > 0 ? item.redirect_uris : [""],
+            grant_types: item.grant_types,
+            scopes: item.scopes,
+            is_confidential: item.is_confidential,
+            description: item.description ?? "",
+            organization: item.organization ?? "",
+            technical_contacts: item.technical_contacts ?? [],
+            expires_at: item.expires_at ?? "",
+            library_ids: (item.library_ids ?? []).map(String),
+        });
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+        setOAuthClientModalOpen(true);
+    }
+
+    /**
+     * Fecha modal de client OAuth.
+     *
+     * @returns void.
+     */
+    function closeOAuthClientModal(): void {
+        setOAuthClientModalOpen(false);
+        setOAuthClientEditingId(null);
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+    }
+
+    /**
+     * Remove erro de um campo do formulário de client OAuth.
+     *
+     * @param field Campo a ser limpo.
+     * @returns void.
+     */
+    function clearOAuthClientFieldError(field: OAuthClientFieldErrorKey): void {
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors((previous) => {
+            if (!previous[field]) {
+                return previous;
+            }
+            const next = { ...previous };
+            delete next[field];
+            return next;
+        });
+    }
+
+    /**
+     * Persiste formulário de client OAuth (criação ou edição). Ao criar,
+     * guarda o `secret_reveal_url` retornado para exibição efêmera inline
+     * na lista — nunca o `client_secret` em si.
+     *
+     * @param event Evento de submit.
+     * @returns Promise<void>.
+     */
+    async function saveOAuthClient(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setOAuthClientModalError("");
+        setOAuthClientFormErrors({});
+
+        const validationError = validateOAuthClientForm(oauthClientForm);
+        if (validationError) {
+            setOAuthClientModalError(validationError.message);
+            setOAuthClientFormErrors(validationError.fieldErrors);
+            return;
+        }
+
+        const willBeBlocked =
+            oauthClientForm.library_ids.length === 0 &&
+            hasLibraryScopedScope(oauthClientForm.scopes);
+        if (willBeBlocked) {
+            Modal.confirm({
+                title: "Salvar parceiro sem biblioteca vinculada?",
+                content:
+                    "Este parceiro tem permissões de catálogo/empréstimos, mas nenhuma biblioteca " +
+                    "vinculada. Esses acessos ficarão bloqueados até que ao menos uma " +
+                    "biblioteca seja vinculada.",
+                okText: "Salvar mesmo assim",
+                cancelText: "Cancelar",
+                onOk: () => submitOAuthClientForm(),
+            });
+            return;
+        }
+
+        await submitOAuthClientForm();
+    }
+
+    /**
+     * Envia o formulário de client OAuth já validado para a API.
+     *
+     * @returns Promise<void>.
+     */
+    async function submitOAuthClientForm(): Promise<void> {
+        setIsSavingOAuthClient(true);
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setOAuthClientModalError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const payload: OAuthClientCreatePayload = {
+                name: oauthClientForm.name.trim(),
+                redirect_uris: oauthClientForm.redirect_uris
+                    .map((uri) => uri.trim())
+                    .filter(Boolean),
+                grant_types: oauthClientForm.grant_types as OAuthClientCreatePayload["grant_types"],
+                scopes: oauthClientForm.scopes as OAuthClientCreatePayload["scopes"],
+                is_confidential: oauthClientForm.is_confidential,
+                description: oauthClientForm.description.trim() || null,
+                organization: oauthClientForm.organization.trim() || null,
+                technical_contacts: oauthClientForm.technical_contacts,
+                expires_at: oauthClientForm.expires_at || null,
+                library_ids: oauthClientForm.library_ids.map(Number),
+            };
+
+            if (oauthClientModalMode === "edit" && oauthClientEditingId) {
+                await updateOAuthClient(token, oauthClientEditingId, payload);
+            } else {
+                const created = await createOAuthClient(token, payload);
+                setRevealedSecretUrlByClientId((previous) => ({
+                    ...previous,
+                    [created.id]: created.secret_reveal_url,
+                }));
+            }
+
+            setOAuthClientModalOpen(false);
+            setOAuthClientEditingId(null);
+            setOAuthClientForm(emptyOAuthClientForm);
+            await loadOAuthClients();
+        } catch (err) {
+            setOAuthClientModalError(normalizeErrorMessage(err, "Erro ao salvar parceiro."));
+        } finally {
+            setIsSavingOAuthClient(false);
+        }
+    }
+
+    /**
+     * Desativa um client OAuth (remoção lógica; reversível via
+     * `reactivateOAuthClientById`).
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function removeOAuthClient(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await deactivateOAuthClient(token, clientId);
+            setRevealedSecretUrlByClientId((previous) => {
+                const next = { ...previous };
+                delete next[clientId];
+                return next;
+            });
+            await loadOAuthClients();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao desativar parceiro."));
+        }
+    }
+
+    /**
+     * Reativa um client OAuth previamente desativado.
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function reactivateOAuthClientById(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            await reactivateOAuthClient(token, clientId);
+            await loadOAuthClients();
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao reativar parceiro."));
+        }
+    }
+
+    /**
+     * Rotaciona o segredo de um client OAuth, substituindo qualquer link
+     * de revelação anterior pelo novo.
+     *
+     * @param clientId ID do client.
+     * @returns Promise<void>.
+     */
+    async function rotateOAuthClientSecretById(clientId: string): Promise<void> {
+        setError("");
+        try {
+            const token = await getAccessToken();
+            if (!token) {
+                setError("Sessão expirada. Faça login novamente.");
+                return;
+            }
+
+            const result = await rotateOAuthClientSecret(token, clientId);
+            setRevealedSecretUrlByClientId((previous) => ({
+                ...previous,
+                [clientId]: result.secret_reveal_url,
+            }));
+        } catch (err) {
+            setError(normalizeErrorMessage(err, "Erro ao gerar novo segredo do parceiro."));
+        }
+    }
+
+
     return {
         state: {
             books,
@@ -2887,6 +3344,20 @@ export function useAdminController() {
             authorForm,
             authorModalError,
             authorFormErrors,
+            oauthClients,
+            showInactiveOAuthClients,
+            revealedSecretUrlByClientId,
+            isLoadingOAuthClients,
+            isSavingOAuthClient,
+            oauthClientModalOpen,
+            oauthClientModalMode,
+            oauthClientForm,
+            oauthClientModalError,
+            oauthClientFormErrors,
+            auditEvents,
+            auditPagination,
+            isLoadingAudit,
+            auditFilters,
         },
         actions: {
             setBookSearch,
@@ -2971,6 +3442,19 @@ export function useAdminController() {
             setAuthorForm,
             saveAuthor,
             removeAuthor,
+            setShowInactiveOAuthClients,
+            loadOAuthClients,
+            openCreateOAuthClientModal,
+            openEditOAuthClientModal,
+            closeOAuthClientModal,
+            setOAuthClientForm,
+            clearOAuthClientFieldError,
+            saveOAuthClient,
+            removeOAuthClient,
+            reactivateOAuthClientById,
+            rotateOAuthClientSecretById,
+            setAuditFilters,
+            loadAuditEvents,
         },
     };
 }

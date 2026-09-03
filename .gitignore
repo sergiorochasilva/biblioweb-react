@@ -21,3 +21,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Superpowers brainstorming companion
+.superpowers/
+
+# Segredos locais de homologação — nunca versionar
+.env.homolog
+
+# Artefatos de execução do Playwright
+test-results/

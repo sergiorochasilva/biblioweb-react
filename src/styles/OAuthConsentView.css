@@ -1,3 +1,24 @@
+.oauth-consent-layout .auth-card {
+    width: min(560px, 92vw);
+}
+
+.oauth-consent-layout .auth-card .ant-card-body {
+    padding: 30px;
+}
+
+.oauth-consent-layout .auth-logo-wrap {
+    margin-bottom: 20px;
+}
+
+.oauth-consent-layout .auth-header {
+    margin-bottom: 18px;
+}
+
+.oauth-consent-layout .auth-title {
+    font-size: 28px;
+    line-height: 1.2;
+}
+
 .oauth-consent-loading {
     display: flex;
     flex-direction: column;
@@ -7,32 +28,192 @@
     min-height: 160px;
 }
 
-.oauth-consent-client-meta {
+.oauth-consent-app-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+}
+
+.oauth-consent-app-name {
+    color: var(--text-strong);
+    font-size: 17px;
+    line-height: 1.35;
+}
+
+.oauth-consent-organization,
+.oauth-consent-description {
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.oauth-consent-organization {
+    font-size: 13px;
+}
+
+.oauth-consent-description {
+    font-size: 14px;
+}
+
+.oauth-consent-access-context {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-bottom: 8px;
+    margin-top: 20px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--glass-input-bg);
 }
 
-.oauth-scope-list {
+.oauth-consent-access-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.oauth-consent-access-context strong {
+    color: var(--text-strong);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oauth-consent-permissions {
+    margin-top: 22px;
+}
+
+.oauth-consent-permissions-title {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--text-strong);
+    font-size: 14px;
+}
+
+.oauth-consent-scope-sections {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+}
+
+.oauth-consent-scope-section {
+    padding: 14px 0;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.oauth-consent-scope-section:last-child {
+    border-bottom: 0;
+}
+
+.oauth-consent-scope-section-title {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.oauth-consent-permission-list {
+    display: flex;
+    flex-direction: column;
     gap: 8px;
-    margin: 16px 0;
 }
 
-.oauth-scope-item {
+.oauth-consent-permission {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+    color: var(--text-strong);
+    font-size: 13.5px;
+    line-height: 1.45;
+}
+
+.oauth-consent-permission > .anticon {
+    margin-top: 2px;
+    color: var(--accent);
+    font-size: 14px;
+}
+
+.oauth-consent-permission.is-action {
+    font-weight: 600;
+}
+
+.oauth-consent-scope-sections.is-compact .oauth-consent-scope-section {
+    padding: 10px 0;
+}
+
+.oauth-consent-scope-sections.is-compact .oauth-consent-permission {
     font-size: 13px;
-    padding: 4px 10px;
 }
 
-.oauth-secondary-scopes {
-    margin-bottom: 16px;
+.oauth-consent-existing-access {
+    margin: 4px -12px 0;
+}
+
+.oauth-consent-existing-access .ant-collapse-header {
+    align-items: center !important;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    color: var(--text-muted) !important;
+    font-size: 13px;
+}
+
+.oauth-consent-existing-access .ant-collapse-content-box {
+    padding-top: 0 !important;
+}
+
+.oauth-consent-revocation-hint {
+    display: block;
+    margin-top: 16px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.5;
 }
 
 .oauth-consent-actions {
     display: flex;
     justify-content: flex-end;
     gap: 12px;
-    margin-top: 8px;
+    margin-top: 20px;
+}
+
+@media (max-width: 720px) {
+    .oauth-consent-layout {
+        align-items: flex-start;
+        padding-top: 20px;
+        padding-bottom: 20px;
+    }
+
+    .oauth-consent-layout .auth-card {
+        width: min(100%, 560px);
+    }
+
+    .oauth-consent-layout .auth-card .ant-card-body {
+        padding: 24px 20px;
+    }
+
+    .oauth-consent-layout .auth-logo {
+        height: 56px;
+    }
+
+    .oauth-consent-layout .auth-title {
+        font-size: 23px;
+    }
+
+    .oauth-consent-access-context,
+    .oauth-consent-permissions {
+        margin-top: 18px;
+    }
+
+    .oauth-consent-actions {
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 18px;
+    }
+
+    .oauth-consent-actions .ant-btn {
+        width: 100%;
+        min-height: 44px;
+    }
 }

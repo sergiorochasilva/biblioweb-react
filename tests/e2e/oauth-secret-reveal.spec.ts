@@ -18,7 +18,7 @@ test.describe("Revelação pública de client_secret OAuth", () => {
         await page.goto(REVEAL_PATH);
 
         await expect(
-            page.getByText("Este link não contém um token de revelação válido.")
+            page.getByText("Este link de revelação é inválido.")
         ).toBeVisible();
         await page.waitForTimeout(500);
         expect(callCount).toBe(0);
@@ -39,12 +39,18 @@ test.describe("Revelação pública de client_secret OAuth", () => {
 
         await page.goto(`${REVEAL_PATH}#faketoken123`);
 
+        await expect(page.getByRole("heading", { name: "Revelar segredo da integração" })).toBeVisible();
+        await expect(page.getByText("Exibição única")).toBeVisible();
+        await expect(
+            page.getByText("Depois que o segredo for revelado, este link não poderá ser utilizado novamente.")
+        ).toBeVisible();
         await expect(page.getByRole("button", { name: "Revelar segredo" })).toBeVisible();
         await page.waitForTimeout(500);
         expect(callCount).toBe(0);
     });
 
-    test("clique em Revelar com sucesso: mostra o segredo retornado", async ({ page }) => {
+    test("clique em Revelar com sucesso: mostra e permite copiar o segredo retornado", async ({ page }) => {
+        await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
         await page.route(REVEAL_ENDPOINT, (route) => {
             return route.fulfill({
                 status: 200,
@@ -56,7 +62,16 @@ test.describe("Revelação pública de client_secret OAuth", () => {
         await page.goto(`${REVEAL_PATH}#faketoken123`);
         await page.getByRole("button", { name: "Revelar segredo" }).click();
 
+        await expect(page.getByRole("heading", { name: "Segredo da integração" })).toBeVisible();
         await expect(page.getByText("test-secret-abc123")).toBeVisible();
+
+        const copyButton = page.getByRole("button", { name: "Copiar segredo" });
+        await expect(copyButton).toBeVisible();
+        await copyButton.click();
+        await expect(page.getByText("Segredo copiado.")).toBeVisible();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+            "test-secret-abc123"
+        );
     });
 
     test("clique em Revelar com 404: mostra mensagem genérica sem vazar o corpo bruto", async ({
@@ -75,7 +90,7 @@ test.describe("Revelação pública de client_secret OAuth", () => {
 
         await expect(
             page.getByText(
-                "Este link de revelação é inválido, expirou ou já foi usado. Peça ao administrador do BiblioWeb para rotacionar o segredo novamente."
+                "Este link não está mais disponível. Ele pode ter expirado ou já ter sido utilizado. Solicite ao administrador um novo segredo."
             )
         ).toBeVisible();
         await expect(page.getByText("not found")).toHaveCount(0);
@@ -91,7 +106,7 @@ test.describe("Revelação pública de client_secret OAuth", () => {
 
         await expect(
             page.getByText(
-                "Não foi possível contatar o servidor. Verifique sua conexão e tente novamente. Se o problema persistir, peça ao administrador para rotacionar o segredo."
+                "Não foi possível acessar o servidor. Verifique sua conexão e tente novamente."
             )
         ).toBeVisible();
         await expect(page.getByText("Failed to fetch")).toHaveCount(0);

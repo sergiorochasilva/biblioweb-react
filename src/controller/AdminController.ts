@@ -60,9 +60,8 @@ import {
     OAuthAuditEvent,
     OAuthAuditFilters,
     OAuthAuditPagination,
-    OAuthClientHistoryEvent,
 } from "../model/OAuthAudit";
-import { fetchAuditEvents, fetchClientHistory } from "../service/oauthAuditService";
+import { fetchAuditEvents } from "../service/oauthAuditService";
 import {
     createOAuthClient,
     deactivateOAuthClient,
@@ -684,15 +683,15 @@ function validateOAuthClientForm(
 
     const redirectUris = form.redirect_uris.map((uri) => uri.trim()).filter(Boolean);
     if (redirectUris.length === 0) {
-        fieldErrors.redirect_uris = "Informe ao menos uma URI de redirecionamento.";
+        fieldErrors.redirect_uris = "Informe ao menos uma URL de retorno.";
     }
 
     if (form.grant_types.length === 0) {
-        fieldErrors.grant_types = "Selecione ao menos um grant type.";
+        fieldErrors.grant_types = "Selecione ao menos um tipo de integração.";
     }
 
     if (form.scopes.length === 0) {
-        fieldErrors.scopes = "Selecione ao menos um escopo.";
+        fieldErrors.scopes = "Selecione ao menos uma permissão.";
     }
 
     const hasIncompleteContact = form.technical_contacts.some(
@@ -1132,10 +1131,6 @@ export function useAdminController() {
     const [oauthClientModalError, setOAuthClientModalError] = useState("");
     const [oauthClientFormErrors, setOAuthClientFormErrors] =
         useState<Partial<Record<OAuthClientFieldErrorKey, string>>>({});
-    const [historyModalOpen, setHistoryModalOpen] = useState(false);
-    const [historyClientId, setHistoryClientId] = useState<string | null>(null);
-    const [historyEvents, setHistoryEvents] = useState<OAuthClientHistoryEvent[]>([]);
-    const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [auditEvents, setAuditEvents] = useState<OAuthAuditEvent[]>([]);
     const [auditPagination, setAuditPagination] = useState<OAuthAuditPagination | null>(null);
     const [isLoadingAudit, setIsLoadingAudit] = useState(false);
@@ -1345,18 +1340,21 @@ export function useAdminController() {
             const result = await listOAuthClients(token);
             setOAuthClients(result);
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao carregar clients OAuth."));
+            setError(normalizeErrorMessage(err, "Erro ao carregar parceiros."));
         } finally {
             setIsLoadingOAuthClients(false);
         }
     }, [getAccessToken]);
 
     /**
-     * Carrega a página atual de eventos de auditoria, conforme os filtros ativos.
+     * Carrega uma página de eventos de auditoria. Quando filtros explícitos são
+     * informados, usa esse snapshot para evitar consultas com estado defasado
+     * logo após o administrador alterar filtros ou paginação.
      *
+     * @param filtersOverride Snapshot opcional de filtros a consultar imediatamente.
      * @returns Promise<void>.
      */
-    const loadAuditEvents = useCallback(async (): Promise<void> => {
+    const loadAuditEvents = useCallback(async (filtersOverride?: OAuthAuditFilters): Promise<void> => {
         setIsLoadingAudit(true);
         try {
             const token = await getAccessToken();
@@ -1364,7 +1362,8 @@ export function useAdminController() {
                 setError("Sessão expirada. Faça login novamente.");
                 return;
             }
-            const response = await fetchAuditEvents(token, auditFilters);
+            const effectiveFilters = filtersOverride ?? auditFilters;
+            const response = await fetchAuditEvents(token, effectiveFilters);
             setAuditEvents(response.items);
             setAuditPagination(response.pagination);
         } catch (err) {
@@ -3128,10 +3127,10 @@ export function useAdminController() {
             hasLibraryScopedScope(oauthClientForm.scopes);
         if (willBeBlocked) {
             Modal.confirm({
-                title: "Salvar sem biblioteca vinculada?",
+                title: "Salvar parceiro sem biblioteca vinculada?",
                 content:
-                    "Este client tem escopos de catálogo/empréstimo, mas nenhuma biblioteca " +
-                    "vinculada. Ele ficará bloqueado nesses endpoints até que ao menos uma " +
+                    "Este parceiro tem permissões de catálogo/empréstimos, mas nenhuma biblioteca " +
+                    "vinculada. Esses acessos ficarão bloqueados até que ao menos uma " +
                     "biblioteca seja vinculada.",
                 okText: "Salvar mesmo assim",
                 cancelText: "Cancelar",
@@ -3187,7 +3186,7 @@ export function useAdminController() {
             setOAuthClientForm(emptyOAuthClientForm);
             await loadOAuthClients();
         } catch (err) {
-            setOAuthClientModalError(normalizeErrorMessage(err, "Erro ao salvar client OAuth."));
+            setOAuthClientModalError(normalizeErrorMessage(err, "Erro ao salvar parceiro."));
         } finally {
             setIsSavingOAuthClient(false);
         }
@@ -3217,7 +3216,7 @@ export function useAdminController() {
             });
             await loadOAuthClients();
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao desativar client OAuth."));
+            setError(normalizeErrorMessage(err, "Erro ao desativar parceiro."));
         }
     }
 
@@ -3239,7 +3238,7 @@ export function useAdminController() {
             await reactivateOAuthClient(token, clientId);
             await loadOAuthClients();
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao reativar client OAuth."));
+            setError(normalizeErrorMessage(err, "Erro ao reativar parceiro."));
         }
     }
 
@@ -3265,45 +3264,10 @@ export function useAdminController() {
                 [clientId]: result.secret_reveal_url,
             }));
         } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao rotacionar segredo do client OAuth."));
+            setError(normalizeErrorMessage(err, "Erro ao gerar novo segredo do parceiro."));
         }
     }
 
-    /**
-     * Abre o modal de histórico de um client OAuth e carrega a primeira página.
-     *
-     * @param clientId ID do client.
-     * @returns Promise<void>.
-     */
-    async function openClientHistory(clientId: string): Promise<void> {
-        setHistoryClientId(clientId);
-        setHistoryModalOpen(true);
-        setIsLoadingHistory(true);
-        try {
-            const token = await getAccessToken();
-            if (!token) {
-                setError("Sessão expirada. Faça login novamente.");
-                return;
-            }
-            const response = await fetchClientHistory(token, clientId);
-            setHistoryEvents(response.items);
-        } catch (err) {
-            setError(normalizeErrorMessage(err, "Erro ao carregar histórico do client."));
-        } finally {
-            setIsLoadingHistory(false);
-        }
-    }
-
-    /**
-     * Fecha o modal de histórico de client.
-     *
-     * @returns void.
-     */
-    function closeClientHistory(): void {
-        setHistoryModalOpen(false);
-        setHistoryClientId(null);
-        setHistoryEvents([]);
-    }
 
     return {
         state: {
@@ -3390,10 +3354,6 @@ export function useAdminController() {
             oauthClientForm,
             oauthClientModalError,
             oauthClientFormErrors,
-            historyModalOpen,
-            historyClientId,
-            historyEvents,
-            isLoadingHistory,
             auditEvents,
             auditPagination,
             isLoadingAudit,
@@ -3493,8 +3453,6 @@ export function useAdminController() {
             removeOAuthClient,
             reactivateOAuthClientById,
             rotateOAuthClientSecretById,
-            openClientHistory,
-            closeClientHistory,
             setAuditFilters,
             loadAuditEvents,
         },

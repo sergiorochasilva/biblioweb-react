@@ -1,16 +1,15 @@
 import { useCallback, useState } from "react";
-import { Alert, Button, Typography } from "antd";
+import { CopyOutlined, SafetyOutlined } from "@ant-design/icons";
+import { Alert, App as AntdApp, Button, Typography } from "antd";
 import AuthLayout from "../components/AuthLayout";
+import { OAUTH_SECRET_REVEAL_COPY } from "../model/OAuthSecretRevealPresentation";
 import { ApiError } from "../service/api";
 import { getErrorMessage } from "../service/errorMessage";
 import { revealOAuthClientSecret } from "../service/oauthClientAdminService";
 import "../styles/OAuthSecretRevealView.css";
 
-const GENERIC_INVALID_MESSAGE =
-    "Este link de revelação é inválido, expirou ou já foi usado. Peça ao administrador do BiblioWeb para rotacionar o segredo novamente.";
-
-const NETWORK_ERROR_MESSAGE =
-    "Não foi possível contatar o servidor. Verifique sua conexão e tente novamente. Se o problema persistir, peça ao administrador para rotacionar o segredo.";
+const GENERIC_INVALID_MESSAGE = OAUTH_SECRET_REVEAL_COPY.invalidOrUsedMessage;
+const NETWORK_ERROR_MESSAGE = OAUTH_SECRET_REVEAL_COPY.networkErrorMessage;
 
 type ViewState =
     | { status: "missing_token" }
@@ -39,6 +38,7 @@ function extractRevealToken(): string {
  * @returns Componente da tela de revelação de segredo.
  */
 export default function OAuthSecretRevealView() {
+    const { message } = AntdApp.useApp();
     const [token] = useState<string>(extractRevealToken);
     const [viewState, setViewState] = useState<ViewState>(
         token ? { status: "ready" } : { status: "missing_token" }
@@ -85,17 +85,44 @@ export default function OAuthSecretRevealView() {
         }
     }, [token]);
 
+    /**
+     * Retorna do estado de erro recuperável para a etapa de revelação.
+     *
+     * @returns void.
+     */
     const handleRetry = useCallback((): void => {
         setViewState({ status: "ready" });
     }, []);
 
+    /**
+     * Copia o segredo já revelado para a área de transferência e informa o resultado.
+     *
+     * @param secret Segredo OAuth exibido na tela.
+     * @returns Promise<void>.
+     */
+    const handleCopySecret = useCallback(
+        async (secret: string): Promise<void> => {
+            try {
+                await navigator.clipboard.writeText(secret);
+                message.success("Segredo copiado.");
+            } catch (error) {
+                console.error("Failed to copy OAuth client secret", error);
+                message.error(
+                    "Não foi possível copiar automaticamente. Selecione e copie o segredo manualmente."
+                );
+            }
+        },
+        [message]
+    );
+
     if (viewState.status === "missing_token") {
         return (
-            <AuthLayout title="Link inválido">
+            <AuthLayout title="Link inválido" className="oauth-secret-reveal-layout">
                 <Alert
                     type="error"
                     showIcon
-                    message="Este link não contém um token de revelação válido."
+                    message={OAUTH_SECRET_REVEAL_COPY.missingTokenMessage}
+                    description={OAUTH_SECRET_REVEAL_COPY.missingTokenDescription}
                 />
             </AuthLayout>
         );
@@ -103,30 +130,57 @@ export default function OAuthSecretRevealView() {
 
     if (viewState.status === "error") {
         return (
-            <AuthLayout title="Revelação indisponível">
-                <Alert type="error" showIcon message={viewState.message} />
-                {viewState.retryable ? (
-                    <Button type="primary" block onClick={handleRetry}>
-                        Tentar novamente
-                    </Button>
-                ) : null}
+            <AuthLayout title="Revelação indisponível" className="oauth-secret-reveal-layout">
+                <div className="oauth-secret-reveal-stack">
+                    <Alert type="error" showIcon message={viewState.message} />
+                    {viewState.retryable ? (
+                        <Button type="primary" block onClick={handleRetry}>
+                            Tentar novamente
+                        </Button>
+                    ) : null}
+                </div>
             </AuthLayout>
         );
     }
 
     if (viewState.status === "revealed") {
         return (
-            <AuthLayout title="Segredo do client OAuth">
-                <Alert
-                    type="warning"
-                    showIcon
-                    className="oauth-secret-reveal-warning"
-                    message="Esta é a única vez que este segredo será exibido. Copie e guarde-o agora em um local seguro (gerenciador de senhas)."
-                />
-                <div className="oauth-secret-reveal-value">
-                    <Typography.Text code copyable={{ text: viewState.secret }}>
-                        {viewState.secret}
-                    </Typography.Text>
+            <AuthLayout
+                title={OAUTH_SECRET_REVEAL_COPY.revealedTitle}
+                className="oauth-secret-reveal-layout"
+            >
+                <div className="oauth-secret-reveal-stack">
+                    <Alert
+                        type="warning"
+                        showIcon
+                        className="oauth-secret-reveal-warning"
+                        message={OAUTH_SECRET_REVEAL_COPY.revealedWarning}
+                    />
+
+                    <div className="oauth-secret-reveal-field">
+                        <Typography.Text className="oauth-secret-reveal-label">
+                            Segredo
+                        </Typography.Text>
+                        <div className="oauth-secret-reveal-value">
+                            <Typography.Text code>{viewState.secret}</Typography.Text>
+                        </div>
+                    </div>
+
+                    <Button
+                        type="primary"
+                        block
+                        icon={<CopyOutlined />}
+                        onClick={() => void handleCopySecret(viewState.secret)}
+                    >
+                        Copiar segredo
+                    </Button>
+
+                    <div className="oauth-secret-storage-hint">
+                        <SafetyOutlined aria-hidden="true" />
+                        <Typography.Text type="secondary">
+                            {OAUTH_SECRET_REVEAL_COPY.revealedStorageHint}
+                        </Typography.Text>
+                    </div>
                 </div>
             </AuthLayout>
         );
@@ -134,17 +188,27 @@ export default function OAuthSecretRevealView() {
 
     return (
         <AuthLayout
-            title="Revelar segredo de client OAuth"
-            subtitle="Este link revela um client_secret uma única vez. Ao clicar em Revelar, o segredo ficará visível até você sair desta página."
+            title={OAUTH_SECRET_REVEAL_COPY.readyTitle}
+            subtitle={OAUTH_SECRET_REVEAL_COPY.readySubtitle}
+            className="oauth-secret-reveal-layout"
         >
-            <Button
-                type="primary"
-                block
-                loading={viewState.status === "revealing"}
-                onClick={() => void handleReveal()}
-            >
-                Revelar segredo
-            </Button>
+            <div className="oauth-secret-reveal-stack">
+                <Alert
+                    type="info"
+                    showIcon
+                    className="oauth-secret-single-use-alert"
+                    message={OAUTH_SECRET_REVEAL_COPY.uniqueUseTitle}
+                    description={OAUTH_SECRET_REVEAL_COPY.uniqueUseMessage}
+                />
+                <Button
+                    type="primary"
+                    block
+                    loading={viewState.status === "revealing"}
+                    onClick={() => void handleReveal()}
+                >
+                    Revelar segredo
+                </Button>
+            </div>
         </AuthLayout>
     );
 }

@@ -1,9 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
     Alert,
+    App as AntdApp,
     Button,
     Card,
     Checkbox,
+    Drawer,
+    Dropdown,
     Empty,
     Input,
     Layout,
@@ -13,18 +16,24 @@ import {
     Popconfirm,
     Select,
     Switch,
+    Table,
     Tabs,
     Tag,
     Typography,
     Upload,
 } from "antd";
 import {
+    CopyOutlined,
     DeleteOutlined,
     EditOutlined,
+    ExportOutlined,
     KeyOutlined,
     LockOutlined,
+    MoreOutlined,
+    SearchOutlined,
     PlusOutlined,
     ReloadOutlined,
+    RightOutlined,
     UploadOutlined,
 } from "@ant-design/icons";
 import HeaderView from "./HeaderView";
@@ -32,8 +41,23 @@ import BookLibraryPolicyGrid from "../components/BookLibraryPolicyGrid";
 import LibraryLimitGrid from "../components/LibraryLimitGrid";
 import { useAdminController } from "../controller/AdminController";
 import { getBookAuthorsText } from "../model/Book";
-import { ALLOWED_OAUTH_GRANT_TYPES, ALLOWED_OAUTH_SCOPES, translateOAuthScope } from "../model/OAuthScopes";
-import { OAUTH_AUDIT_EVENT_TYPES } from "../model/OAuthAudit";
+import { ALLOWED_OAUTH_GRANT_TYPES, ALLOWED_OAUTH_SCOPES } from "../model/OAuthScopes";
+import {
+    getOAuthScopeGroup,
+    matchesOAuthPartnerSearch,
+    translateOAuthGrantType,
+    translateOAuthScope,
+} from "../model/OAuthPartnerPresentation";
+import {
+    formatOAuthAuditDateTime,
+    getOAuthAuditEventCategory,
+    getOAuthAuditEventDetails,
+    getOAuthAuditResultColor,
+    OAUTH_AUDIT_EVENT_TYPES,
+    translateOAuthAuditEventType,
+    translateOAuthAuditResult,
+} from "../model/OAuthAudit";
+import type { OAuthAuditEvent, OAuthAuditFilters } from "../model/OAuthAudit";
 import "../styles/AdminView.css";
 
 /**
@@ -55,7 +79,80 @@ function formatTokenUsage(used: number, limit: number): string {
  */
 export default function AdminView() {
     const { Content } = Layout;
+    const { modal } = AntdApp.useApp();
     const { state, actions } = useAdminController();
+    const [partnerSearch, setPartnerSearch] = useState("");
+    const [partnerStatus, setPartnerStatus] = useState<"active" | "inactive" | "all">("active");
+    const [partnerSection, setPartnerSection] = useState<"partners" | "audit">("partners");
+    const [selectedAuditEvent, setSelectedAuditEvent] = useState<OAuthAuditEvent | null>(null);
+
+    const visibleOAuthClients = useMemo(
+        () =>
+            state.oauthClients.filter((client) => {
+                const matchesStatus =
+                    partnerStatus === "all" ||
+                    (partnerStatus === "active" ? client.active : !client.active);
+                return matchesStatus && matchesOAuthPartnerSearch(client, partnerSearch);
+            }),
+        [partnerSearch, partnerStatus, state.oauthClients]
+    );
+
+    const oauthClientById = useMemo(
+        () => new Map(state.oauthClients.map((client) => [client.id, client])),
+        [state.oauthClients]
+    );
+
+    const auditPartnerOptions = useMemo(() => {
+        const byName = (a: (typeof state.oauthClients)[number], b: (typeof state.oauthClients)[number]) =>
+            a.name.localeCompare(b.name, "pt-BR");
+        const active = state.oauthClients.filter((client) => client.active).sort(byName);
+        const inactive = state.oauthClients.filter((client) => !client.active).sort(byName);
+
+        return [
+            { label: "Ativos", options: active.map((client) => ({ value: client.id, label: client.name })) },
+            {
+                label: "Inativos",
+                options: inactive.map((client) => ({ value: client.id, label: `${client.name} (inativo)` })),
+            },
+        ].filter((group) => group.options.length > 0);
+    }, [state.oauthClients]);
+
+    const auditEventOptions = useMemo(
+        () =>
+            (["Parceiros", "Autorização e segurança", "Operações"] as const).map((category) => ({
+                label: category,
+                options: OAUTH_AUDIT_EVENT_TYPES
+                    .filter((eventType) => getOAuthAuditEventCategory(eventType) === category)
+                    .map((eventType) => ({
+                        value: eventType,
+                        label: translateOAuthAuditEventType(eventType),
+                    })),
+            })),
+        []
+    );
+
+    const selectedAuditDetails = useMemo(
+        () => (selectedAuditEvent ? getOAuthAuditEventDetails(selectedAuditEvent) : []),
+        [selectedAuditEvent]
+    );
+
+    /**
+     * Abre a auditoria já filtrada para um parceiro específico, reutilizando
+     * a mesma tela de auditoria em vez de manter um histórico paralelo.
+     *
+     * @param clientId Identificador do parceiro OAuth.
+     * @returns void.
+     */
+    function openPartnerAudit(clientId: string): void {
+        const nextFilters: OAuthAuditFilters = {
+            ...state.auditFilters,
+            client_id: clientId,
+            page: 1,
+        };
+        setPartnerSection("audit");
+        actions.setAuditFilters(nextFilters);
+        void actions.loadAuditEvents(nextFilters);
+    }
 
     const isRefreshingCurrentTab =
         state.activeTab === "users"
@@ -69,10 +166,12 @@ export default function AdminView() {
                         : state.activeTab === "authors"
                             ? state.isLoadingAuthors
                             : state.activeTab === "oauth-clients"
-                                ? state.isLoadingOAuthClients
+                                ? partnerSection === "audit"
+                                    ? state.isLoadingAudit
+                                    : state.isLoadingOAuthClients
                                 : state.activeTab === "oauth-audit"
                                     ? state.isLoadingAudit
-                    : state.isLoadingBooks;
+                                    : state.isLoadingBooks;
 
     const publisherOptions = useMemo(
         () =>
@@ -167,7 +266,13 @@ export default function AdminView() {
                             <Button
                                 icon={<ReloadOutlined />}
                                 loading={isRefreshingCurrentTab}
-                                onClick={() => void actions.refreshCurrentTab()}
+                                onClick={() => {
+                                    if (state.activeTab === "oauth-clients" && partnerSection === "audit") {
+                                        void actions.loadAuditEvents();
+                                        return;
+                                    }
+                                    void actions.refreshCurrentTab();
+                                }}
                             >
                                 Atualizar
                             </Button>
@@ -714,271 +819,572 @@ export default function AdminView() {
                             },
                             {
                                 key: "oauth-clients",
-                                label: "Clients OAuth",
+                                label: "Parceiros",
                                 children: (
                                     <Card
-                                        className="glass-card admin-panel admin-tab-card"
-                                        title="Clients OAuth"
+                                        className="glass-card admin-panel admin-tab-card oauth-partners-card"
+                                        title={
+                                            <div className="oauth-partners-heading">
+                                                <span>Parceiros e integrações</span>
+                                                <Typography.Text type="secondary">
+                                                    Gerencie sistemas externos que acessam o BiblioWeb.
+                                                </Typography.Text>
+                                            </div>
+                                        }
                                         extra={
                                             <Button
                                                 type="primary"
                                                 icon={<PlusOutlined />}
                                                 onClick={actions.openCreateOAuthClientModal}
                                             >
-                                                Novo client
+                                                Cadastrar parceiro
                                             </Button>
                                         }
                                     >
-                                        <div className="users-toolbar">
-                                            <Switch
-                                                checked={state.showInactiveOAuthClients}
-                                                onChange={actions.setShowInactiveOAuthClients}
-                                            />
-                                            <span>Mostrar inativos</span>
-                                        </div>
+                                        <Tabs
+                                            className="oauth-partner-tabs"
+                                            activeKey={partnerSection}
+                                            onChange={(key) => {
+                                                const nextSection = key === "audit" ? "audit" : "partners";
+                                                setPartnerSection(nextSection);
+                                                if (nextSection === "audit") {
+                                                    void actions.loadAuditEvents();
+                                                }
+                                            }}
+                                            items={[
+                                                {
+                                                    key: "partners",
+                                                    label: "Parceiros",
+                                                    children: (
+                                                        <>
+                                                            <div className="oauth-partner-toolbar">
+                                                                <Input
+                                                                    allowClear
+                                                                    prefix={<SearchOutlined />}
+                                                                    placeholder="Buscar por nome, organização, contato ou ID..."
+                                                                    value={partnerSearch}
+                                                                    onChange={(event) => setPartnerSearch(event.target.value)}
+                                                                />
+                                                                <Select
+                                                                    aria-label="Filtrar parceiros por status"
+                                                                    value={partnerStatus}
+                                                                    onChange={(value) => setPartnerStatus(value)}
+                                                                    options={[
+                                                                        { value: "active", label: "Ativos" },
+                                                                        { value: "inactive", label: "Inativos" },
+                                                                        { value: "all", label: "Todos" },
+                                                                    ]}
+                                                                />
+                                                            </div>
 
-                                        {(() => {
-                                            const visibleClients = state.oauthClients.filter(
-                                                (client) => state.showInactiveOAuthClients || client.active
-                                            );
-
-                                            if (visibleClients.length === 0 && !state.isLoadingOAuthClients) {
-                                                return <Empty description="Nenhum client OAuth encontrado." />;
-                                            }
-
-                                            return (
-                                                <List
-                                                    className="admin-list"
-                                                    loading={state.isLoadingOAuthClients}
-                                                    dataSource={visibleClients}
-                                                    renderItem={(client) => {
-                                                        const revealedUrl =
-                                                            state.revealedSecretUrlByClientId[client.id];
-                                                        const isExpired = Boolean(
-                                                            client.expires_at &&
-                                                                new Date(client.expires_at) < new Date()
-                                                        );
-                                                        const hasNoLibraries =
-                                                            client.library_ids.length === 0;
-                                                        return (
-                                                            <List.Item
-                                                                className="admin-list-item"
-                                                                actions={
-                                                                    client.active
-                                                                        ? [
-                                                                              <Button
-                                                                                  key="edit"
-                                                                                  icon={<EditOutlined />}
-                                                                                  onClick={() =>
-                                                                                      actions.openEditOAuthClientModal(client)
-                                                                                  }
-                                                                              >
-                                                                                  Editar
-                                                                              </Button>,
-                                                                              <Button
-                                                                                  key="history"
-                                                                                  onClick={() =>
-                                                                                      void actions.openClientHistory(client.id)
-                                                                                  }
-                                                                              >
-                                                                                  Histórico
-                                                                              </Button>,
-                                                                              <Popconfirm
-                                                                                  key="rotate"
-                                                                                  title="Rotacionar segredo"
-                                                                                  description="O segredo atual deixa de funcionar imediatamente."
-                                                                                  okText="Rotacionar"
-                                                                                  cancelText="Cancelar"
-                                                                                  onConfirm={() => {
-                                                                                      void actions.rotateOAuthClientSecretById(
-                                                                                          client.id
-                                                                                      );
-                                                                                  }}
-                                                                              >
-                                                                                  <Button icon={<KeyOutlined />}>
-                                                                                      Rotacionar segredo
-                                                                                  </Button>
-                                                                              </Popconfirm>,
-                                                                              <Popconfirm
-                                                                                  key="delete"
-                                                                                  title="Desativar client"
-                                                                                  description="O client deixa de conseguir autenticar até ser reativado."
-                                                                                  okText="Desativar"
-                                                                                  cancelText="Cancelar"
-                                                                                  onConfirm={() => {
-                                                                                      void actions.removeOAuthClient(client.id);
-                                                                                  }}
-                                                                              >
-                                                                                  <Button danger icon={<DeleteOutlined />}>
-                                                                                      Desativar
-                                                                                  </Button>
-                                                                              </Popconfirm>,
-                                                                          ]
-                                                                        : [
-                                                                              <Popconfirm
-                                                                                  key="reactivate"
-                                                                                  title="Reativar client"
-                                                                                  description="O client volta a ficar ativo. Se houver uma data de expiração configurada, ela continua valendo."
-                                                                                  okText="Reativar"
-                                                                                  cancelText="Cancelar"
-                                                                                  onConfirm={() => {
-                                                                                      void actions.reactivateOAuthClientById(
-                                                                                          client.id
-                                                                                      );
-                                                                                  }}
-                                                                              >
-                                                                                  <Button icon={<ReloadOutlined />}>
-                                                                                      Reativar
-                                                                                  </Button>
-                                                                              </Popconfirm>,
-                                                                          ]
-                                                                }
-                                                            >
-                                                                <List.Item.Meta
-                                                                    title={
-                                                                        <span>
-                                                                            {client.name}
-                                                                            {!client.active && (
-                                                                                <Tag color="default" style={{ marginLeft: 8 }}>
-                                                                                    Inativo
-                                                                                </Tag>
-                                                                            )}
-                                                                        </span>
-                                                                    }
+                                                            {visibleOAuthClients.length === 0 && !state.isLoadingOAuthClients ? (
+                                                                <Empty
                                                                     description={
-                                                                        <div className="oauth-client-meta">
-                                                                            <span>ID: {client.id}</span>
-                                                                            {client.organization && (
-                                                                                <span>Organização: {client.organization}</span>
-                                                                            )}
-                                                                            {(hasNoLibraries || isExpired) && (
-                                                                                <div className="profile-tag-list">
-                                                                                    {hasNoLibraries && (
-                                                                                        <Tag color="warning">
-                                                                                            Sem bibliotecas
-                                                                                        </Tag>
-                                                                                    )}
-                                                                                    {isExpired && (
-                                                                                        <Tag color="error">Expirado</Tag>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                            <div className="profile-tag-list">
-                                                                                {client.scopes.map((scope) => (
-                                                                                    <Tag key={scope} color="blue">
-                                                                                        {translateOAuthScope(scope)}
-                                                                                    </Tag>
-                                                                                ))}
-                                                                            </div>
-                                                                            {revealedUrl && (
-                                                                                <Alert
-                                                                                    type="warning"
-                                                                                    showIcon
-                                                                                    className="oauth-secret-reveal-banner"
-                                                                                    message="Link de revelação do segredo (válido por 72h, abre uma única vez)"
-                                                                                    description={
-                                                                                        <Typography.Text
-                                                                                            code
-                                                                                            copyable={{ text: revealedUrl }}
-                                                                                        >
-                                                                                            {revealedUrl}
-                                                                                        </Typography.Text>
-                                                                                    }
-                                                                                />
-                                                                            )}
-                                                                        </div>
+                                                                        partnerSearch
+                                                                            ? "Nenhum parceiro corresponde à busca."
+                                                                            : "Nenhum parceiro encontrado."
                                                                     }
                                                                 />
-                                                            </List.Item>
-                                                        );
-                                                    }}
-                                                />
-                                            );
-                                        })()}
-                                    </Card>
-                                ),
-                            },
-                            {
-                                key: "oauth-audit",
-                                label: "Auditoria",
-                                children: (
-                                    <Card className="glass-card admin-panel admin-tab-card" title="Auditoria OAuth">
-                                        <div className="users-toolbar">
-                                            <Select
-                                                allowClear
-                                                placeholder="Tipo de evento"
-                                                style={{ minWidth: 220 }}
-                                                value={state.auditFilters.event_type}
-                                                onChange={(value) =>
-                                                    actions.setAuditFilters((previous) => ({
-                                                        ...previous,
-                                                        event_type: value,
-                                                        page: 1,
-                                                    }))
-                                                }
-                                                options={OAUTH_AUDIT_EVENT_TYPES.map((type) => ({
-                                                    value: type,
-                                                    label: type,
-                                                }))}
-                                            />
-                                            <Button type="primary" onClick={() => void actions.loadAuditEvents()}>
-                                                Filtrar
-                                            </Button>
-                                        </div>
+                                                            ) : (
+                                                                <List
+                                                                    className="admin-list oauth-partner-list"
+                                                                    loading={state.isLoadingOAuthClients}
+                                                                    dataSource={visibleOAuthClients}
+                                                                    renderItem={(client) => {
+                                                                        const revealedUrl =
+                                                                            state.revealedSecretUrlByClientId[client.id];
+                                                                        const isExpired = Boolean(
+                                                                            client.expires_at &&
+                                                                                new Date(client.expires_at) < new Date()
+                                                                        );
+                                                                        const scopeGroups = Array.from(
+                                                                            new Set(client.scopes.map(getOAuthScopeGroup))
+                                                                        );
 
-                                        <List
-                                            loading={state.isLoadingAudit}
-                                            dataSource={state.auditEvents}
-                                            locale={{ emptyText: "Nenhum evento encontrado." }}
-                                            renderItem={(event) => (
-                                                <List.Item>
-                                                    <List.Item.Meta
-                                                        title={
-                                                            <span>
-                                                                {event.event_type}{" "}
-                                                                <Tag
-                                                                    color={
-                                                                        event.result === "denied" ||
-                                                                        event.result === "failure"
-                                                                            ? "error"
-                                                                            : "success"
-                                                                    }
-                                                                >
-                                                                    {event.result}
-                                                                </Tag>
-                                                            </span>
-                                                        }
-                                                        description={
-                                                            <span>
-                                                                {event.created_at
-                                                                    ? new Date(event.created_at + "Z").toLocaleString(
-                                                                          "pt-BR"
-                                                                      )
-                                                                    : ""}
-                                                                {event.client_id && ` — client: ${event.client_id}`}
-                                                                {event.reason && ` — ${event.reason}`}
-                                                            </span>
-                                                        }
-                                                    />
-                                                </List.Item>
-                                            )}
+                                                                        return (
+                                                                            <List.Item className="admin-list-item oauth-partner-row">
+                                                                                <div className="oauth-partner-main">
+                                                                                    <div className="oauth-partner-identity">
+                                                                                        <div className="oauth-partner-title-row">
+                                                                                            <Typography.Text strong>
+                                                                                                {client.name}
+                                                                                            </Typography.Text>
+                                                                                            {!client.active && <Tag>Inativo</Tag>}
+                                                                                            {isExpired && <Tag color="error">Expirado</Tag>}
+                                                                                            {client.library_ids.length === 0 && (
+                                                                                                <Tag color="warning">Sem bibliotecas</Tag>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        {client.organization && (
+                                                                                            <span className="oauth-partner-secondary">
+                                                                                                {client.organization}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        <span
+                                                                                            className="oauth-partner-id"
+                                                                                            title={client.id}
+                                                                                        >
+                                                                                            ID: {client.id}
+                                                                                        </span>
+                                                                                    </div>
+
+                                                                                    <div className="oauth-partner-access">
+                                                                                        <span className="oauth-partner-access-summary">
+                                                                                            {client.library_ids.length}{" "}
+                                                                                            {client.library_ids.length === 1
+                                                                                                ? "biblioteca"
+                                                                                                : "bibliotecas"}
+                                                                                            {" · "}
+                                                                                            {client.scopes.length}{" "}
+                                                                                            {client.scopes.length === 1
+                                                                                                ? "permissão"
+                                                                                                : "permissões"}
+                                                                                        </span>
+                                                                                        <div className="oauth-partner-scope-groups">
+                                                                                            {scopeGroups.map((group) => (
+                                                                                                <Tag key={group}>{group}</Tag>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="oauth-partner-actions">
+                                                                                        {client.active ? (
+                                                                                            <>
+                                                                                                <Button
+                                                                                                    icon={<EditOutlined />}
+                                                                                                    onClick={() =>
+                                                                                                        actions.openEditOAuthClientModal(
+                                                                                                            client
+                                                                                                        )
+                                                                                                    }
+                                                                                                >
+                                                                                                    Editar
+                                                                                                </Button>
+                                                                                                <Dropdown
+                                                                                                    trigger={["click"]}
+                                                                                                    menu={{
+                                                                                                        items: [
+                                                                                                            {
+                                                                                                                key: "history",
+                                                                                                                label: "Ver histórico",
+                                                                                                            },
+                                                                                                            {
+                                                                                                                key: "rotate",
+                                                                                                                icon: <KeyOutlined />,
+                                                                                                                label: "Gerar novo segredo",
+                                                                                                            },
+                                                                                                            { type: "divider" },
+                                                                                                            {
+                                                                                                                key: "deactivate",
+                                                                                                                icon: <DeleteOutlined />,
+                                                                                                                label: "Desativar parceiro",
+                                                                                                                danger: true,
+                                                                                                            },
+                                                                                                        ],
+                                                                                                        onClick: ({ key }) => {
+                                                                                                            if (key === "history") {
+                                                                                                                openPartnerAudit(client.id);
+                                                                                                                return;
+                                                                                                            }
+                                                                                                            if (key === "rotate") {
+                                                                                                                modal.confirm({
+                                                                                                                    title: "Gerar novo segredo?",
+                                                                                                                    content:
+                                                                                                                        "O segredo atual deixará de funcionar imediatamente. Atualize a integração do parceiro após gerar a nova credencial.",
+                                                                                                                    okText: "Gerar novo segredo",
+                                                                                                                    cancelText: "Cancelar",
+                                                                                                                    onOk: () =>
+                                                                                                                        actions.rotateOAuthClientSecretById(
+                                                                                                                            client.id
+                                                                                                                        ),
+                                                                                                                });
+                                                                                                                return;
+                                                                                                            }
+                                                                                                            if (key === "deactivate") {
+                                                                                                                modal.confirm({
+                                                                                                                    title: "Desativar parceiro?",
+                                                                                                                    content:
+                                                                                                                        "A integração deixará de autenticar até ser reativada.",
+                                                                                                                    okText: "Desativar",
+                                                                                                                    okButtonProps: { danger: true },
+                                                                                                                    cancelText: "Cancelar",
+                                                                                                                    onOk: () =>
+                                                                                                                        actions.removeOAuthClient(
+                                                                                                                            client.id
+                                                                                                                        ),
+                                                                                                                });
+                                                                                                            }
+                                                                                                        },
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <Button
+                                                                                                        aria-label={`Mais ações para ${client.name}`}
+                                                                                                        icon={<MoreOutlined />}
+                                                                                                    />
+                                                                                                </Dropdown>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <Popconfirm
+                                                                                                    title="Reativar parceiro?"
+                                                                                                    description="A integração voltará a poder autenticar. A data de expiração, se existir, continuará valendo."
+                                                                                                    okText="Reativar"
+                                                                                                    cancelText="Cancelar"
+                                                                                                    onConfirm={() =>
+                                                                                                        actions.reactivateOAuthClientById(
+                                                                                                            client.id
+                                                                                                        )
+                                                                                                    }
+                                                                                                >
+                                                                                                    <Button icon={<ReloadOutlined />}>
+                                                                                                        Reativar
+                                                                                                    </Button>
+                                                                                                </Popconfirm>
+                                                                                                <Dropdown
+                                                                                                    trigger={["click"]}
+                                                                                                    menu={{
+                                                                                                        items: [
+                                                                                                            {
+                                                                                                                key: "history",
+                                                                                                                label: "Ver histórico",
+                                                                                                            },
+                                                                                                        ],
+                                                                                                        onClick: () => openPartnerAudit(client.id),
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <Button
+                                                                                                        aria-label={`Mais ações para ${client.name}`}
+                                                                                                        icon={<MoreOutlined />}
+                                                                                                    />
+                                                                                                </Dropdown>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {revealedUrl && (
+                                                                                    <div className="oauth-secret-reveal-banner">
+                                                                                        <div className="oauth-secret-reveal-summary">
+                                                                                            <KeyOutlined />
+                                                                                            <div>
+                                                                                                <strong>Novo segredo gerado</strong>
+                                                                                                <span>
+                                                                                                    Um link seguro está disponível por até 72 horas e pode ser usado uma única vez para revelar a credencial.
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="oauth-secret-reveal-actions">
+                                                                                            <Button
+                                                                                                size="small"
+                                                                                                icon={<CopyOutlined />}
+                                                                                                onClick={() =>
+                                                                                                    void navigator.clipboard.writeText(revealedUrl)
+                                                                                                }
+                                                                                            >
+                                                                                                Copiar link
+                                                                                            </Button>
+                                                                                            <Button
+                                                                                                size="small"
+                                                                                                type="link"
+                                                                                                icon={<ExportOutlined />}
+                                                                                                href={revealedUrl}
+                                                                                                target="_blank"
+                                                                                                rel="noreferrer"
+                                                                                            >
+                                                                                                Abrir página de revelação
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </List.Item>
+                                                                        );
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </>
+                                                    ),
+                                                },
+                                                {
+                                                    key: "audit",
+                                                    label: "Auditoria",
+                                                    children: (
+                                                        <div className="oauth-audit-panel">
+                                                            <div className="oauth-audit-heading">
+                                                                <div>
+                                                                    <Typography.Title level={4}>
+                                                                        Auditoria de integrações
+                                                                    </Typography.Title>
+                                                                    <Typography.Text type="secondary">
+                                                                        Consulte autenticações, alterações e operações realizadas pelos parceiros.
+                                                                    </Typography.Text>
+                                                                </div>
+                                                                {state.auditFilters.client_id && (
+                                                                    <Tag closable onClose={() => {
+                                                                        const nextFilters: OAuthAuditFilters = {
+                                                                            ...state.auditFilters,
+                                                                            client_id: undefined,
+                                                                            page: 1,
+                                                                        };
+                                                                        actions.setAuditFilters(nextFilters);
+                                                                        void actions.loadAuditEvents(nextFilters);
+                                                                    }}>
+                                                                        Histórico de {oauthClientById.get(state.auditFilters.client_id)?.name || "parceiro"}
+                                                                    </Tag>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="oauth-audit-toolbar">
+                                                                <div className="oauth-audit-filter-field">
+                                                                    <label>Parceiro</label>
+                                                                    <Select
+                                                                        allowClear
+                                                                        showSearch
+                                                                        optionFilterProp="label"
+                                                                        placeholder="Todos os parceiros"
+                                                                        value={state.auditFilters.client_id}
+                                                                        onChange={(value) =>
+                                                                            actions.setAuditFilters((previous) => ({
+                                                                                ...previous,
+                                                                                client_id: value,
+                                                                                page: 1,
+                                                                            }))
+                                                                        }
+                                                                        options={auditPartnerOptions}
+                                                                    />
+                                                                </div>
+                                                                <div className="oauth-audit-filter-field">
+                                                                    <label>Evento</label>
+                                                                    <Select
+                                                                        allowClear
+                                                                        placeholder="Todos os eventos"
+                                                                        value={state.auditFilters.event_type}
+                                                                        onChange={(value) =>
+                                                                            actions.setAuditFilters((previous) => ({
+                                                                                ...previous,
+                                                                                event_type: value,
+                                                                                page: 1,
+                                                                            }))
+                                                                        }
+                                                                        options={auditEventOptions}
+                                                                    />
+                                                                </div>
+                                                                <div className="oauth-audit-filter-field oauth-audit-date-field">
+                                                                    <label>De</label>
+                                                                    <Input
+                                                                        type="datetime-local"
+                                                                        value={state.auditFilters.date_from || ""}
+                                                                        onChange={(event) =>
+                                                                            actions.setAuditFilters((previous) => ({
+                                                                                ...previous,
+                                                                                date_from: event.target.value || undefined,
+                                                                                page: 1,
+                                                                            }))
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                <div className="oauth-audit-filter-field oauth-audit-date-field">
+                                                                    <label>Até</label>
+                                                                    <Input
+                                                                        type="datetime-local"
+                                                                        value={state.auditFilters.date_to || ""}
+                                                                        onChange={(event) =>
+                                                                            actions.setAuditFilters((previous) => ({
+                                                                                ...previous,
+                                                                                date_to: event.target.value || undefined,
+                                                                                page: 1,
+                                                                            }))
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                                <div className="oauth-audit-filter-actions">
+                                                                    <Button
+                                                                        type="primary"
+                                                                        onClick={() => {
+                                                                            const nextFilters = {
+                                                                                ...state.auditFilters,
+                                                                                page: 1,
+                                                                            };
+                                                                            actions.setAuditFilters(nextFilters);
+                                                                            void actions.loadAuditEvents(nextFilters);
+                                                                        }}
+                                                                    >
+                                                                        Filtrar
+                                                                    </Button>
+                                                                    <Button
+                                                                        onClick={() => {
+                                                                            const nextFilters: OAuthAuditFilters = {
+                                                                                page: 1,
+                                                                                page_size: state.auditFilters.page_size ?? 20,
+                                                                            };
+                                                                            actions.setAuditFilters(nextFilters);
+                                                                            void actions.loadAuditEvents(nextFilters);
+                                                                        }}
+                                                                    >
+                                                                        Limpar
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+
+                                                            <Table<OAuthAuditEvent>
+                                                                className="oauth-audit-table"
+                                                                loading={state.isLoadingAudit}
+                                                                dataSource={state.auditEvents}
+                                                                pagination={false}
+                                                                scroll={{ x: 760, y: 520 }}
+                                                                locale={{ emptyText: "Nenhum evento encontrado." }}
+                                                                rowKey={(event) =>
+                                                                    [
+                                                                        event.created_at || "sem-data",
+                                                                        event.event_type,
+                                                                        event.client_id || "sem-parceiro",
+                                                                        event.correlation_id || "sem-correlacao",
+                                                                    ].join("|")
+                                                                }
+                                                                onRow={(event) => ({
+                                                                    onClick: () => setSelectedAuditEvent(event),
+                                                                })}
+                                                                columns={[
+                                                                    {
+                                                                        title: "Data/hora",
+                                                                        dataIndex: "created_at",
+                                                                        key: "created_at",
+                                                                        width: 180,
+                                                                        render: (value: string | null) => (
+                                                                            <span className="oauth-audit-date">
+                                                                                {formatOAuthAuditDateTime(value)}
+                                                                            </span>
+                                                                        ),
+                                                                    },
+                                                                    {
+                                                                        title: "Evento",
+                                                                        dataIndex: "event_type",
+                                                                        key: "event_type",
+                                                                        render: (eventType: string) => (
+                                                                            <div className="oauth-audit-event-cell">
+                                                                                <strong>{translateOAuthAuditEventType(eventType)}</strong>
+                                                                                <span>{getOAuthAuditEventCategory(eventType)}</span>
+                                                                            </div>
+                                                                        ),
+                                                                    },
+                                                                    {
+                                                                        title: "Parceiro",
+                                                                        dataIndex: "client_id",
+                                                                        key: "client_id",
+                                                                        render: (clientId: string | null) => {
+                                                                            if (!clientId) {
+                                                                                return <span className="oauth-audit-muted">—</span>;
+                                                                            }
+                                                                            const partner = oauthClientById.get(clientId);
+                                                                            return (
+                                                                                <div className="oauth-audit-partner-cell">
+                                                                                    <strong>{partner?.name || "Parceiro não identificado"}</strong>
+                                                                                    <span title={clientId}>{clientId}</span>
+                                                                                </div>
+                                                                            );
+                                                                        },
+                                                                    },
+                                                                    {
+                                                                        title: "Resultado",
+                                                                        dataIndex: "result",
+                                                                        key: "result",
+                                                                        width: 120,
+                                                                        render: (result: string, event: OAuthAuditEvent) => (
+                                                                            <Tag color={getOAuthAuditResultColor(result, event.event_type)}>
+                                                                                {translateOAuthAuditResult(result)}
+                                                                            </Tag>
+                                                                        ),
+                                                                    },
+                                                                    {
+                                                                        title: "",
+                                                                        key: "details",
+                                                                        width: 52,
+                                                                        render: (_value: unknown, event: OAuthAuditEvent) => (
+                                                                            <Button
+                                                                                type="text"
+                                                                                aria-label={`Ver detalhes de ${translateOAuthAuditEventType(event.event_type)}`}
+                                                                                icon={<RightOutlined />}
+                                                                                onClick={(clickEvent) => {
+                                                                                    clickEvent.stopPropagation();
+                                                                                    setSelectedAuditEvent(event);
+                                                                                }}
+                                                                            />
+                                                                        ),
+                                                                    },
+                                                                ]}
+                                                            />
+
+                                                            <List
+                                                                className="oauth-audit-mobile-list"
+                                                                loading={state.isLoadingAudit}
+                                                                dataSource={state.auditEvents}
+                                                                locale={{ emptyText: "Nenhum evento encontrado." }}
+                                                                renderItem={(event) => {
+                                                                    const partner = event.client_id
+                                                                        ? oauthClientById.get(event.client_id)
+                                                                        : undefined;
+                                                                    return (
+                                                                        <List.Item
+                                                                            className="oauth-audit-mobile-item"
+                                                                            onClick={() => setSelectedAuditEvent(event)}
+                                                                        >
+                                                                            <div className="oauth-audit-mobile-main">
+                                                                                <div className="oauth-audit-mobile-title">
+                                                                                    <strong>
+                                                                                        {translateOAuthAuditEventType(event.event_type)}
+                                                                                    </strong>
+                                                                                    <Tag
+                                                                                        color={getOAuthAuditResultColor(
+                                                                                            event.result,
+                                                                                            event.event_type
+                                                                                        )}
+                                                                                    >
+                                                                                        {translateOAuthAuditResult(event.result)}
+                                                                                    </Tag>
+                                                                                </div>
+                                                                                <span>{formatOAuthAuditDateTime(event.created_at)}</span>
+                                                                                <span>
+                                                                                    {partner?.name ||
+                                                                                        (event.client_id
+                                                                                            ? "Parceiro não identificado"
+                                                                                            : "Sem parceiro associado")}
+                                                                                </span>
+                                                                            </div>
+                                                                            <RightOutlined />
+                                                                        </List.Item>
+                                                                    );
+                                                                }}
+                                                            />
+
+                                                            <div className="oauth-audit-footer">
+                                                                <span>
+                                                                    {state.auditPagination
+                                                                        ? `${state.auditPagination.total.toLocaleString("pt-BR")} eventos`
+                                                                        : `${state.auditEvents.length.toLocaleString("pt-BR")} eventos`}
+                                                                </span>
+                                                                {state.auditPagination && (
+                                                                    <Pagination
+                                                                        current={state.auditPagination.page}
+                                                                        pageSize={state.auditPagination.page_size}
+                                                                        total={state.auditPagination.total}
+                                                                        showSizeChanger
+                                                                        pageSizeOptions={[10, 20, 50]}
+                                                                        onChange={(page, pageSize) => {
+                                                                            const nextFilters: OAuthAuditFilters = {
+                                                                                ...state.auditFilters,
+                                                                                page,
+                                                                                page_size: pageSize,
+                                                                            };
+                                                                            actions.setAuditFilters(nextFilters);
+                                                                            void actions.loadAuditEvents(nextFilters);
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ),
+                                                },
+                                            ]}
                                         />
-
-                                        {state.auditPagination && (
-                                            <Pagination
-                                                current={state.auditPagination.page}
-                                                pageSize={state.auditPagination.page_size}
-                                                total={state.auditPagination.total}
-                                                onChange={(page, pageSize) => {
-                                                    actions.setAuditFilters((previous) => ({
-                                                        ...previous,
-                                                        page,
-                                                        page_size: pageSize,
-                                                    }));
-                                                    void actions.loadAuditEvents();
-                                                }}
-                                            />
-                                        )}
                                     </Card>
                                 ),
                             },
@@ -986,6 +1392,91 @@ export default function AdminView() {
                     />
                 </section>
             </Content>
+
+            <Drawer
+                title={
+                    selectedAuditEvent
+                        ? translateOAuthAuditEventType(selectedAuditEvent.event_type)
+                        : "Detalhes do evento"
+                }
+                open={Boolean(selectedAuditEvent)}
+                onClose={() => setSelectedAuditEvent(null)}
+                width="min(520px, 100vw)"
+                extra={
+                    selectedAuditEvent ? (
+                        <Tag color={getOAuthAuditResultColor(selectedAuditEvent.result, selectedAuditEvent.event_type)}>
+                            {translateOAuthAuditResult(selectedAuditEvent.result)}
+                        </Tag>
+                    ) : null
+                }
+            >
+                {selectedAuditEvent && (
+                    <div className="oauth-audit-drawer">
+                        <div className="oauth-audit-drawer-summary">
+                            <span>{formatOAuthAuditDateTime(selectedAuditEvent.created_at, "pt-BR", true)}</span>
+                            {selectedAuditEvent.client_id && (
+                                <div>
+                                    <strong>Parceiro</strong>
+                                    <span>
+                                        {oauthClientById.get(selectedAuditEvent.client_id)?.name ||
+                                            "Parceiro não identificado"}
+                                    </span>
+                                    <Typography.Text copyable={{ text: selectedAuditEvent.client_id }}>
+                                        {selectedAuditEvent.client_id}
+                                    </Typography.Text>
+                                </div>
+                            )}
+                        </div>
+
+                        {selectedAuditDetails.length > 0 && (
+                            <div className="oauth-audit-detail-list">
+                                {selectedAuditDetails.map((detail) => (
+                                    <div key={detail.key} className="oauth-audit-detail-row">
+                                        <span>{detail.label}</span>
+                                        {detail.copyable ? (
+                                            <Typography.Text copyable={{ text: detail.value }}>
+                                                {detail.value}
+                                            </Typography.Text>
+                                        ) : (
+                                            <strong>{detail.value}</strong>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <details className="oauth-audit-technical-details">
+                            <summary>Detalhes técnicos</summary>
+                            <dl>
+                                <div>
+                                    <dt>event_type</dt>
+                                    <dd>{selectedAuditEvent.event_type}</dd>
+                                </div>
+                                <div>
+                                    <dt>client_id</dt>
+                                    <dd>{selectedAuditEvent.client_id || "—"}</dd>
+                                </div>
+                                <div>
+                                    <dt>user_id</dt>
+                                    <dd>{selectedAuditEvent.user_id || "—"}</dd>
+                                </div>
+                                <div>
+                                    <dt>library_id</dt>
+                                    <dd>{selectedAuditEvent.library_id ?? "—"}</dd>
+                                </div>
+                                <div>
+                                    <dt>correlation_id</dt>
+                                    <dd>{selectedAuditEvent.correlation_id || "—"}</dd>
+                                </div>
+                            </dl>
+                            <div className="oauth-audit-metadata">
+                                <span>metadata</span>
+                                <pre>{JSON.stringify(selectedAuditEvent.metadata || {}, null, 2)}</pre>
+                            </div>
+                        </details>
+                    </div>
+                )}
+            </Drawer>
 
             <Modal
                 title={state.bookModalMode === "create" ? "Adicionar livro" : "Editar livro"}
@@ -1901,16 +2392,23 @@ export default function AdminView() {
             <Modal
                 title={
                     state.oauthClientModalMode === "create"
-                        ? "Novo client OAuth"
-                        : "Editar client OAuth"
+                        ? "Cadastrar parceiro"
+                        : "Editar parceiro"
                 }
                 open={state.oauthClientModalOpen}
                 onCancel={actions.closeOAuthClientModal}
                 footer={null}
-                width={640}
+                width={760}
                 destroyOnClose
             >
-                <form className="admin-form" onSubmit={(event) => void actions.saveOAuthClient(event)}>
+                <form
+                    className="admin-form oauth-partner-form"
+                    onSubmit={(event) => void actions.saveOAuthClient(event)}
+                >
+                    <Typography.Text type="secondary" className="oauth-partner-modal-intro">
+                        Configure a integração e defina quais recursos do BiblioWeb este parceiro poderá acessar.
+                    </Typography.Text>
+
                     {state.oauthClientModalError && (
                         <Alert
                             type="error"
@@ -1919,308 +2417,351 @@ export default function AdminView() {
                             className="admin-modal-alert"
                         />
                     )}
-                    <div className="form-field">
-                        <label className="field-label">Nome (*)</label>
-                        <Input
-                            className="admin-input"
-                            status={state.oauthClientFormErrors.name ? "error" : undefined}
-                            value={state.oauthClientForm.name}
-                            onChange={(event) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    name: event.target.value,
-                                }));
-                                actions.clearOAuthClientFieldError("name");
-                            }}
-                        />
-                        {state.oauthClientFormErrors.name && (
-                            <span className="form-field-error">{state.oauthClientFormErrors.name}</span>
-                        )}
-                    </div>
 
-                    <div className="form-field">
-                        <label className="field-label">URIs de redirecionamento (*)</label>
-                        {state.oauthClientForm.redirect_uris.map((uri, index) => (
-                            <div key={`redirect-uri-${index}`} className="oauth-redirect-uri-row">
+                    <section className="oauth-form-section">
+                        <div className="oauth-form-section-heading">
+                            <h3>Dados do parceiro</h3>
+                            <span>Identificação e responsáveis pela integração.</span>
+                        </div>
+
+                        <div className="form-field">
+                            <label className="field-label">Nome da integração (*)</label>
+                            <Input
+                                className="admin-input"
+                                placeholder="Ex.: OPALS Demo Partner"
+                                status={state.oauthClientFormErrors.name ? "error" : undefined}
+                                value={state.oauthClientForm.name}
+                                onChange={(event) => {
+                                    actions.setOAuthClientForm((previous) => ({
+                                        ...previous,
+                                        name: event.target.value,
+                                    }));
+                                    actions.clearOAuthClientFieldError("name");
+                                }}
+                            />
+                            {state.oauthClientFormErrors.name && (
+                                <span className="form-field-error">{state.oauthClientFormErrors.name}</span>
+                            )}
+                        </div>
+
+                        <div className="oauth-form-grid">
+                            <div className="form-field">
+                                <label className="field-label">Organização responsável</label>
                                 <Input
                                     className="admin-input"
-                                    value={uri}
-                                    placeholder="https://parceiro.example/callback"
-                                    onChange={(event) => {
-                                        const value = event.target.value;
-                                        actions.setOAuthClientForm((previous) => {
-                                            const next = [...previous.redirect_uris];
-                                            next[index] = value;
-                                            return { ...previous, redirect_uris: next };
-                                        });
-                                        actions.clearOAuthClientFieldError("redirect_uris");
-                                    }}
-                                />
-                                <Button
-                                    danger
-                                    disabled={state.oauthClientForm.redirect_uris.length <= 1}
-                                    onClick={() => {
+                                    placeholder="Nome da empresa ou instituição"
+                                    value={state.oauthClientForm.organization}
+                                    onChange={(event) =>
                                         actions.setOAuthClientForm((previous) => ({
                                             ...previous,
-                                            redirect_uris: previous.redirect_uris.filter(
-                                                (_, itemIndex) => itemIndex !== index
-                                            ),
-                                        }));
-                                    }}
-                                >
-                                    Remover
-                                </Button>
+                                            organization: event.target.value,
+                                        }))
+                                    }
+                                />
                             </div>
-                        ))}
-                        <Button
-                            onClick={() => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    redirect_uris: [...previous.redirect_uris, ""],
-                                }));
-                            }}
-                        >
-                            + Adicionar URI
-                        </Button>
-                        {state.oauthClientFormErrors.redirect_uris && (
-                            <span className="form-field-error">
-                                {state.oauthClientFormErrors.redirect_uris}
-                            </span>
-                        )}
-                    </div>
+                            <div className="form-field">
+                                <label className="field-label">Validade</label>
+                                <Input
+                                    className="admin-input"
+                                    type="datetime-local"
+                                    value={state.oauthClientForm.expires_at}
+                                    onChange={(event) =>
+                                        actions.setOAuthClientForm((previous) => ({
+                                            ...previous,
+                                            expires_at: event.target.value,
+                                        }))
+                                    }
+                                />
+                                <span className="form-field-helper">Deixe vazio para não definir expiração.</span>
+                            </div>
+                        </div>
 
-                    <div className="form-field">
-                        <label className="field-label">Grant types (*)</label>
-                        <Checkbox.Group
-                            options={ALLOWED_OAUTH_GRANT_TYPES.map((grantType) => ({
-                                label: grantType,
-                                value: grantType,
-                            }))}
-                            value={state.oauthClientForm.grant_types}
-                            onChange={(values) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    grant_types: values as string[],
-                                }));
-                                actions.clearOAuthClientFieldError("grant_types");
-                            }}
-                        />
-                        {state.oauthClientFormErrors.grant_types && (
-                            <span className="form-field-error">
-                                {state.oauthClientFormErrors.grant_types}
-                            </span>
-                        )}
-                    </div>
+                        <div className="form-field">
+                            <label className="field-label">Descrição</label>
+                            <Input.TextArea
+                                className="admin-input"
+                                rows={2}
+                                placeholder="Explique brevemente para que esta integração será usada."
+                                value={state.oauthClientForm.description}
+                                onChange={(event) =>
+                                    actions.setOAuthClientForm((previous) => ({
+                                        ...previous,
+                                        description: event.target.value,
+                                    }))
+                                }
+                            />
+                        </div>
 
-                    <div className="form-field">
-                        <label className="field-label">Escopos (*)</label>
-                        <div className="oauth-scope-checkbox-list">
-                            {ALLOWED_OAUTH_SCOPES.map((scope) => (
+                        <div className="form-field">
+                            <label className="field-label">Contatos técnicos</label>
+                            {state.oauthClientForm.technical_contacts.map((contact, index) => (
+                                <div key={`technical-contact-${index}`} className="oauth-contact-row">
+                                    <Input
+                                        className="admin-input"
+                                        placeholder="Nome"
+                                        value={contact.name}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            actions.setOAuthClientForm((previous) => {
+                                                const next = [...previous.technical_contacts];
+                                                next[index] = { ...next[index], name: value };
+                                                return { ...previous, technical_contacts: next };
+                                            });
+                                        }}
+                                    />
+                                    <Input
+                                        className="admin-input"
+                                        placeholder="E-mail"
+                                        value={contact.email}
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            actions.setOAuthClientForm((previous) => {
+                                                const next = [...previous.technical_contacts];
+                                                next[index] = { ...next[index], email: value };
+                                                return { ...previous, technical_contacts: next };
+                                            });
+                                        }}
+                                    />
+                                    <Button
+                                        danger
+                                        onClick={() =>
+                                            actions.setOAuthClientForm((previous) => ({
+                                                ...previous,
+                                                technical_contacts: previous.technical_contacts.filter(
+                                                    (_, itemIndex) => itemIndex !== index
+                                                ),
+                                            }))
+                                        }
+                                    >
+                                        Remover
+                                    </Button>
+                                </div>
+                            ))}
+                            <Button
+                                className="oauth-add-secondary"
+                                onClick={() =>
+                                    actions.setOAuthClientForm((previous) => ({
+                                        ...previous,
+                                        technical_contacts: [
+                                            ...previous.technical_contacts,
+                                            { name: "", email: "" },
+                                        ],
+                                    }))
+                                }
+                            >
+                                + Adicionar contato
+                            </Button>
+                            {state.oauthClientFormErrors.technical_contacts && (
+                                <span className="form-field-error">
+                                    {state.oauthClientFormErrors.technical_contacts}
+                                </span>
+                            )}
+                        </div>
+                    </section>
+
+                    <section className="oauth-form-section">
+                        <div className="oauth-form-section-heading">
+                            <h3>Tipo de integração</h3>
+                            <span>Defina como o parceiro poderá autenticar no BiblioWeb.</span>
+                        </div>
+
+                        <div className="oauth-grant-options">
+                            {ALLOWED_OAUTH_GRANT_TYPES.map((grantType) => (
                                 <Checkbox
-                                    key={scope}
-                                    checked={state.oauthClientForm.scopes.includes(scope)}
+                                    key={grantType}
+                                    checked={state.oauthClientForm.grant_types.includes(grantType)}
                                     onChange={(event) => {
                                         const checked = event.target.checked;
                                         actions.setOAuthClientForm((previous) => ({
                                             ...previous,
-                                            scopes: checked
-                                                ? [...previous.scopes, scope]
-                                                : previous.scopes.filter((item) => item !== scope),
+                                            grant_types: checked
+                                                ? [...previous.grant_types, grantType]
+                                                : previous.grant_types.filter((item) => item !== grantType),
                                         }));
-                                        actions.clearOAuthClientFieldError("scopes");
+                                        actions.clearOAuthClientFieldError("grant_types");
                                     }}
                                 >
-                                    {scope} — {translateOAuthScope(scope)}
+                                    <span className="oauth-option-copy">
+                                        <strong>{translateOAuthGrantType(grantType)}</strong>
+                                        <small>{grantType}</small>
+                                    </span>
                                 </Checkbox>
                             ))}
+                        </div>
+                        {state.oauthClientFormErrors.grant_types && (
+                            <span className="form-field-error">{state.oauthClientFormErrors.grant_types}</span>
+                        )}
+
+                        <div className="form-field">
+                            <label className="field-label">URLs de retorno (*)</label>
+                            <span className="form-field-helper oauth-helper-before-control">
+                                Endereços para os quais o BiblioWeb poderá redirecionar o usuário após a autorização.
+                            </span>
+                            {state.oauthClientForm.redirect_uris.map((uri, index) => (
+                                <div key={`redirect-uri-${index}`} className="oauth-redirect-uri-row">
+                                    <Input
+                                        className="admin-input"
+                                        value={uri}
+                                        placeholder="https://parceiro.example/callback"
+                                        onChange={(event) => {
+                                            const value = event.target.value;
+                                            actions.setOAuthClientForm((previous) => {
+                                                const next = [...previous.redirect_uris];
+                                                next[index] = value;
+                                                return { ...previous, redirect_uris: next };
+                                            });
+                                            actions.clearOAuthClientFieldError("redirect_uris");
+                                        }}
+                                    />
+                                    <Button
+                                        danger
+                                        disabled={state.oauthClientForm.redirect_uris.length <= 1}
+                                        onClick={() =>
+                                            actions.setOAuthClientForm((previous) => ({
+                                                ...previous,
+                                                redirect_uris: previous.redirect_uris.filter(
+                                                    (_, itemIndex) => itemIndex !== index
+                                                ),
+                                            }))
+                                        }
+                                    >
+                                        Remover
+                                    </Button>
+                                </div>
+                            ))}
+                            <Button
+                                className="oauth-add-secondary"
+                                onClick={() =>
+                                    actions.setOAuthClientForm((previous) => ({
+                                        ...previous,
+                                        redirect_uris: [...previous.redirect_uris, ""],
+                                    }))
+                                }
+                            >
+                                + Adicionar URL
+                            </Button>
+                            {state.oauthClientFormErrors.redirect_uris && (
+                                <span className="form-field-error">
+                                    {state.oauthClientFormErrors.redirect_uris}
+                                </span>
+                            )}
+                        </div>
+                    </section>
+
+                    <section className="oauth-form-section">
+                        <div className="oauth-form-section-heading">
+                            <h3>Permissões</h3>
+                            <span>Escolha somente os dados e ações necessários para esta integração.</span>
+                        </div>
+
+                        <div className="oauth-permission-groups">
+                            {(["Identidade", "Catálogo", "Empréstimos", "Integração"] as const).map(
+                                (group) => {
+                                    const scopes = ALLOWED_OAUTH_SCOPES.filter(
+                                        (scope) => getOAuthScopeGroup(scope) === group
+                                    );
+                                    if (scopes.length === 0) {
+                                        return null;
+                                    }
+                                    return (
+                                        <div key={group} className="oauth-permission-group">
+                                            <h4>{group}</h4>
+                                            <div className="oauth-scope-checkbox-list">
+                                                {scopes.map((scope) => (
+                                                    <Checkbox
+                                                        key={scope}
+                                                        checked={state.oauthClientForm.scopes.includes(scope)}
+                                                        onChange={(event) => {
+                                                            const checked = event.target.checked;
+                                                            actions.setOAuthClientForm((previous) => ({
+                                                                ...previous,
+                                                                scopes: checked
+                                                                    ? [...previous.scopes, scope]
+                                                                    : previous.scopes.filter(
+                                                                          (item) => item !== scope
+                                                                      ),
+                                                            }));
+                                                            actions.clearOAuthClientFieldError("scopes");
+                                                        }}
+                                                    >
+                                                        <span className="oauth-option-copy">
+                                                            <strong>{translateOAuthScope(scope)}</strong>
+                                                            <small>{scope}</small>
+                                                        </span>
+                                                    </Checkbox>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                            )}
                         </div>
                         {state.oauthClientFormErrors.scopes && (
                             <span className="form-field-error">{state.oauthClientFormErrors.scopes}</span>
                         )}
-                    </div>
+                    </section>
 
-                    <div className="form-field">
-                        <label className="field-label">Descrição</label>
-                        <Input.TextArea
-                            className="admin-input"
-                            value={state.oauthClientForm.description}
-                            onChange={(event) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    description: event.target.value,
-                                }));
-                            }}
-                        />
-                    </div>
+                    <section className="oauth-form-section">
+                        <div className="oauth-form-section-heading">
+                            <h3>Acesso às bibliotecas</h3>
+                            <span>Limite a integração aos acervos que o parceiro realmente utiliza.</span>
+                        </div>
+                        <div className="form-field">
+                            <label className="field-label">Bibliotecas autorizadas</label>
+                            <Select
+                                allowClear
+                                mode="multiple"
+                                className="admin-select"
+                                placeholder="Selecione uma ou mais bibliotecas"
+                                value={state.oauthClientForm.library_ids}
+                                options={libraryOptions}
+                                onChange={(values: string[]) =>
+                                    actions.setOAuthClientForm((previous) => ({
+                                        ...previous,
+                                        library_ids: values,
+                                    }))
+                                }
+                                optionFilterProp="label"
+                                showSearch
+                            />
+                            <span className="form-field-helper">
+                                Sem bibliotecas selecionadas, permissões de catálogo e empréstimos ficarão bloqueadas.
+                            </span>
+                        </div>
+                    </section>
 
-                    <div className="form-field">
-                        <label className="field-label">Organização responsável</label>
-                        <Input
-                            className="admin-input"
-                            value={state.oauthClientForm.organization}
-                            onChange={(event) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    organization: event.target.value,
-                                }));
-                            }}
-                        />
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">Contatos técnicos</label>
-                        {state.oauthClientForm.technical_contacts.map((contact, index) => (
-                            <div key={`technical-contact-${index}`} className="oauth-redirect-uri-row">
-                                <Input
-                                    className="admin-input"
-                                    placeholder="Nome"
-                                    value={contact.name}
-                                    onChange={(event) => {
-                                        const value = event.target.value;
-                                        actions.setOAuthClientForm((previous) => {
-                                            const next = [...previous.technical_contacts];
-                                            next[index] = { ...next[index], name: value };
-                                            return { ...previous, technical_contacts: next };
-                                        });
-                                    }}
-                                />
-                                <Input
-                                    className="admin-input"
-                                    placeholder="E-mail"
-                                    value={contact.email}
-                                    onChange={(event) => {
-                                        const value = event.target.value;
-                                        actions.setOAuthClientForm((previous) => {
-                                            const next = [...previous.technical_contacts];
-                                            next[index] = { ...next[index], email: value };
-                                            return { ...previous, technical_contacts: next };
-                                        });
-                                    }}
-                                />
-                                <Button
-                                    danger
-                                    onClick={() => {
+                    <details className="oauth-advanced-settings">
+                        <summary>Configurações avançadas</summary>
+                        <div className="oauth-advanced-settings-content">
+                            <div className="switch-field oauth-confidential-field">
+                                <div>
+                                    <span className="field-label">Integração com segredo protegido</span>
+                                    <span className="form-field-helper">
+                                        Ative quando o parceiro roda em um servidor capaz de armazenar a credencial com segurança.
+                                    </span>
+                                </div>
+                                <Switch
+                                    checked={state.oauthClientForm.is_confidential}
+                                    onChange={(checked) =>
                                         actions.setOAuthClientForm((previous) => ({
                                             ...previous,
-                                            technical_contacts: previous.technical_contacts.filter(
-                                                (_, itemIndex) => itemIndex !== index
-                                            ),
-                                        }));
-                                    }}
-                                >
-                                    Remover
-                                </Button>
+                                            is_confidential: checked,
+                                        }))
+                                    }
+                                />
                             </div>
-                        ))}
-                        <Button
-                            onClick={() => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    technical_contacts: [
-                                        ...previous.technical_contacts,
-                                        { name: "", email: "" },
-                                    ],
-                                }));
-                            }}
-                        >
-                            + Adicionar contato
-                        </Button>
-                        {state.oauthClientFormErrors.technical_contacts && (
-                            <span className="form-field-error">
-                                {state.oauthClientFormErrors.technical_contacts}
-                            </span>
-                        )}
-                    </div>
+                        </div>
+                    </details>
 
-                    <div className="form-field">
-                        <label className="field-label">Bibliotecas autorizadas</label>
-                        <Select
-                            allowClear
-                            mode="multiple"
-                            className="admin-select"
-                            placeholder="Selecione uma ou mais bibliotecas"
-                            value={state.oauthClientForm.library_ids}
-                            options={libraryOptions}
-                            onChange={(values: string[]) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    library_ids: values,
-                                }));
-                            }}
-                            optionFilterProp="label"
-                            showSearch
-                        />
-                        <span className="form-field-helper">
-                            Sem nenhuma biblioteca selecionada, o client fica bloqueado em qualquer
-                            endpoint de catálogo/empréstimo que exija library_id.
-                        </span>
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">Expira em</label>
-                        <Input
-                            className="admin-input"
-                            type="datetime-local"
-                            value={state.oauthClientForm.expires_at}
-                            onChange={(event) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    expires_at: event.target.value,
-                                }));
-                            }}
-                        />
-                        <span className="form-field-helper">Horário em UTC.</span>
-                    </div>
-
-                    <div className="form-field">
-                        <label className="field-label">Client confidencial</label>
-                        <Switch
-                            checked={state.oauthClientForm.is_confidential}
-                            onChange={(checked) => {
-                                actions.setOAuthClientForm((previous) => ({
-                                    ...previous,
-                                    is_confidential: checked,
-                                }));
-                            }}
-                        />
-                    </div>
-
-                    <div className="modal-actions">
+                    <div className="modal-actions oauth-modal-actions">
                         <Button onClick={actions.closeOAuthClientModal}>Cancelar</Button>
                         <Button type="primary" htmlType="submit" loading={state.isSavingOAuthClient}>
-                            Salvar
+                            {state.oauthClientModalMode === "create" ? "Criar parceiro" : "Salvar alterações"}
                         </Button>
                     </div>
                 </form>
             </Modal>
 
-            <Modal
-                title="Histórico de alterações"
-                open={state.historyModalOpen}
-                onCancel={actions.closeClientHistory}
-                footer={null}
-            >
-                <List
-                    loading={state.isLoadingHistory}
-                    dataSource={state.historyEvents}
-                    locale={{ emptyText: "Nenhum evento registrado." }}
-                    renderItem={(event) => (
-                        <List.Item>
-                            <List.Item.Meta
-                                title={event.event_type}
-                                description={
-                                    <span>
-                                        {event.created_at
-                                            ? new Date(event.created_at + "Z").toLocaleString("pt-BR")
-                                            : ""}
-                                        {event.reason && ` — ${event.reason}`}
-                                    </span>
-                                }
-                            />
-                        </List.Item>
-                    )}
-                />
-            </Modal>
         </Layout>
     );
 }

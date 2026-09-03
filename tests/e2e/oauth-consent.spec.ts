@@ -40,7 +40,7 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
 
             await Promise.all([
                 page.waitForURL(/oauth-test-callback\?/),
-                page.getByRole("button", { name: "Permitir" }).click(),
+                page.getByRole("button", { name: "Permitir acesso" }).click(),
             ]);
 
             const finalUrl = new URL(page.url());
@@ -70,7 +70,7 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
 
             await Promise.all([
                 page.waitForURL(/oauth-test-callback\?/),
-                page.getByRole("button", { name: "Negar" }).click(),
+                page.getByRole("button", { name: "Não permitir" }).click(),
             ]);
 
             const finalUrl = new URL(page.url());
@@ -102,9 +102,10 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
             await expect(page).toHaveURL(/\/oauth\/consent\?request_id=/);
 
             await expect(
-                page.getByText("Organização: Parceiro E2E Consentimento Ltda")
+                page.getByText("por Parceiro E2E Consentimento Ltda")
             ).toBeVisible();
-            await expect(page.getByText(`Biblioteca: ${library.nome}`)).toBeVisible();
+            await expect(page.getByText("Acesso limitado a")).toBeVisible();
+            await expect(page.getByText(library.nome)).toBeVisible();
         } finally {
             await deleteUser(request, created.adminToken, created.user.id);
             await deactivateOAuthClientApi(request, adminToken, client.id);
@@ -133,7 +134,7 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
             await expect(page).toHaveURL(/\/oauth\/consent\?request_id=/);
             await Promise.all([
                 page.waitForURL(/oauth-test-callback\?/),
-                page.getByRole("button", { name: "Permitir" }).click(),
+                page.getByRole("button", { name: "Permitir acesso" }).click(),
             ]);
 
             const sameScopeUrl = buildOAuthAuthorizeUrl(
@@ -156,7 +157,8 @@ test.describe.serial("Fluxo de consentimento OAuth", () => {
             await expect(
                 page.getByText("Criar e devolver empréstimos em seu nome")
             ).toBeVisible();
-            await expect(page.getByText(/já está conectado/i)).toBeVisible();
+            await expect(page.getByText(/quer ampliar o acesso/i)).toBeVisible();
+            await expect(page.getByText("Novas permissões solicitadas")).toBeVisible();
         } finally {
             await deleteUser(request, created.adminToken, created.user.id);
             await deactivateOAuthClientApi(request, adminToken, client.id);

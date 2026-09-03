@@ -31,7 +31,10 @@ import BookCard from "../components/BookCard";
 import LoanedBookCard from "../components/LoanedBookCard";
 import { listConsents, revokeConsent } from "../service/oauthConsentService";
 import { OAuthConnectedApp } from "../model/OAuthConsent";
-import { translateOAuthScope } from "../model/OAuthScopes";
+import {
+    formatOAuthConnectedAppDate,
+    getOAuthConnectedAppScopeSections,
+} from "../model/OAuthPartnerPresentation";
 import "../styles/AdminView.css";
 import "../styles/ProfileView.css";
 
@@ -72,30 +75,6 @@ function getUserIdFromToken(token: string | null): string | null {
     const payload = getTokenPayload(token);
     const value = payload?.sub;
     return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-/**
- * Converte um timestamp UTC "cru" (sem `Z`/offset) vindo da API em `Date`.
- *
- * @param value Timestamp no formato `YYYY-MM-DDTHH:mm:ss`, sem indicador de fuso.
- * @returns Instância de `Date` correta em UTC.
- */
-function parseUtcTimestamp(value: string): Date {
-    return new Date(`${value}Z`);
-}
-
-/**
- * Formata a data de conexão/atualização de um app conectado.
- *
- * @param value Timestamp UTC cru vindo da API.
- * @returns Data e hora locais formatadas em pt-BR, ou o valor bruto se inválido.
- */
-function formatConnectedAppDate(value: string): string {
-    const parsed = parseUtcTimestamp(value);
-    if (Number.isNaN(parsed.getTime())) {
-        return value;
-    }
-    return parsed.toLocaleString("pt-BR");
 }
 
 type SelfPasswordFormState = {
@@ -191,6 +170,9 @@ export default function ProfileView() {
     const [revokingConnectedAppClientId, setRevokingConnectedAppClientId] = useState<
         string | null
     >(null);
+    const [expandedConnectedAppIds, setExpandedConnectedAppIds] = useState<Set<string>>(
+        () => new Set()
+    );
     const isMountedRef = useRef(true);
 
     function openSelfPasswordModal(): void {
@@ -439,16 +421,34 @@ export default function ProfileView() {
     }
 
     /**
+     * Alterna a exibição das permissões detalhadas de um app conectado.
+     *
+     * @param clientId Identificador do parceiro OAuth.
+     * @returns void.
+     */
+    function toggleConnectedAppPermissions(clientId: string): void {
+        setExpandedConnectedAppIds((previous) => {
+            const next = new Set(previous);
+            if (next.has(clientId)) {
+                next.delete(clientId);
+            } else {
+                next.add(clientId);
+            }
+            return next;
+        });
+    }
+
+    /**
      * Exibe confirmação e, se aprovada, revoga o consentimento de um app.
      *
-     * @param app App conectado a desconectar.
+     * @param app App conectado cujo acesso será removido.
      * @returns void.
      */
     function confirmRevokeConnectedApp(app: OAuthConnectedApp): void {
         modal.confirm({
-            title: "Desconectar aplicativo",
-            content: `Desconectar "${app.client_name}"? O acesso será removido imediatamente. Para reconectar, será preciso autorizar de novo.`,
-            okText: "Desconectar",
+            title: "Remover acesso do aplicativo",
+            content: `Remover o acesso de "${app.client_name}"? O aplicativo deixará de acessar sua conta imediatamente. Para utilizá-lo novamente, será necessário autorizar o acesso outra vez.`,
+            okText: "Remover acesso",
             okButtonProps: { danger: true },
             cancelText: "Cancelar",
             onOk: async () => {
@@ -464,10 +464,10 @@ export default function ProfileView() {
                     setConnectedApps((previous) =>
                         previous.filter((item) => item.client_id !== app.client_id)
                     );
-                    message.success("Aplicativo desconectado.");
+                    message.success("Acesso do aplicativo removido.");
                 } catch (error) {
                     console.error("Failed to revoke OAuth consent", error);
-                    message.error("Não foi possível desconectar este aplicativo.");
+                    message.error("Não foi possível remover o acesso deste aplicativo.");
                 } finally {
                     setRevokingConnectedAppClientId(null);
                 }
@@ -642,10 +642,18 @@ export default function ProfileView() {
                                 </div>
 
                                 {!isBooksOnlyView && (
-                                    <div className="profile-block">
-                                        <Typography.Text className="profile-block-title">
-                                            Apps conectados
-                                        </Typography.Text>
+                                    <div className="profile-block connected-apps-block">
+                                        <div className="connected-apps-heading">
+                                            <Typography.Text className="profile-block-title">
+                                                Apps conectados
+                                            </Typography.Text>
+                                            <Typography.Text
+                                                type="secondary"
+                                                className="connected-apps-description"
+                                            >
+                                                Aplicativos que você autorizou a acessar informações ou realizar ações em sua conta.
+                                            </Typography.Text>
+                                        </div>
                                         {isLoadingConnectedApps ? (
                                             <Spin size="small" />
                                         ) : connectedApps.length === 0 ? (
@@ -654,43 +662,104 @@ export default function ProfileView() {
                                             </Typography.Text>
                                         ) : (
                                             <div className="connected-app-list">
-                                                {connectedApps.map((app) => (
-                                                    <div key={app.client_id} className="connected-app-card">
-                                                        <div className="connected-app-info">
-                                                            <Typography.Text strong>
-                                                                {app.client_name}
-                                                            </Typography.Text>
-                                                            <div className="profile-tag-list connected-app-scopes">
-                                                                {app.scopes
-                                                                    .filter((scope) => scope !== "openid")
-                                                                    .map((scope) => (
-                                                                        <Tag key={scope} color="blue">
-                                                                            {translateOAuthScope(scope)}
-                                                                        </Tag>
-                                                                    ))}
+                                                {connectedApps.map((app) => {
+                                                    const scopeSections = getOAuthConnectedAppScopeSections(app.scopes);
+                                                    const permissionCount = scopeSections.reduce(
+                                                        (total, section) => total + section.permissions.length,
+                                                        0
+                                                    );
+                                                    const isExpanded = expandedConnectedAppIds.has(app.client_id);
+                                                    const permissionSummary = scopeSections
+                                                        .map((section) => section.label)
+                                                        .join(" · ");
+                                                    const permissionsRegionId = `connected-app-permissions-${app.client_id}`;
+
+                                                    return (
+                                                        <div key={app.client_id} className="connected-app-card">
+                                                            <div className="connected-app-info">
+                                                                <Typography.Text strong className="connected-app-name">
+                                                                    {app.client_name}
+                                                                </Typography.Text>
+
+                                                                {permissionSummary ? (
+                                                                    <div className="connected-app-access-summary">
+                                                                        <span className="connected-app-access-label">Acesso a:</span>
+                                                                        <span>{permissionSummary}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <Typography.Text type="secondary" className="connected-app-no-permissions">
+                                                                        Sem permissões adicionais.
+                                                                    </Typography.Text>
+                                                                )}
+
+                                                                {permissionCount > 0 && (
+                                                                    <Button
+                                                                        type="link"
+                                                                        size="small"
+                                                                        className="connected-app-permissions-toggle"
+                                                                        aria-expanded={isExpanded}
+                                                                        aria-controls={permissionsRegionId}
+                                                                        onClick={() => toggleConnectedAppPermissions(app.client_id)}
+                                                                    >
+                                                                        {isExpanded
+                                                                            ? "Ocultar permissões"
+                                                                            : `Ver ${permissionCount} ${
+                                                                                  permissionCount === 1
+                                                                                      ? "permissão"
+                                                                                      : "permissões"
+                                                                              }`}
+                                                                    </Button>
+                                                                )}
+
+                                                                {isExpanded && permissionCount > 0 && (
+                                                                    <div
+                                                                        id={permissionsRegionId}
+                                                                        className="connected-app-permissions"
+                                                                    >
+                                                                        {scopeSections.map((section) => (
+                                                                            <div
+                                                                                key={section.key}
+                                                                                className="connected-app-permission-section"
+                                                                            >
+                                                                                <Typography.Text
+                                                                                    strong
+                                                                                    className="connected-app-permission-title"
+                                                                                >
+                                                                                    {section.label}
+                                                                                </Typography.Text>
+                                                                                <ul className="connected-app-permission-list">
+                                                                                    {section.permissions.map((permission) => (
+                                                                                        <li key={permission}>
+                                                                                            <span aria-hidden="true">✓</span>
+                                                                                            <span>{permission}</span>
+                                                                                        </li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                <Typography.Text
+                                                                    type="secondary"
+                                                                    className="connected-app-meta"
+                                                                >
+                                                                    Acesso concedido em {formatOAuthConnectedAppDate(app.granted_at)}
+                                                                </Typography.Text>
                                                             </div>
-                                                            <Typography.Text
-                                                                type="secondary"
-                                                                className="connected-app-meta"
+                                                            <Button
+                                                                danger
+                                                                className="connected-app-revoke-button"
+                                                                loading={
+                                                                    revokingConnectedAppClientId === app.client_id
+                                                                }
+                                                                onClick={() => confirmRevokeConnectedApp(app)}
                                                             >
-                                                                Conectado em{" "}
-                                                                {formatConnectedAppDate(app.granted_at)}
-                                                                {app.updated_at !== app.granted_at
-                                                                    ? ` · atualizado em ${formatConnectedAppDate(app.updated_at)}`
-                                                                    : ""}
-                                                            </Typography.Text>
+                                                                Remover acesso
+                                                            </Button>
                                                         </div>
-                                                        <Button
-                                                            danger
-                                                            loading={
-                                                                revokingConnectedAppClientId === app.client_id
-                                                            }
-                                                            onClick={() => confirmRevokeConnectedApp(app)}
-                                                        >
-                                                            Desconectar
-                                                        </Button>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>

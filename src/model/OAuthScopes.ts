@@ -28,32 +28,6 @@ export const ALLOWED_OAUTH_GRANT_TYPES = [
 
 export type OAuthGrantType = (typeof ALLOWED_OAUTH_GRANT_TYPES)[number];
 
-const OAUTH_SCOPE_LABELS: Record<string, string> = {
-    openid: "Confirmar sua identidade",
-    profile: "Ver seu nome",
-    email: "Ver seu e-mail",
-    offline_access: "Continuar conectado sem precisar logar de novo",
-    "biblioweb.profile.read": "Ver seu perfil BiblioWeb",
-    "biblioweb.libraries.read": "Ver as bibliotecas às quais você tem acesso",
-    "biblioweb.catalog.read": "Ver o catálogo das suas bibliotecas",
-    "biblioweb.loans.read": "Ver seus empréstimos",
-    "biblioweb.loans.write": "Criar e devolver empréstimos em seu nome",
-    "biblioweb.licenses.read": "Baixar licenças dos seus empréstimos",
-};
-
-/**
- * Traduz um código de escopo OAuth para um texto amigável.
- *
- * Escopos sem tradução (ex: `biblioweb.integration.read`, que não está
- * na tabela de tradução do handoff) caem no fallback: o próprio código.
- *
- * @param scope Código do escopo (ex: "biblioweb.loans.read").
- * @returns Texto amigável, ou o próprio código quando não houver tradução.
- */
-export function translateOAuthScope(scope: string): string {
-    return OAUTH_SCOPE_LABELS[scope] || scope;
-}
-
 /**
  * Converte uma string de escopos separados por espaço em uma lista.
  *

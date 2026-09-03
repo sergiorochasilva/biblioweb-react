@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
     ADMIN_EMAIL,
     ADMIN_PASSWORD,
@@ -11,7 +11,22 @@ import {
     selectFirstOptionInField,
 } from "./support";
 
-test.describe.serial("Administração de clients OAuth", () => {
+/**
+ * Seleciona o status ("Ativos"/"Inativos"/"Todos") do filtro de parceiros.
+ *
+ * O select usa a lista virtualizada do antd — `role="option"` não é
+ * resolvido de forma confiável (mesma razão pela qual os demais selects
+ * deste arquivo usam `.ant-select-dropdown`/`.ant-select-item-option` em
+ * vez de `getByRole("option", ...)`).
+ */
+async function selectPartnerStatusFilter(page: Page, status: "Ativos" | "Inativos" | "Todos") {
+    await page.getByLabel("Filtrar parceiros por status").click();
+    const dropdown = page.locator(".ant-select-dropdown:visible").last();
+    await expect(dropdown).toBeVisible();
+    await dropdown.getByTitle(status, { exact: true }).click();
+}
+
+test.describe.serial("Administração de parceiros OAuth", () => {
     test("admin cria, edita, rotaciona segredo e desativa um client OAuth", async ({
         page,
         request,
@@ -23,51 +38,53 @@ test.describe.serial("Administração de clients OAuth", () => {
         try {
             await loginWithPassword(page, ADMIN_EMAIL, ADMIN_PASSWORD);
             await page.goto("/admin");
-            await page.getByRole("tab", { name: "Clients OAuth" }).click();
+            await page.getByRole("tab", { name: "Parceiros" }).click();
 
-            await page.getByRole("button", { name: "Novo client" }).click();
-            await fillFormField(page, "Nome (*)", clientName);
+            await page.getByRole("button", { name: "Cadastrar parceiro" }).click();
+            await fillFormField(page, "Nome da integração (*)", clientName);
             await fillFormField(
                 page,
-                "URIs de redirecionamento (*)",
+                "URLs de retorno (*)",
                 "https://partner.example.com/callback"
             );
-            await page.getByText("openid — Confirmar sua identidade").click();
-            await page.getByText("biblioweb.profile.read — Ver seu perfil BiblioWeb").click();
-            await page.getByRole("button", { name: "Salvar" }).click();
+            await page.getByText("Confirmar sua identidade", { exact: true }).click();
+            await page.getByText("Ver seu perfil BiblioWeb", { exact: true }).click();
+            await page.getByRole("button", { name: "Criar parceiro" }).click();
 
             const row = locateListRow(page, clientName);
             await expect(row).toBeVisible();
-            await expect(row.getByText(/Link de revelação do segredo/)).toBeVisible();
+            await expect(row.getByText(/Novo segredo gerado/)).toBeVisible();
 
             const clientIdText = await row.getByText(/^ID: /).innerText();
             createdClientId = clientIdText.replace("ID: ", "").trim();
 
             await page.getByRole("tab", { name: "Editoras" }).click();
-            await page.getByRole("tab", { name: "Clients OAuth" }).click();
-            await expect(row.getByText(/Link de revelação do segredo/)).not.toBeVisible();
+            await page.getByRole("tab", { name: "Parceiros" }).click();
+            await expect(row.getByText(/Novo segredo gerado/)).not.toBeVisible();
 
-            await row.getByRole("button", { name: "Rotacionar segredo" }).click();
+            await row.getByRole("button", { name: /Mais ações para/ }).click();
+            await page.getByText("Gerar novo segredo", { exact: true }).click();
             await page
-                .getByRole("button", { name: "Rotacionar", exact: true })
+                .getByRole("button", { name: "Gerar novo segredo", exact: true })
                 .last()
                 .click();
-            await expect(row.getByText(/Link de revelação do segredo/)).toBeVisible();
+            await expect(row.getByText(/Novo segredo gerado/)).toBeVisible();
 
             await row.getByRole("button", { name: "Editar" }).click();
-            await fillFormField(page, "Nome (*)", `${clientName} editado`);
-            await page.getByRole("button", { name: "Salvar" }).click();
+            await fillFormField(page, "Nome da integração (*)", `${clientName} editado`);
+            await page.getByRole("button", { name: "Salvar alterações" }).click();
             await expect(page.getByText(`${clientName} editado`)).toBeVisible();
 
             const editedRow = locateListRow(page, `${clientName} editado`);
-            await editedRow.getByRole("button", { name: "Desativar" }).click();
+            await editedRow.getByRole("button", { name: /Mais ações para/ }).click();
+            await page.getByText("Desativar parceiro", { exact: true }).click();
             await page
                 .getByRole("button", { name: "Desativar", exact: true })
                 .last()
                 .click();
             await expect(page.getByText(`${clientName} editado`)).not.toBeVisible();
 
-            await page.locator(".users-toolbar").getByRole("switch").click();
+            await selectPartnerStatusFilter(page, "Inativos");
             await expect(page.getByText(`${clientName} editado`)).toBeVisible();
             await expect(editedRow.getByText("Inativo")).toBeVisible();
         } finally {
@@ -88,13 +105,13 @@ test.describe.serial("Administração de clients OAuth", () => {
         try {
             await loginWithPassword(page, ADMIN_EMAIL, ADMIN_PASSWORD);
             await page.goto("/admin");
-            await page.getByRole("tab", { name: "Clients OAuth" }).click();
+            await page.getByRole("tab", { name: "Parceiros" }).click();
 
-            await page.getByRole("button", { name: "Novo client" }).click();
-            await fillFormField(page, "Nome (*)", clientName);
+            await page.getByRole("button", { name: "Cadastrar parceiro" }).click();
+            await fillFormField(page, "Nome da integração (*)", clientName);
             await fillFormField(
                 page,
-                "URIs de redirecionamento (*)",
+                "URLs de retorno (*)",
                 "https://partner.example.com/callback"
             );
             // O formulário já vem com o escopo "openid" pré-selecionado por padrão
@@ -109,11 +126,11 @@ test.describe.serial("Administração de clients OAuth", () => {
                     .first()
                     .innerText()
             ).trim();
-            await page.getByRole("button", { name: "Salvar" }).click();
+            await page.getByRole("button", { name: "Criar parceiro" }).click();
 
             const row = locateListRow(page, clientName);
             await expect(row).toBeVisible();
-            await expect(row.getByText("Organização: Parceiro E2E Ltda")).toBeVisible();
+            await expect(row.getByText("Parceiro E2E Ltda", { exact: true })).toBeVisible();
             await expect(row.getByText("Sem bibliotecas")).toHaveCount(0);
 
             const clientIdText = await row.getByText(/^ID: /).innerText();
@@ -129,14 +146,15 @@ test.describe.serial("Administração de clients OAuth", () => {
             ).toHaveText(selectedLibrary);
             await page.getByRole("button", { name: "Cancelar" }).click();
 
-            await row.getByRole("button", { name: "Desativar" }).click();
+            await row.getByRole("button", { name: /Mais ações para/ }).click();
+            await page.getByText("Desativar parceiro", { exact: true }).click();
             await page
                 .getByRole("button", { name: "Desativar", exact: true })
                 .last()
                 .click();
             await expect(page.getByText(clientName)).not.toBeVisible();
 
-            await page.locator(".users-toolbar").getByRole("switch").click();
+            await selectPartnerStatusFilter(page, "Inativos");
             const inactiveRow = locateListRow(page, clientName);
             await expect(inactiveRow.getByText("Inativo")).toBeVisible();
 
@@ -145,7 +163,7 @@ test.describe.serial("Administração de clients OAuth", () => {
                 .getByRole("button", { name: "Reativar", exact: true })
                 .last()
                 .click();
-            await page.locator(".users-toolbar").getByRole("switch").click();
+            await selectPartnerStatusFilter(page, "Ativos");
             await expect(locateListRow(page, clientName).getByText("Inativo")).not.toBeVisible();
         } finally {
             if (createdClientId) {

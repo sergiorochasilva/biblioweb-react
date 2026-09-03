@@ -28,12 +28,12 @@ async function connectTestApp(
     await page.goto(authorizeUrl);
     await Promise.all([
         page.waitForURL(/oauth-test-callback\?/),
-        page.getByRole("button", { name: "Permitir" }).click(),
+        page.getByRole("button", { name: "Permitir acesso" }).click(),
     ]);
 }
 
 test.describe.serial("Apps conectados em /profile", () => {
-    test("usuário vê o app conectado e consegue desconectar", async ({ page, request }) => {
+    test("usuário entende as permissões do app conectado e consegue remover o acesso", async ({ page, request }) => {
         const adminToken = await loginAsAdminApi(request);
         const client = await createOAuthClientApi(request, adminToken, {
             scopes: ["openid", "biblioweb.profile.read"],
@@ -46,12 +46,20 @@ test.describe.serial("Apps conectados em /profile", () => {
 
             await page.goto("/profile");
             await expect(page.getByText(client.name)).toBeVisible();
-            await expect(page.getByText("Ver seu perfil BiblioWeb")).toBeVisible();
+            await expect(
+                page.getByText("Aplicativos que você autorizou a acessar informações ou realizar ações em sua conta.")
+            ).toBeVisible();
+            await expect(page.getByText("Acesso a:")).toBeVisible();
+            await expect(page.getByText("Ver seu perfil BiblioWeb")).not.toBeVisible();
 
-            await page.getByRole("button", { name: "Desconectar" }).click();
+            await page.getByRole("button", { name: "Ver 1 permissão" }).click();
+            await expect(page.getByText("Ver seu perfil BiblioWeb")).toBeVisible();
+            await expect(page.getByText(/Acesso concedido em/)).toBeVisible();
+
+            await page.getByRole("button", { name: "Remover acesso" }).click();
             const confirmDialog = page.getByRole("dialog");
             await expect(confirmDialog).toBeVisible();
-            await confirmDialog.getByRole("button", { name: "Desconectar" }).click();
+            await confirmDialog.getByRole("button", { name: "Remover acesso" }).click();
             await expect(confirmDialog).not.toBeVisible();
 
             await expect(page.getByText(client.name)).not.toBeVisible();

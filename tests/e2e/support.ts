@@ -552,6 +552,7 @@ export async function createTestUser(
         publisherAdmin?: boolean;
         linkPublisher?: boolean;
         withLibraries?: boolean;
+        libraryIds?: number[];
     } = {}
 ): Promise<{
     adminToken: string;
@@ -581,8 +582,12 @@ export async function createTestUser(
         ];
     }
 
-    if (options.withLibraries) {
-        payload.library_limits = [{ library: 1, max_concurrent_loans: 3 }];
+    const requestedLibraries = options.libraryIds || (options.withLibraries ? [1] : []);
+    if (requestedLibraries.length > 0) {
+        payload.library_limits = requestedLibraries.map((library) => ({
+            library,
+            max_concurrent_loans: 3,
+        }));
     }
 
     const user = await createUser(request, adminToken, payload);
@@ -685,9 +690,27 @@ export async function loginWithPassword(
         page.getByRole("button", { name: "Entrar com senha" }).click(),
     ]);
     await page.getByPlaceholder("Digite sua senha").fill(password);
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.waitForURL((url) => url.pathname !== "/login-password");
+
+    if (new URL(page.url()).pathname !== "/selection") {
+        return;
+    }
+
+    await expect(
+        page.getByRole("button", { name: /selecionar acervo/i }).first()
+    ).toBeVisible();
+    const defaultLibraryCard = page.getByRole("button", {
+        name: /selecionar acervo fitref/i,
+    });
+    const selectedLibraryCard =
+        (await defaultLibraryCard.count()) > 0
+            ? defaultLibraryCard
+            : page.getByRole("button", { name: /selecionar acervo/i }).first();
+
     await Promise.all([
-        page.waitForURL(/\/(profile|publisher-admin|selection|admin)(\?.*)?$/),
-        page.getByRole("button", { name: "Entrar" }).click(),
+        page.waitForURL((url) => url.pathname !== "/selection"),
+        selectedLibraryCard.click(),
     ]);
 }
 

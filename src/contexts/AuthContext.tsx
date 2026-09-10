@@ -9,6 +9,7 @@ import { api } from "../service/api";
 import type { AuthTokenResponse } from "../service/authTypes";
 import { AuthContext, type AccessTokenOptions, type AuthSession } from "./authContext";
 import type { Library, ProfileData, Publisher } from "../types";
+import { validateStoredLibrary } from "../service/librarySession";
 
 const TOKEN_EXPIRY_BUFFER_MS = 30_000;
 
@@ -23,6 +24,23 @@ function normalizeExpiresAt(raw: unknown): number | null {
     const value = Number(raw);
     if (!Number.isFinite(value)) return null;
     return value > 1e12 ? value : value * 1000;
+}
+
+/**
+ * Lê JSON do storage sem deixar um valor legado/corrompido quebrar a sessão.
+ *
+ * @param key Chave persistida no navegador.
+ * @returns Valor desserializado ou ``null`` quando inválido.
+ */
+function readStoredJson<T>(key: string): T | null {
+    const rawValue = localStorage.getItem(key);
+    if (!rawValue) return null;
+    try {
+        return JSON.parse(rawValue) as T;
+    } catch {
+        localStorage.removeItem(key);
+        return null;
+    }
 }
 
 /**
@@ -139,18 +157,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const parsed = Number(stored);
         return Number.isFinite(parsed) ? parsed : null;
     });
-    const [publisher, setPublisherState] = useState<Publisher | null>(() => {
-        const saved = localStorage.getItem("publisher");
-        return saved ? JSON.parse(saved) : null;
-    });
-    const [library, setLibraryState] = useState<Library | null>(() => {
-        const saved = localStorage.getItem("library");
-        return saved ? JSON.parse(saved) : null;
-    });
-    const [profile, setProfileState] = useState<ProfileData | null>(() => {
-        const saved = localStorage.getItem("profile");
-        return saved ? JSON.parse(saved) : null;
-    });
+    const [publisher, setPublisherState] = useState<Publisher | null>(() => readStoredJson("publisher"));
+    const [library, setLibraryState] = useState<Library | null>(() => readStoredJson("library"));
+    const [profile, setProfileState] = useState<ProfileData | null>(() => readStoredJson("profile"));
+    const profileRef = useRef<ProfileData | null>(profile);
 
     useEffect(() => {
         if (token) {
@@ -284,7 +294,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
      * @returns void
      */
     const setLibrary = useCallback((newLibrary: Library | null): void => {
-        setLibraryState(newLibrary);
+        const currentProfile = profileRef.current;
+        setLibraryState(currentProfile ? validateStoredLibrary(newLibrary, currentProfile) : newLibrary);
     }, []);
 
     /**
@@ -294,7 +305,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
      * @returns void
      */
     const setProfile = useCallback((newProfile: ProfileData | null): void => {
+        profileRef.current = newProfile;
         setProfileState(newProfile);
+        setLibraryState((currentLibrary) => {
+            const validatedLibrary = validateStoredLibrary(currentLibrary, newProfile);
+            return currentLibrary?.id === validatedLibrary?.id
+                ? currentLibrary
+                : validatedLibrary;
+        });
     }, []);
 
     /**

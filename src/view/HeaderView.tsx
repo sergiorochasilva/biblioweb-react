@@ -11,6 +11,7 @@ import {
     hasPublisherAdminPermission,
 } from "../service/permissions";
 import type { ProfileData } from "../types";
+import { getEligibleLibraries } from "../service/librarySession";
 
 /**
  * Extrai o payload de um JWT sem validação de assinatura.
@@ -84,7 +85,16 @@ export default function HeaderView() {
     const location = useLocation();
     const query = new URLSearchParams(location.search).get("query") || "";
     const [input, setInput] = useState(query);
-    const { isAuthenticated, profile, token, logout, getAccessToken, setProfile } = useAuth();
+    const {
+        isAuthenticated,
+        profile,
+        token,
+        library,
+        logout,
+        getAccessToken,
+        setProfile,
+        setLibrary,
+    } = useAuth();
 
     useEffect(() => {
         setInput(query);
@@ -132,6 +142,24 @@ export default function HeaderView() {
             isActive = false;
         };
     }, [isAuthenticated, token, profileEmail, getAccessToken, setProfile]);
+
+    const availableLibraries = useMemo(() => getEligibleLibraries(profile), [profile]);
+
+    useEffect(() => {
+        if (!isAuthenticated || !profile || library || availableLibraries.length === 0) {
+            return;
+        }
+
+        if (availableLibraries.length === 1) {
+            setLibrary(availableLibraries[0]);
+            return;
+        }
+
+        if (!location.pathname.startsWith("/selection")) {
+            const nextPath = `${location.pathname}${location.search}${location.hash}`;
+            navigate(`/selection?next=${encodeURIComponent(nextPath)}`, { replace: true });
+        }
+    }, [availableLibraries, isAuthenticated, library, location, navigate, profile, setLibrary]);
 
     const userEmail = useMemo(
         () => profile?.email || getEmailFromToken(token) || "",
@@ -206,6 +234,27 @@ export default function HeaderView() {
             label: "Sair",
         },
     ];
+
+    const libraryMenuItems: MenuProps["items"] = availableLibraries.map((item) => ({
+        key: String(item.id),
+        label: item.name,
+        disabled: item.id === library?.id,
+    }));
+
+    /**
+     * Troca o acervo ativo por um dos vínculos presentes no perfil atual.
+     *
+     * @param key Identificador serializado do item escolhido no menu.
+     * @returns void
+     */
+    const handleLibraryMenuClick = ({ key }: { key: string }) => {
+        const selectedLibrary = availableLibraries.find((item) => item.id === Number(key));
+        if (!selectedLibrary || selectedLibrary.id === library?.id) {
+            return;
+        }
+        setLibrary(selectedLibrary);
+        navigate("/");
+    };
 
     /**
      * Trata ações do menu de usuário.
@@ -293,18 +342,31 @@ export default function HeaderView() {
 
                     <div className="header-slot-right">
                         {isAuthenticated ? (
-                            <Dropdown
-                                menu={{
-                                    items: menuItems,
-                                    onClick: handleUserMenuClick,
-                                }}
-                                trigger={["click"]}
-                                placement="bottomRight"
-                            >
-                                <Button className="profile-button" type="text" aria-label="Abrir perfil">
-                                    {initials}
-                                </Button>
-                            </Dropdown>
+                            <>
+                                {availableLibraries.length > 1 && library && (
+                                    <Dropdown
+                                        menu={{ items: libraryMenuItems, onClick: handleLibraryMenuClick }}
+                                        trigger={["click"]}
+                                        placement="bottomRight"
+                                    >
+                                        <Button className="categories-button" type="text" aria-label="Trocar acervo">
+                                            {library.name}
+                                        </Button>
+                                    </Dropdown>
+                                )}
+                                <Dropdown
+                                    menu={{
+                                        items: menuItems,
+                                        onClick: handleUserMenuClick,
+                                    }}
+                                    trigger={["click"]}
+                                    placement="bottomRight"
+                                >
+                                    <Button className="profile-button" type="text" aria-label="Abrir perfil">
+                                        {initials}
+                                    </Button>
+                                </Dropdown>
+                            </>
                         ) : (
                             <Button
                                 className="header-login-button"

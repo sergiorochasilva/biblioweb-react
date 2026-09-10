@@ -142,7 +142,7 @@ export default function ProfileView() {
     const { message } = AntdApp.useApp();
     const { Content } = Layout;
     const { profile, setProfile, publisher, library, getAccessToken } = useAuth();
-    const currentLibraryId = library?.id ?? DEFAULT_PUBLIC_LIBRARY_ID;
+    const currentLibraryId = library?.id;
     const isBooksOnlyView = location.pathname === "/meus-livros";
 
     const [isLoading, setIsLoading] = useState(false);
@@ -236,7 +236,7 @@ export default function ProfileView() {
             }
 
             const loadedProfile = await api.get<ProfileData>(
-                `/profile?library=${currentLibraryId}`,
+                currentLibraryId ? `/profile?library=${currentLibraryId}` : "/profile",
                 accessToken
             );
             if (!isMountedRef.current) {

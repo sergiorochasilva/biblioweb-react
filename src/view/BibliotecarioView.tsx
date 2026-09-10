@@ -232,6 +232,7 @@ export default function BibliotecarioView() {
     const navigate = useNavigate();
     const location = useLocation();
     const { getAccessToken, profile, library } = useAuth();
+    const currentLibraryId = library?.id ?? 1;
     const [clientKey] = useState(() => getOrCreateClientKey());
     const [conversations, setConversations] = useState<ChatConversationRecord[]>([]);
     const [conversationsNext, setConversationsNext] = useState<string | null>(null);
@@ -326,7 +327,7 @@ export default function BibliotecarioView() {
             const accessToken = await getAccessToken({ redirectOnFail: false });
             const page = nextUrl
                 ? await fetchChatConversationsPageByUrl(nextUrl, accessToken || undefined)
-                : await fetchChatConversationsPage(clientKey, accessToken || undefined, 20);
+                : await fetchChatConversationsPage(clientKey, currentLibraryId, accessToken || undefined, 20);
             setConversations((previous) => {
                 if (!nextUrl) {
                     return page.result;
@@ -342,7 +343,7 @@ export default function BibliotecarioView() {
             });
             setConversationsNext(page.next);
         },
-        [clientKey, getAccessToken]
+        [clientKey, currentLibraryId, getAccessToken]
     );
 
     /**
@@ -352,10 +353,10 @@ export default function BibliotecarioView() {
      */
     const refreshConversations = useCallback(async (): Promise<void> => {
         const accessToken = await getAccessToken({ redirectOnFail: false });
-        const page = await fetchChatConversationsPage(clientKey, accessToken || undefined, 20);
+        const page = await fetchChatConversationsPage(clientKey, currentLibraryId, accessToken || undefined, 20);
         setConversations(page.result);
         setConversationsNext(page.next);
-    }, [clientKey, getAccessToken]);
+    }, [clientKey, currentLibraryId, getAccessToken]);
 
     /**
      * Carrega o histórico de uma conversa específica.
@@ -367,7 +368,7 @@ export default function BibliotecarioView() {
         setLoadingHistory(true);
         try {
             const accessToken = await getAccessToken({ redirectOnFail: false });
-            const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+            const conversation = await fetchChatConversation(conversationId, currentLibraryId, accessToken || undefined);
             if (currentConversationIdRef.current !== conversationId) {
                 return;
             }
@@ -384,7 +385,7 @@ export default function BibliotecarioView() {
         } finally {
             setLoadingHistory(false);
         }
-    }, [getAccessToken]);
+    }, [currentLibraryId, getAccessToken]);
 
     /**
      * Sincroniza rapidamente o snapshot da conversa sem mostrar spinner global.
@@ -394,7 +395,7 @@ export default function BibliotecarioView() {
      */
     const syncConversationSnapshot = useCallback(async (conversationId: string): Promise<void> => {
         const accessToken = await getAccessToken({ redirectOnFail: false });
-        const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+        const conversation = await fetchChatConversation(conversationId, currentLibraryId, accessToken || undefined);
         if (currentConversationIdRef.current !== conversationId) {
             return;
         }
@@ -408,7 +409,7 @@ export default function BibliotecarioView() {
             }
             return mergeConversationMessages(previous, nextMessages);
         });
-    }, [getAccessToken]);
+    }, [currentLibraryId, getAccessToken]);
 
     /**
      * Finaliza a análise atual, fechando o stream e recarregando a lista de conversas.
@@ -641,6 +642,7 @@ export default function BibliotecarioView() {
         eventSourceRef.current = openChatConversationStream(
             conversationId,
             clientKey,
+            currentLibraryId,
             applyStreamEvent,
             () => recoverConversationStream(conversationId)
         );
@@ -662,7 +664,7 @@ export default function BibliotecarioView() {
         try {
             await syncConversationSnapshot(conversationId);
             const accessToken = await getAccessToken({ redirectOnFail: false });
-            const conversation = await fetchChatConversation(conversationId, accessToken || undefined);
+            const conversation = await fetchChatConversation(conversationId, currentLibraryId, accessToken || undefined);
             const currentLoadingMessageId = loadingMessageIdRef.current;
             if (!currentLoadingMessageId) {
                 return;
@@ -720,7 +722,7 @@ export default function BibliotecarioView() {
                     message: normalized,
                     conversation_id: currentConversationId,
                     client_key: clientKey,
-                    library: library?.id || 1,
+                    library: currentLibraryId,
                     source: "bibliotecario-ui",
                     initial_context: {
                         route: location.pathname,
@@ -749,6 +751,7 @@ export default function BibliotecarioView() {
             eventSourceRef.current = openChatConversationStream(
                 response.conversation_id,
                 clientKey,
+                currentLibraryId,
                 applyStreamEvent,
                 () => recoverConversationStream(response.conversation_id)
             );
@@ -784,7 +787,7 @@ export default function BibliotecarioView() {
             }
             try {
                 const accessToken = await getAccessToken({ redirectOnFail: false });
-                const conversation = await fetchChatConversation(fallbackPollingConversationId, accessToken || undefined);
+                const conversation = await fetchChatConversation(fallbackPollingConversationId, currentLibraryId, accessToken || undefined);
                 if (stopped || loadingConversationIdRef.current !== fallbackPollingConversationId) {
                     return;
                 }
@@ -810,7 +813,7 @@ export default function BibliotecarioView() {
             stopped = true;
             window.clearInterval(intervalId);
         };
-    }, [completeLoading, fallbackPollingConversationId, getAccessToken, loading]);
+    }, [completeLoading, currentLibraryId, fallbackPollingConversationId, getAccessToken, loading]);
 
     useEffect(() => {
         const pendingMessage = pendingAutoSendMessage;

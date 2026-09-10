@@ -16,6 +16,7 @@ import BibliotecarioView from "./view/BibliotecarioView";
 import EbookMiniView from "./view/EbookMiniView";
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleProtectedRoute from "./components/RoleProtectedRoute";
+import LibraryContextRoute from "./components/LibraryContextRoute";
 
 export default function App() {
     return (
@@ -23,7 +24,6 @@ export default function App() {
             <Route path="/login" element={<LoginView />} />
             <Route path="/login-password" element={<PasswordLoginView />} />
             <Route path="/verify-code" element={<CodeVerificationView />} />
-            <Route path="/selection" element={<SelectionView />} />
             <Route path="/" element={<HomeView />} />
             <Route path="/book/:id" element={<BookDetailsWrapper />} />
             <Route path="/search" element={<SearchView />} />
@@ -33,9 +33,12 @@ export default function App() {
             <Route path="/bibliotecario" element={<BibliotecarioView />} />
 
             <Route element={<ProtectedRoute />}>
-                <Route path="/ebook/:id" element={<EbookMiniView />} />
-                <Route path="/profile" element={<ProfileView />} />
-                <Route path="/meus-livros" element={<ProfileView />} />
+                <Route path="/selection" element={<SelectionView />} />
+                <Route element={<LibraryContextRoute />}>
+                    <Route path="/ebook/:id" element={<EbookMiniView />} />
+                    <Route path="/profile" element={<ProfileView />} />
+                    <Route path="/meus-livros" element={<ProfileView />} />
+                </Route>
                 <Route
                     element={
                         <RoleProtectedRoute

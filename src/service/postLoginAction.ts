@@ -62,7 +62,8 @@ export function clearPendingLendAction() {
 export async function handlePendingLendActionAfterLogin(
     accessToken: string,
     navigate: (path: string) => void,
-    onError?: (message: string) => void
+    onError?: (message: string) => void,
+    selectedLibraryId?: number
 ): Promise<boolean> {
     const pendingLendAction = getPendingLendAction();
     if (!pendingLendAction) {
@@ -77,7 +78,7 @@ export async function handlePendingLendActionAfterLogin(
         try {
             await lendBook(
                 pendingLendAction.bookId,
-                pendingLendAction.libraryId,
+                selectedLibraryId ?? pendingLendAction.libraryId,
                 accessToken
             );
         } catch (error: unknown) {

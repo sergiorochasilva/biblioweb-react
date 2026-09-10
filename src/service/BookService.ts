@@ -484,14 +484,11 @@ export async function fetchBookDetails(
     token?: string
 ): Promise<Book | null> {
     const endpoint =
-        `/libraries_books?library=${libraryId}` +
-        `&id=${encodeURIComponent(id)}` +
-        `&fields=${encodeURIComponent(DEFAULT_BOOK_FIELDS)}` +
-        "&limit=1";
+        `/libraries_books/${encodeURIComponent(id)}?library=${libraryId}` +
+        `&fields=${encodeURIComponent(DEFAULT_BOOK_FIELDS)}`;
     try {
         const data = await api.get<unknown>(endpoint, token);
-        const books = normalizeBooksResponse(data);
-        return books.length > 0 ? books[0] : normalizeBookResponse(data);
+        return normalizeBookResponse(data);
     } catch {
         return null;
     }

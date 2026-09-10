@@ -21,7 +21,9 @@ test("Ler agora abre o endereço de um livro externo sem exigir compra", async (
     ).toHaveAttribute("src", EXTERNAL_COVER_URL);
     await expect(page.getByText("Este livro é disponibilizado por uma fonte externa.")).toBeVisible();
     await expect(page.getByRole("link", { name: "Manual completo" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Ler versão web" })).toBeVisible();
+    await expect(
+        page.getByRole("button", { name: /Ler versão web|Continuar lendo versão web/ })
+    ).toBeVisible();
 
     const accessResponse = page.waitForResponse((response) => {
         return (
@@ -35,7 +37,7 @@ test("Ler agora abre o endereço de um livro externo sem exigir compra", async (
         (request) => request.url() === EXTERNAL_BOOK_URL
     );
 
-    await page.getByRole("button", { name: "Ler agora" }).click();
+    await page.getByRole("button", { name: /(?:download )?(?:Ler agora|Continuar lendo)$/ }).click();
 
     const [popup, response, request] = await Promise.all([
         popupPromise,
@@ -60,7 +62,9 @@ test("Ler agora abre o endereço de um livro externo sem exigir compra", async (
         (request) => request.url() === WEB_VERSION_URL
     );
 
-    await page.getByRole("button", { name: "Ler versão web" }).click();
+    await page
+        .getByRole("button", { name: /Ler versão web|Continuar lendo versão web/ })
+        .click();
 
     const [webPopup, webResponse, requestedWebUrl] = await Promise.all([
         webPopupPromise,

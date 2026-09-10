@@ -6,8 +6,8 @@ import { api } from "../service/api";
 import type { AuthTokenResponse } from "../service/authTypes";
 import { getErrorMessage } from "../service/errorMessage";
 import { useAuth } from "../contexts/useAuth";
-import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
 import { resolveLandingAfterLogin } from "../service/postLoginRoute";
+import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
 
 /**
  * Tela de autenticação por senha.
@@ -73,16 +73,7 @@ export default function PasswordLoginView() {
                 throw new Error("Token não recebido da API.");
             }
 
-            const handledPendingAction = await handlePendingLendActionAfterLogin(
-                accessToken,
-                navigate,
-                (errorMessage) => message.error(errorMessage)
-            );
-            if (handledPendingAction) {
-                return;
-            }
-
-            const landingPath = await resolveLandingAfterLogin(
+            const landing = await resolveLandingAfterLogin(
                 accessToken,
                 {
                     setProfile,
@@ -91,7 +82,15 @@ export default function PasswordLoginView() {
                 },
                 nextPath
             );
-            navigate(landingPath);
+            const handledPendingAction = await handlePendingLendActionAfterLogin(
+                accessToken,
+                navigate,
+                (errorMessage) => message.error(errorMessage),
+                landing.selectedLibraryId ?? undefined
+            );
+            if (!handledPendingAction) {
+                navigate(landing.path);
+            }
         } catch (err: unknown) {
             message.error(getErrorMessage(err, "Senha inválida. Tente novamente."));
         } finally {

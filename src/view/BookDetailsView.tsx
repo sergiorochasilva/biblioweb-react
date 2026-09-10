@@ -697,6 +697,7 @@ export default function BookDetailsView({
                 }
 
                 await lendBook(id, libraryId, lendingToken);
+                await onReloadBook?.();
             } catch (error: unknown) {
                 const messageText =
                     error instanceof Error && error.message
@@ -748,6 +749,7 @@ export default function BookDetailsView({
                 return;
             }
             await lendBook(id, libraryId, lendingToken);
+            await onReloadBook?.();
         } catch (error: unknown) {
             const messageText =
                 error instanceof Error && error.message

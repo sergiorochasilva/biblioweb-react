@@ -6,8 +6,8 @@ import { api } from "../service/api";
 import type { AuthTokenResponse } from "../service/authTypes";
 import { getErrorMessage } from "../service/errorMessage";
 import { useAuth } from "../contexts/useAuth";
-import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
 import { resolveLandingAfterLogin } from "../service/postLoginRoute";
+import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
 
 /**
  * Tela de validação do código recebido por e-mail.
@@ -61,16 +61,7 @@ export default function CodeVerificationView() {
             });
             const accessToken = setSessionFromResponse(response);
             if (accessToken) {
-                const handledPendingAction = await handlePendingLendActionAfterLogin(
-                    accessToken,
-                    navigate,
-                    (errorMessage) => message.error(errorMessage)
-                );
-                if (handledPendingAction) {
-                    return;
-                }
-
-                const landingPath = await resolveLandingAfterLogin(
+                const landing = await resolveLandingAfterLogin(
                     accessToken,
                     {
                         setProfile,
@@ -79,7 +70,15 @@ export default function CodeVerificationView() {
                     },
                     nextPath
                 );
-                navigate(landingPath);
+                const handledPendingAction = await handlePendingLendActionAfterLogin(
+                    accessToken,
+                    navigate,
+                    (errorMessage) => message.error(errorMessage),
+                    landing.selectedLibraryId ?? undefined
+                );
+                if (!handledPendingAction) {
+                    navigate(landing.path);
+                }
             } else {
                 throw new Error("Token não recebido da API.");
             }

@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plano: multi-acervo no BiblioWeb</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #637087;
+      --paper: #f7f8fc;
+      --panel: rgba(255,255,255,.92);
+      --line: #dce3ef;
+      --blue: #3267d6;
+      --blue-soft: #e9f0ff;
+      --violet: #7654d6;
+      --green: #237a5b;
+      --green-soft: #e5f7ef;
+      --orange: #ae6417;
+      --orange-soft: #fff2df;
+      --red: #b34646;
+      --red-soft: #ffebeb;
+      --shadow: 0 18px 45px rgba(29, 48, 88, .10);
+    }
+    * { box-sizing: border-box; }
+    html { background: #e7ebf4; }
+    body { margin: 0; color: var(--ink); background: #e7ebf4; font-family: Manrope, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .deck { min-height: 100vh; }
+    .slide { width: min(1280px, calc(100vw - 48px)); min-height: 720px; margin: 24px auto; padding: 50px 58px 42px; position: relative; overflow: hidden; background: var(--paper); border: 1px solid rgba(255,255,255,.9); border-radius: 24px; box-shadow: var(--shadow); display: none; }
+    .slide.active { display: block; }
+    .slide::after { content: ""; position: absolute; width: 390px; height: 390px; border-radius: 50%; right: -165px; top: -185px; background: radial-gradient(circle, rgba(79,124,223,.13), rgba(79,124,223,0)); pointer-events: none; }
+    .cover { background: linear-gradient(135deg, #0f1b39 0%, #213d7b 58%, #4e55a6 100%); color: white; }
+    .cover::after { width: 660px; height: 660px; right: -240px; top: -320px; background: radial-gradient(circle, rgba(144,204,255,.44), rgba(144,204,255,0) 68%); }
+    .eyebrow { color: var(--blue); text-transform: uppercase; letter-spacing: .13em; font-weight: 800; font-size: 12px; margin-bottom: 14px; }
+    .cover .eyebrow { color: #b9ceff; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(40px, 5vw, 70px); line-height: 1.02; letter-spacing: -.055em; max-width: 800px; margin: 0 0 23px; }
+    h2 { font-size: 34px; line-height: 1.12; letter-spacing: -.035em; margin-bottom: 9px; position: relative; z-index: 1; }
+    h3 { font-size: 16px; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 17px; max-width: 900px; line-height: 1.55; margin-bottom: 28px; }
+    .cover .subtitle { color: #d8e3ff; max-width: 700px; font-size: 19px; }
+    .slide-number { position: absolute; right: 56px; bottom: 29px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .cover .slide-number { color: #c8d6ff; }
+    .meta { display: flex; gap: 22px; flex-wrap: wrap; font-size: 14px; color: #d8e3ff; position: absolute; bottom: 69px; left: 58px; }
+    .meta span { display: inline-flex; gap: 8px; align-items: center; }
+    .meta b { color: white; }
+    .grid { display: grid; gap: 16px; position: relative; z-index: 1; }
+    .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 17px 18px; }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .card p, li { font-size: 14px; line-height: 1.42; }
+    .card strong { color: #1b315d; }
+    .accent-card { border-color: #bfd0f8; background: linear-gradient(145deg, #f8fbff, #eaf1ff); }
+    .warn-card { border-color: #f0d5ad; background: var(--orange-soft); }
+    .danger-card { border-color: #f2c5c5; background: var(--red-soft); }
+    .success-card { border-color: #b8e6d1; background: var(--green-soft); }
+    .tag { display: inline-block; padding: 4px 9px; border-radius: 100px; background: var(--blue-soft); color: #2454bd; font-size: 11px; font-weight: 800; letter-spacing: .03em; margin-bottom: 10px; }
+    .tag.warn { background: #ffe6be; color: #87500d; }
+    .tag.green { background: #ceefdf; color: #12603f; }
+    ul.compact { padding-left: 19px; margin: 7px 0; }
+    ul.compact li { margin: 5px 0; }
+    .keyline { height: 1px; background: var(--line); margin: 20px 0; }
+    .kpi { padding: 15px; border-left: 4px solid var(--blue); background: #f1f5ff; border-radius: 0 12px 12px 0; font-size: 15px; line-height: 1.4; }
+    .kpi strong { color: #173b88; }
+    table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: white; }
+    th { text-align: left; background: #eef3fc; color: #334563; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.34; }
+    tr:last-child td { border-bottom: none; }
+    td code, .code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .91em; color: #4c3c88; background: #f1eff9; border-radius: 4px; padding: 1px 4px; }
+    .status { display: inline-block; font-size: 10px; font-weight: 800; border-radius: 20px; padding: 3px 7px; white-space: nowrap; }
+    .partial { color: #8a520e; background: #ffe7bf; }
+    .missing { color: #a23535; background: #ffe0e0; }
+    .ok { color: #176044; background: #d8f3e6; }
+    .flow { display: flex; gap: 8px; align-items: stretch; margin: 12px 0; position: relative; z-index: 1; }
+    .flow-step { flex: 1; min-width: 0; padding: 14px 12px; text-align: center; border-radius: 13px; border: 1px solid #cdd9ee; background: white; font-size: 13px; line-height: 1.32; }
+    .flow-step b { display:block; margin-bottom: 4px; color:#23477f; }
+    .arrow { flex: 0 0 26px; align-self: center; color: var(--blue); font-size: 23px; font-weight: 500; text-align: center; }
+    .decision { background: #fff7e8; border-color: #ecd49d; }
+    .terminal { background: #e9f8ef; border-color: #b9e5cb; }
+    .flow-note { border-left: 3px solid var(--orange); background: #fff8ed; padding: 9px 11px; font-size: 12px; line-height: 1.42; margin: 0 0 12px; }
+    .wireframe { border: 8px solid #172340; background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 11px 26px rgba(24,43,78,.18); }
+    .browser { height: 28px; background: #172340; display:flex; align-items:center; gap:6px; padding-left:12px; }
+    .browser i { width: 8px; height: 8px; border-radius: 50%; background: #a6b7db; display:block; }
+    .wf-body { padding: 18px; color: #1e2a42; background: linear-gradient(135deg,#f9fbff,#eef4ff); min-height: 265px; }
+    .wf-logo { font-weight: 900; color: #315ec4; letter-spacing: -.04em; }
+    .wf-title { font-size: 22px; font-weight: 850; margin: 26px 0 6px; letter-spacing: -.035em; }
+    .wf-sub { color: #66738c; font-size: 12px; margin-bottom: 17px; }
+    .library-choice { background:white; border: 1px solid #d5dfef; border-radius: 10px; padding: 11px; margin: 8px 0; display:flex; gap:10px; align-items:center; font-size:12px; }
+    .library-choice.selected { outline: 2px solid #4778df; border-color: transparent; background:#f1f5ff; }
+    .round-icon { width: 30px; height:30px; border-radius: 9px; display:grid; place-items:center; color:#2457bf; background:#dce8ff; font-weight:800; }
+    .wf-button { margin-top: 15px; padding: 10px 13px; border-radius: 9px; background:#3267d6; color:white; font-size:12px; font-weight:800; text-align:center; }
+    .mini-header { display:flex; justify-content:space-between; align-items:center; padding-bottom: 11px; border-bottom:1px solid #e0e7f1; }
+    .mini-pill { padding: 7px 9px; border:1px solid #bcd0fa; border-radius:9px; font-size:11px; color:#2452af; background:#eef4ff; }
+    .dropdown-menu { margin:7px 0 0 auto; width:170px; background:white; border:1px solid #d5dfef; border-radius:9px; box-shadow:0 8px 18px rgba(25,47,85,.14); padding:4px; font-size:11px; }
+    .dropdown-menu div { padding:7px; border-radius:5px; }
+    .dropdown-menu .active-row { background:#edf3ff; color:#2054bd; font-weight:800; }
+    .mobile { width: 285px; margin: 0 auto; }
+    .mobile .wf-body { min-height: 342px; padding: 16px; }
+    .mobile .wf-title { font-size: 20px; margin-top: 31px; }
+    .matrix td:first-child { font-weight: 800; color:#304461; }
+    .footnote { position:absolute; left:58px; bottom:26px; max-width: 860px; color: #738098; font-size: 11px; line-height:1.35; }
+    .phase { display:grid; grid-template-columns: 34px 1fr; gap:11px; padding:12px 0; border-bottom:1px solid var(--line); }
+    .phase:last-child { border-bottom:none; }
+    .phase-number { width:29px; height:29px; border-radius:50%; display:grid; place-items:center; background:#dce8ff; color:#2856b8; font-size:12px; font-weight:900; }
+    .phase h3 { margin:2px 0 4px; }
+    .phase p { margin:0; font-size:13px; line-height:1.4; color:#506078; }
+    .nav { position: fixed; z-index: 20; bottom: 17px; left: 50%; transform: translateX(-50%); display:flex; align-items:center; gap:9px; padding:7px 10px; border:1px solid rgba(201,212,233,.95); border-radius: 50px; background:rgba(255,255,255,.92); box-shadow:0 8px 24px rgba(29,48,88,.15); backdrop-filter:blur(10px); }
+    .nav button { width:31px; height:31px; border:0; border-radius:50%; cursor:pointer; background:#e7eeff; color:#2c5cc3; font-size:18px; line-height:1; }
+    .nav button:disabled { opacity:.35; cursor:default; }
+    .nav span { min-width:56px; text-align:center; font-size:11px; font-weight:800; color:#526078; }
+    .agenda { columns:2; column-gap: 34px; margin-top: 22px; }
+    .agenda div { break-inside: avoid; padding:9px 0; border-bottom:1px solid rgba(200,214,239,.28); font-size:15px; color:#dbe6ff; }
+    .agenda b { color:#8fb7ff; display:inline-block; width:28px; }
+    @media (max-width: 800px) { .slide { width: calc(100vw - 22px); margin:11px auto; min-height: calc(100vh - 22px); padding:33px 23px 60px; border-radius:15px; } h2{font-size:27px}.g2,.g3,.g4{grid-template-columns:1fr}.flow{flex-direction:column}.arrow{transform:rotate(90deg);flex:0;height:18px}.meta{left:23px;bottom:72px}.slide-number{right:23px;bottom:29px}.footnote{left:23px;right:23px;bottom:22px}.agenda{columns:1}.wireframe.mobile{width:100%} table{font-size:11px;} th,td{padding:7px} }
+    @media print { body { background:white; } .slide { display:block !important; width:100%; min-height:100vh; margin:0; border-radius:0; box-shadow:none; border:none; page-break-after:always; } .nav { display:none; } }
+  </style>
+</head>
+<body>
+  <main class="deck">
+    <section class="slide cover active">
+      <div class="eyebrow">Task plan · para validação antes da implementação</div>
+      <h1>Multi-acervo que funciona de ponta a ponta</h1>
+      <p class="subtitle">Plano para tornar a escolha, a troca e o isolamento de acervo consistentes no BiblioWeb — com prioridade para a experiência do leitor e garantia no backend.</p>
+      <div class="agenda">
+        <div><b>01</b> Contexto e diagnóstico</div>
+        <div><b>02</b> Contrato de contexto ativo</div>
+        <div><b>03</b> APIs e modelo de dados</div>
+        <div><b>04</b> Telas e wireframes</div>
+        <div><b>05</b> Fluxos e cenários especiais</div>
+        <div><b>06</b> TDD, regressão e E2E</div>
+      </div>
+      <div class="meta"><span><b>Escopo:</b> front + API</span><span><b>Fora do escopo:</b> telas administrativas</span><span><b>Data:</b> 22 ago 2026</span></div>
+      <div class="slide-number">01 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Contextualização</div>
+      <h2>O produto já é parcialmente multi-acervo, mas ainda não é uma sessão multi-acervo confiável.</h2>
+      <p class="subtitle">A base já representa os vínculos necessários. O problema está na orquestração: o acervo ativo pode faltar, ser alterado no navegador, cair silenciosamente no acervo 1 ou não ser autorizado de modo uniforme pela API.</p>
+      <div class="grid g3">
+        <article class="card success-card"><span class="tag green">já existe</span><h3>Modelo de vínculo</h3><p><code>user_library</code> liga usuário e biblioteca; <code>book_library</code> liga livro e acervo. Empréstimos, licenças, compras e auditoria já carregam o identificador do acervo.</p></article>
+        <article class="card warn-card"><span class="tag warn">parcial</span><h3>Escolha após login</h3><p><code>/selection</code> lista bibliotecas, mas mistura editora e acervo, não é uma rota protegida e não preserva corretamente o <code>next</code> em todos os caminhos.</p></article>
+        <article class="card danger-card"><span class="tag">risco</span><h3>Isolamento de dados</h3><p>Vários controllers convertem ausência/erro de <code>library</code> em <code>1</code>; muitas leituras públicas ou autenticadas não verificam se a pessoa pertence ao acervo solicitado.</p></article>
+      </div>
+      <div class="keyline"></div>
+      <div class="kpi"><strong>Resultado pretendido:</strong> uma pessoa com 1 acervo entra diretamente; com 2+ escolhe antes de consumir dados autenticados; em qualquer chamada autenticada o servidor confirma que o acervo pertence àquela pessoa.</div>
+      <div class="slide-number">02 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Diagnóstico técnico</div>
+      <h2>As lacunas estão bem localizadas e têm correção incremental.</h2>
+      <table>
+        <thead><tr><th>Camada</th><th>Evidência atual</th><th>Lacuna que impede o multi-acervo</th><th>Impacto</th></tr></thead>
+        <tbody>
+          <tr><td>Login</td><td><code>resolvePostLoginRoute</code> manda qualquer perfil com biblioteca para <code>/selection</code>.</td><td>Não diferencia 1 de 2+ acervos; a ação pendente de empréstimo é processada antes da escolha.</td><td><span class="status partial">fluxo inconsistente</span></td></tr>
+          <tr><td>Contexto React</td><td><code>AuthContext</code> persiste <code>library</code> no localStorage.</td><td>Não valida se a biblioteca persistida ainda consta em <code>profile.libraries</code>; não há guard de contexto.</td><td><span class="status partial">estado obsoleto</span></td></tr>
+          <tr><td>Navegação</td><td>O cabeçalho mostra perfil e menus, mas não o acervo atual.</td><td>Não há troca explícita de acervo durante a sessão.</td><td><span class="status missing">UX ausente</span></td></tr>
+          <tr><td>Leituras de catálogo</td><td>Home, busca, assuntos, autores, detalhe e e-book já recebem <code>library</code> na maior parte do front.</td><td>Fallbacks repetidos para <code>1</code> mascaram ausência de seleção; o backend não centraliza a autorização.</td><td><span class="status partial">filtro frágil</span></td></tr>
+          <tr><td>Perfil / permissões</td><td><code>/profile?library=…</code> junta <code>user_library</code> para obter limites.</td><td>Com biblioteca inválida, a consulta pode perder a flag de admin global e devolver métricas do contexto errado.</td><td><span class="status missing">contrato ambíguo</span></td></tr>
+          <tr><td>Bibliotecário</td><td>Conversas gravam <code>library</code> ao criar.</td><td>Listagem, leitura e SSE não filtram/autorizam por acervo; uma conversa pode continuar em acervo diferente.</td><td><span class="status missing">isolamento incompleto</span></td></tr>
+        </tbody>
+      </table>
+      <p class="footnote">Arquivos examinados: <code>src/view/SelectionView.tsx</code>, <code>src/service/postLoginRoute.ts</code>, <code>src/contexts/AuthContext.tsx</code>, <code>fronesis/controller/profile_controller.py</code>, <code>fronesis/dao/profile_dao.py</code>, <code>fronesis/controller/chat_controller.py</code> e serviços/DAOs associados.</p>
+      <div class="slide-number">03 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Decisões de produto e contrato</div>
+      <h2>Uma regra simples orienta toda a implementação: o acervo ativo é explícito e verificável.</h2>
+      <div class="grid g2">
+        <article class="card accent-card"><span class="tag">decisão recomendada</span><h3>Acervo como contexto do leitor</h3><p>Após autenticação, o front guarda apenas um <em>acervo ativo</em> dentre <code>profile.libraries</code>. Editora não bloqueia a experiência de leitura; continua sendo contexto de administração quando necessário.</p><ul class="compact"><li>1 vínculo: seleção automática, sem tela intermediária.</li><li>2+ vínculos: seleção obrigatória.</li><li>0 vínculos: estado explícito sem catálogo autenticado, com orientação de suporte.</li></ul></article>
+        <article class="card accent-card"><span class="tag">decisão recomendada</span><h3>Parâmetro, não token novo</h3><p>Manter <code>library</code> nos query/body atuais para compatibilidade. Criar um resolvedor/guard central no backend que valida formato, presença e vínculo em cada rota autenticada relevante.</p><ul class="compact"><li>Não introduz JWT acoplado a acervo.</li><li>Evita reescrita ampla de contratos.</li><li>Permite troca imediata de acervo na UI.</li></ul></article>
+      </div>
+      <div class="grid g3" style="margin-top:16px">
+        <article class="card"><h3>Usuário anônimo</h3><p>Permanece em rotas públicas. Há um único catálogo público, definido por configuração central — não um fallback invisível espalhado em cada tela.</p></article>
+        <article class="card"><h3>Usuário autenticado</h3><p>Chamadas dependentes de contexto precisam de acervo ativo válido e autorizado. Falha de autorização recebe erro explícito, nunca redirecionamento para <code>1</code>.</p></article>
+        <article class="card"><h3>Administração</h3><p>Fica fora deste escopo funcional. Os guards de <code>/admin</code> e <code>/publisher-admin</code> são preservados; permissões globais não dependem do acervo selecionado.</p></article>
+      </div>
+      <div class="flow-note"><strong>Decisão confirmada:</strong> nesta etapa há exatamente um catálogo público. O guard anônimo sempre resolve esse acervo pela configuração central; os demais acervos exigem sessão autenticada e vínculo válido.</div>
+      <div class="slide-number">04 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Modelo de dados</div>
+      <h2>O modelo central é suficiente; migração só entra onde o diagnóstico confirmar lacuna de isolamento ou desempenho.</h2>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Relações existentes que serão preservadas</h3>
+          <div class="flow"><div class="flow-step"><b>user_account</b>identidade</div><div class="arrow">→</div><div class="flow-step"><b>user_library</b>vínculo + admin + limite</div><div class="arrow">→</div><div class="flow-step"><b>library</b>acervo</div></div>
+          <div class="flow"><div class="flow-step"><b>book</b>obra</div><div class="arrow">→</div><div class="flow-step"><b>book_library</b>disponibilidade/política</div><div class="arrow">→</div><div class="flow-step"><b>library</b>acervo</div></div>
+          <p>As chaves e índices existentes em <code>user_library</code>, <code>library_license_binding</code>, <code>log_book_access</code> e pedidos de compra já permitem leituras e regras por acervo.</p>
+        </article>
+        <article class="card warn-card">
+          <h3>Migrações condicionais previstas</h3>
+          <ul class="compact"><li><strong>Chat:</strong> criar índice composto <code>(user_email, library, updated_at desc)</code> e, para anônimo, <code>(client_key, library, updated_at desc)</code>; a coluna <code>chat_conversation.library</code> já existe.</li><li><strong>Integridade:</strong> antes de criar a FK de <code>chat_conversation.library</code> para <code>library</code>, migrar registros legados com acervo ausente ou inválido para o único acervo público atual; auditar a quantidade afetada e só então adicionar a restrição.</li><li><strong>Preferência:</strong> <em>não</em> persistir “último acervo” no banco na primeira etapa. O navegador mantém o contexto e cada login ainda respeita a regra 1 vs. 2+.</li></ul>
+        </article>
+      </div>
+      <div class="kpi" style="margin-top:18px"><strong>Não criar:</strong> tabela de sessão de acervo, duplicação de relações usuário–acervo ou coluna de acervo no JWT. A fonte de verdade continua sendo <code>user_library</code>; o servidor confere essa relação a cada operação sensível.</div>
+      <div class="slide-number">05 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">APIs — contrato alvo</div>
+      <h2>O servidor deixa de “adivinhar” o acervo e passa a rejeitar contexto inválido de forma previsível.</h2>
+      <table>
+        <thead><tr><th>Área</th><th>Contrato proposto</th><th>Erro esperado</th><th>Compatibilidade</th></tr></thead>
+        <tbody>
+          <tr><td>Resolver compartilhado</td><td><code>resolve_authorized_library(request, user, source)</code>: parseia <code>library</code>, não aceita vazio/≤0, consulta o vínculo em <code>user_library</code> e devolve contexto tipado.</td><td><code>400</code> parâmetro inválido; <code>403</code> acervo não vinculado.</td><td>Interno; aplicado por etapas.</td></tr>
+          <tr><td><code>GET /profile</code></td><td>Sem <code>library</code>: identidade, permissões globais e lista de acervos. Com <code>library</code> válido: acrescenta métricas e status daquele acervo, mais <code>active_library</code>.</td><td><code>403</code> quando a biblioteca não pertence ao usuário.</td><td>Clientes atuais podem enviar <code>?library=</code>; front novo separa hidratação de perfil e dados do contexto.</td></tr>
+          <tr><td>Catálogo / busca / detalhe</td><td>Rotas autenticadas validam o vínculo. Rotas públicas resolvem exclusivamente o único acervo público configurado; não usam fallback numérico no controller.</td><td><code>400/403</code> estruturado.</td><td>Conserva <code>library</code> no query atual.</td></tr>
+          <tr><td>Empréstimo, devolução, acesso e compra</td><td>Resolver é chamado antes do serviço; o livro também precisa pertencer ao acervo. Licença e pedido permanecem imutavelmente associados ao acervo.</td><td><code>403</code> vínculo ausente; <code>404</code> livro ausente no acervo.</td><td>Sem nova rota.</td></tr>
+          <tr><td>Chat</td><td>Criação usa o acervo autorizado. Listagem recebe <code>library</code>; get, nova mensagem e SSE verificam dono/cliente e o mesmo acervo da conversa.</td><td><code>403</code> conversa fora do contexto; <code>404</code> inexistente.</td><td>Adiciona filtro e mantém IDs/stream.</td></tr>
+        </tbody>
+      </table>
+      <p class="footnote">Padronizar payload de erro (código estável, mensagem segura e <code>library_id</code> somente quando apropriado) para a UI poder abrir a escolha de acervo sem exibir erro técnico.</p>
+      <div class="slide-number">06 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">APIs — plano de alteração</div>
+      <h2>Uma política central substitui verificações dispersas e defaults perigosos.</h2>
+      <div class="grid g2">
+        <article class="card accent-card"><h3>1. Serviço de contexto e perfil</h3><ul class="compact"><li>Criar serviço/guard reutilizável de autorização por acervo, com testes unitários próprios.</li><li>Alterar <code>profile_controller</code>/<code>ProfileService</code>: separar permissões globais de métricas por biblioteca.</li><li>Remover coerção “inválido → 1” em <code>profile</code>, livro, compra e chat.</li><li>Retornar a lista de acervos com id, nome, papel e limites aplicáveis.</li></ul></article>
+        <article class="card accent-card"><h3>2. Catálogo e operações do leitor</h3><ul class="compact"><li>Aplicar o guard em <code>libraries_books</code>, busca semântica, assuntos, autores, MARC, detalhes, download/licença, registro de acesso e compra.</li><li>Conferir que a camada RestLib preserva o filtro <code>library</code> em listas, paginação e ordenação.</li><li>Resolver leitura pública exclusivamente no acervo público único, isolada da autorização autenticada.</li></ul></article>
+        <article class="card accent-card"><h3>3. Chat bibliotecário</h3><ul class="compact"><li>Filtrar histórico por <code>library</code> no DAO e no cursor de paginação.</li><li>Autorizar leitura, continuação e SSE pelo dono/cliente e pelo acervo gravado.</li><li>Não permitir que <code>conversation_id</code> reutilize uma conversa de outro acervo.</li></ul></article>
+        <article class="card success-card"><h3>4. Observabilidade e transição</h3><ul class="compact"><li>Log estruturado de tentativas de acervo não autorizado (sem dados sensíveis).</li><li>Métrica/contador por rota para <code>invalid_library</code> e <code>unauthorized_library</code>.</li><li>Janela de compatibilidade monitorada antes de remover qualquer fallback público legado.</li></ul></article>
+      </div>
+      <div class="slide-number">07 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Front-end — arquitetura do contexto</div>
+      <h2>Um único guard de acervo reduz as regras duplicadas nas telas.</h2>
+      <div class="flow">
+        <div class="flow-step"><b>AuthContext</b>token, perfil e acervo ativo validado</div><div class="arrow">→</div>
+        <div class="flow-step"><b>LibrarySession</b>hidrata, seleciona, troca, invalida estado obsoleto</div><div class="arrow">→</div>
+        <div class="flow-step"><b>LibraryRouteGuard</b>protege apenas rotas autenticadas do leitor</div><div class="arrow">→</div>
+        <div class="flow-step"><b>Services</b>recebem id obrigatório do contexto</div>
+      </div>
+      <div class="grid g2" style="margin-top:18px">
+        <article class="card"><h3>Alterações centrais</h3><ul class="compact"><li>Extrair helpers puros: <code>getEligibleLibraries</code>, <code>resolvePostLoginDestination</code>, <code>validateStoredLibrary</code>.</li><li><code>setLibrary</code> só aceita item que exista no perfil atual; perfil renovado invalida seleção removida.</li><li><code>/selection</code> dentro de <code>ProtectedRoute</code> e recebe <code>next</code> seguro.</li><li>Rotas públicas continuam abertas; o guard não transforma home/busca/detalhe público em login.</li></ul></article>
+        <article class="card"><h3>Regra de destino</h3><ul class="compact"><li><strong>0 acervos:</strong> <code>/profile</code> com estado “sem acervo habilitado” (admins seguem regras próprias).</li><li><strong>1 acervo:</strong> grava automaticamente e vai para <code>next</code> permitido ou home.</li><li><strong>2+ acervos:</strong> vai para <code>/selection?next=…</code>; só depois da escolha resolve ação pendente e destino.</li><li><strong>troca:</strong> preserva a rota somente se ela fizer sentido no novo catálogo; caso contrário, vai à home do novo acervo.</li></ul></article>
+      </div>
+      <div class="flow-note">A lista de serviços de livro será revisada para receber <code>libraryId</code> explicitamente no fluxo autenticado. O único default permitido será um helper de catálogo público, nomeado e configurado, nunca <code>|| 1</code> distribuído nas views.</div>
+      <div class="slide-number">08 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Wireframe · login / escolha de acervo</div>
+      <h2>A pergunta aparece somente quando ela é necessária.</h2>
+      <div class="grid g2" style="align-items:start">
+        <div class="wireframe">
+          <div class="browser"><i></i><i></i><i></i></div>
+          <div class="wf-body">
+            <div class="wf-logo">BiblioWeb</div>
+            <div class="wf-title">Qual acervo você quer acessar?</div>
+            <div class="wf-sub">Você pode trocar de acervo a qualquer momento pelo menu superior.</div>
+            <div class="library-choice selected"><div class="round-icon">A</div><div><b>Biblioteca Central</b><br><span style="color:#71809a">Seu acervo principal</span></div><span style="margin-left:auto;color:#3267d6;font-weight:800">✓</span></div>
+            <div class="library-choice"><div class="round-icon">C</div><div><b>Campus Norte</b><br><span style="color:#71809a">Acervo especializado</span></div></div>
+            <div class="wf-button">Continuar para o acervo</div>
+          </div>
+        </div>
+        <div class="grid">
+          <article class="card accent-card"><h3>Com 2 ou mais opções</h3><p>Lista em cartões/radio, com nome do acervo e, quando disponível, uma descrição curta. Botão continua desabilitado até a escolha. A editora não aparece nesse passo do leitor.</p></article>
+          <article class="card"><h3>Com exatamente 1 opção</h3><p>Tela não é exibida: o acervo é aplicado e o usuário segue direto para <code>next</code>, home ou a ação pendente.</p></article>
+          <article class="card danger-card"><h3>Com 0 opções</h3><p>Não há fallback para o acervo 1. Mostrar “Seu acesso ainda não está vinculado a um acervo”, botão para perfil/sair e canal de suporte.</p></article>
+          <article class="card"><h3>Acessibilidade</h3><p>Campo radio nativo/semântico, foco inicial no título, rótulo completo, leitura por teclado e mensagem de erro associada ao grupo.</p></article>
+        </div>
+      </div>
+      <div class="slide-number">09 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Wireframe · troca durante a sessão</div>
+      <h2>O acervo ativo fica visível — e a troca é deliberada.</h2>
+      <div class="grid g2" style="align-items:start">
+        <div class="wireframe">
+          <div class="browser"><i></i><i></i><i></i></div>
+          <div class="wf-body">
+            <div class="mini-header"><div class="wf-logo">BiblioWeb</div><div class="mini-pill">Biblioteca Central ▾</div></div>
+            <div class="wf-title" style="margin-top:26px">Seu catálogo</div>
+            <div class="wf-sub">Resultados, disponibilidade e seus empréstimos pertencem ao acervo selecionado.</div>
+            <div class="dropdown-menu"><div class="active-row">✓ Biblioteca Central</div><div>Campus Norte</div><div style="border-top:1px solid #e5eaf2;color:#52657f">Gerenciar acesso…</div></div>
+          </div>
+        </div>
+        <div class="grid">
+          <article class="card accent-card"><h3>Local</h3><p>Adicionar seletor no cabeçalho autenticado, antes do menu de perfil. Exibir somente para quem tem 2+ acervos; para quem tem um único acervo, o elemento fica oculto.</p></article>
+          <article class="card"><h3>Ao trocar</h3><p>Limpar dados em memória com chave de acervo (listas, resultados, perfil contextual e chat em andamento), gravar nova seleção e navegar para <code>/</code>. Conversas antigas não são carregadas no novo acervo.</p></article>
+          <article class="card"><h3>Em páginas de leitura</h3><p>Se houver download em andamento, modal confirma a troca. Não interromper ou duplicar uma licença. Ao voltar ao livro, recarregar sua disponibilidade no acervo novo.</p></article>
+        </div>
+      </div>
+      <div class="slide-number">10 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Cobertura de telas não administrativas</div>
+      <h2>O front já passa o acervo em muitos lugares; a implementação vai tornar isso obrigatório e consistente.</h2>
+      <table class="matrix">
+        <thead><tr><th>Tela/fluxo</th><th>Estado atual</th><th>Ajuste planejado</th></tr></thead>
+        <tbody>
+          <tr><td>Home / destaque / mais acessados</td><td><span class="status partial">parâmetro presente</span></td><td>Usar contexto ativo autenticado; visitante sempre vê o único catálogo público; invalidar cache na troca.</td></tr>
+          <tr><td>Busca simples, semântica e avançada</td><td><span class="status partial">parâmetro presente</span></td><td>Padronizar fonte do <code>libraryId</code>, paginação e filtros; evitar resultado anterior ao trocar.</td></tr>
+          <tr><td>Assuntos e autores</td><td><span class="status partial">parâmetro presente</span></td><td>Propagar o acervo em listas e páginas de resultado; validar na API quando autenticado.</td></tr>
+          <tr><td>Detalhe <code>/book/:id</code></td><td><span class="status partial">parâmetro presente</span></td><td>Recarregar disponibilidade, venda e empréstimo pelo contexto; retorno público continua possível.</td></tr>
+          <tr><td>Leitura <code>/ebook/:id</code></td><td><span class="status partial">protegida</span></td><td>Exigir contexto ativo antes de consultar/licenciar; manter regras de externo/protegido, compra e versão web por acervo.</td></tr>
+          <tr><td>Perfil / Meus livros</td><td><span class="status partial">perfil por library</span></td><td>Exibir explicitamente “Acervo atual”; empréstimos/leitura recente por acervo. Compras da conta aparecem globalmente, cada uma identificada pelo acervo da aquisição.</td></tr>
+          <tr><td>Bibliotecário</td><td><span class="status missing">histórico não filtrado</span></td><td>Enviar <code>library</code> em todas as chamadas, limpar histórico ao trocar e bloquear conversa de outro acervo.</td></tr>
+          <tr><td>Login + empréstimo pendente</td><td><span class="status missing">ordem incorreta</span></td><td>Escolher/autoselecionar primeiro; só então executar empréstimo no acervo autorizado ou explicar que o livro não está no escolhido.</td></tr>
+        </tbody>
+      </table>
+      <p class="footnote">Não alterar as telas administrativas nesta entrega, exceto preservar seus guards de rota e impedir que uma alteração no perfil contextual revogue indevidamente a permissão global.</p>
+      <div class="slide-number">11 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Fluxograma · autenticação e destino</div>
+      <h2>O login passa a decidir o acervo antes de qualquer ação que dependa dele.</h2>
+      <div class="flow-note">O mesmo desenho se aplica ao login por código e por senha. <code>next</code> é validado como rota interna antes de ser reutilizado.</div>
+      <div class="flow"><div class="flow-step"><b>Login</b>código ou senha</div><div class="arrow">→</div><div class="flow-step"><b>Token</b>sessão criada</div><div class="arrow">→</div><div class="flow-step"><b>GET /profile</b>vínculos e papéis globais</div><div class="arrow">→</div><div class="flow-step decision"><b>Quantos acervos?</b>0 · 1 · 2+</div></div>
+      <div class="grid g3" style="margin-top:24px">
+        <article class="card danger-card"><span class="tag">0</span><h3>Sem acervo</h3><p>Limpar seleção. Exibir estado sem acesso de leitor; global/publisher admin segue para seu fluxo permitido. Nenhuma API de catálogo autenticado recebe <code>1</code> por padrão.</p></article>
+        <article class="card success-card"><span class="tag green">1</span><h3>Seleção automática</h3><p>Persistir único vínculo → carregar perfil contextual → executar ação pendente, se válida → <code>next</code> ou home.</p></article>
+        <article class="card accent-card"><span class="tag">2+</span><h3>Escolha explícita</h3><p>Navegar para seleção protegida com destino e ação pendente serializados de forma segura → usuário escolhe → revalidação → continuar.</p></article>
+      </div>
+      <div class="flow" style="margin-top:22px"><div class="flow-step"><b>Acervo decidido</b>validado contra profile</div><div class="arrow">→</div><div class="flow-step"><b>GET /profile?library</b>métricas do contexto</div><div class="arrow">→</div><div class="flow-step"><b>Ação pendente?</b>somente agora</div><div class="arrow">→</div><div class="flow-step terminal"><b>Destino final</b><code>next</code> ou home</div></div>
+      <div class="slide-number">12 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Fluxograma · troca e autorização</div>
+      <h2>A UI melhora a orientação; a API mantém a fronteira de segurança.</h2>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Troca iniciada pelo seletor</h3>
+          <div class="flow" style="flex-direction:column"><div class="flow-step"><b>Escolher outro acervo</b>no cabeçalho</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step"><b>Validar no profile local</b>e confirmar se há operação em andamento</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step"><b>Persistir novo id</b>invalidar dados/cache e conversas da tela</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step terminal"><b>Home do novo acervo</b>nova consulta de catálogo</div></div>
+        </article>
+        <article class="card">
+          <h3>Qualquer chamada autenticada com <code>library</code></h3>
+          <div class="flow" style="flex-direction:column"><div class="flow-step"><b>API recebe library</b>query ou body</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step decision"><b>Formato válido?</b>inteiro positivo, sem fallback</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step decision"><b>Vínculo do usuário?</b><code>user_library</code> ou regra administrativa específica</div><div class="arrow" style="transform:rotate(90deg);height:15px">→</div><div class="flow-step terminal"><b>Executar serviço filtrado</b>resposta somente daquele acervo</div></div>
+        </article>
+      </div>
+      <div class="kpi" style="margin-top:18px"><strong>Resposta a erro de contexto:</strong> a UI trata <code>403 acervo não autorizado</code> ou seleção expirada limpando o acervo local, atualizando o profile e levando à escolha — sem tentar a operação em outro acervo.</div>
+      <div class="slide-number">13 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">TDD e não regressão</div>
+      <h2>Construir a política por testes antes de plugar cada tela reduz o risco de vazamento entre acervos.</h2>
+      <div class="grid g2">
+        <article class="card accent-card"><h3>O ciclo TDD</h3><div class="phase"><div class="phase-number">1</div><div><h3>Vermelho</h3><p>Escrever exemplos de 0, 1 e 2 acervos, IDs inválidos e IDs de outro usuário. Hoje eles expõem os fallbacks para <code>1</code> e o pós-login prematuro.</p></div></div><div class="phase"><div class="phase-number">2</div><div><h3>Verde</h3><p>Implementar os helpers puros e o guard de API mínimo, mantendo contratos existentes onde o contexto é válido.</p></div></div><div class="phase"><div class="phase-number">3</div><div><h3>Refactor</h3><p>Substituir chamadas e defaults dispersos, sem mudar semântica visual das telas fora da seleção e do seletor.</p></div></div></article>
+        <article class="card"><h3>Unitários front que serão criados</h3><ul class="compact"><li><code>resolvePostLoginDestination</code>: 0/1/2+ opções, <code>next</code> interno/externo, papéis admin.</li><li>Validação/normalização de biblioteca no <code>AuthContext</code>, inclusive storage corrompido ou vínculo removido.</li><li><code>SelectionView</code>: autoseleção só com 1, não mostrar editora como bloqueio do leitor, preservação de destino.</li><li>Guard de rota: pessoa autenticada sem contexto vai à seleção; páginas públicas continuam públicas.</li><li>Serviços de livro/chat recebem o id correto e não fabricam <code>1</code> em sessão autenticada.</li></ul></article>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <article class="card"><h3>Unitários e integração API</h3><ul class="compact"><li>Resolver: ausente, texto, zero, biblioteca inexistente, usuário sem vínculo, vínculo válido e admin global.</li><li><code>/profile</code>: permissões globais independentes do contexto; métricas de cada biblioteca corretas.</li><li>Catálogo, busca e detalhe não retornam dados de acervo alheio.</li><li>Empréstimo/compra/acesso rejeitam usuário fora do vínculo e preservam licença por biblioteca.</li><li>Chat lista/get/SSE/continuação respeitam dono e <code>library</code>.</li></ul></article>
+        <article class="card success-card"><h3>Não regressão explícita</h3><ul class="compact"><li>Login por código e por senha, refresh de token e logout.</li><li>Rotas públicas: home, busca e detalhe continuam sem token.</li><li>Rotas admin continuam protegidas e permissões não somem ao trocar/limpar acervo.</li><li>Livro externo/protegido, compra, empréstimo pós-login e “Ler versão web” mantêm a regra já validada.</li><li>Busca semântica e filtros continuam utilizando o acervo corrente.</li></ul></article>
+      </div>
+      <div class="slide-number">14 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">E2E · Playwright e API real</div>
+      <h2>Os cenários ponta a ponta validam a decisão de acervo em uma stack real, não por mocks de rota.</h2>
+      <table>
+        <thead><tr><th>Cenário</th><th>Pré-condição de dados</th><th>Asserção do navegador/API</th></tr></thead>
+        <tbody>
+          <tr><td>Login com 1 acervo</td><td>Usuário U1 vinculado somente a A.</td><td>Login por código e senha não mostra seleção; home chama catálogo de A; <code>next=/book/…</code> é preservado.</td></tr>
+          <tr><td>Login com 2 acervos</td><td>U2 vinculado a A e B; livros exclusivos em ambos.</td><td>Seleção aparece; escolher B deixa o livro de B visível e o exclusivo de A ausente.</td></tr>
+          <tr><td>Troca em sessão</td><td>U2 autenticado em A.</td><td>Seletor mostra B; trocar vai à home e busca/detalhe usam B; cache/resultado de A não permanece.</td></tr>
+          <tr><td>Empréstimo após login</td><td>Livro licenciado em B; visitante inicia a ação.</td><td>Após login multi-acervo, escolha ocorre antes do download; em B conclui; em A a UI informa indisponibilidade sem emitir licença errada.</td></tr>
+          <tr><td>Chat isolado</td><td>Uma conversa de U2 em A e outra em B.</td><td>Histórico em B não exibe A; URL/ID de A não pode ser aberto com B; API retorna 403/404 definido.</td></tr>
+          <tr><td>Segurança de API</td><td>U1 só em A; token válido.</td><td>Chamadas para B em perfil, busca, detalhe, empréstimo, compra e chat recebem erro estruturado; nenhuma retorna conteúdo de B.</td></tr>
+          <tr><td>Visitante</td><td>Sem token.</td><td>Home, busca e detalhe públicos continuam disponíveis exclusivamente no único catálogo público; admin continua bloqueado.</td></tr>
+        </tbody>
+      </table>
+      <div class="flow-note">Execução: subir PostgreSQL + API real e Vite com <code>VITE_API_BASE_URL</code> apontando para a stack Docker; Playwright abre o front em host não-<code>localhost</code>, conforme convenção do repositório. Criar fixtures determinísticas de A/B, usuários e livros para a suite ser repetível.</div>
+      <div class="slide-number">15 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Sequência de implementação</div>
+      <h2>Entregas pequenas, verificáveis e reversíveis.</h2>
+      <div class="grid g2">
+        <article class="card">
+          <div class="phase"><div class="phase-number">1</div><div><h3>Contrato e guard no backend</h3><p>Testes vermelhos, resolvedor central, <code>/profile</code> e normalização de erros. Validar dados/migração condicional do chat.</p></div></div>
+          <div class="phase"><div class="phase-number">2</div><div><h3>Rotas e serviços do leitor</h3><p>Aplicar guard às APIs de catálogo e operações; testes de isolamento por endpoint antes de mudar o front.</p></div></div>
+          <div class="phase"><div class="phase-number">3</div><div><h3>Sessão, login e seleção React</h3><p>Helpers unitários, storage validado, rota protegida, regra 0/1/2+, <code>next</code> e ação pendente posterior à escolha.</p></div></div>
+          <div class="phase"><div class="phase-number">4</div><div><h3>Seletor e auditoria de telas</h3><p>Cabeçalho, invalidação ao trocar e remoção dos defaults distribuídos nas views/serviços.</p></div></div>
+          <div class="phase"><div class="phase-number">5</div><div><h3>Chat, E2E e hardening</h3><p>Histórico por acervo, SSE autorizado, Playwright com API real, métricas/logs e revisão de regressão.</p></div></div>
+        </article>
+        <article class="card accent-card"><h3>Critérios de aceite</h3><ul class="compact"><li>Não existe mais escolha de acervo para quem tem exatamente um vínculo.</li><li>Com dois ou mais, não há chamada autenticada de catálogo/ação antes de uma escolha válida.</li><li>Trocar acervo altera todos os dados não administrativos visíveis, incluindo chat e perfil contextual.</li><li>Nenhum endpoint autenticado aceita um <code>library</code> de usuário sem vínculo; nenhum converte erro para <code>1</code>.</li><li>O visitante acessa exclusivamente o único catálogo público configurado, com teste dedicado.</li><li>Login, admin, empréstimo, compra, leitura protegida e rotas públicas mantêm suas garantias atuais.</li><li>Build, lint, testes unitários/API e Playwright passam na stack real.</li></ul></article>
+      </div>
+      <div class="slide-number">16 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Riscos e controles</div>
+      <h2>Os riscos relevantes são de transição de contexto — todos terão um teste correspondente.</h2>
+      <div class="grid g3">
+        <article class="card warn-card"><h3>Dados/cache do acervo anterior</h3><p><strong>Controle:</strong> chavear queries por <code>libraryId</code>, abortar requisições ao trocar e zerar estado de chat/listas antes da nova home.</p></article>
+        <article class="card warn-card"><h3>Ação pendente em acervo errado</h3><p><strong>Controle:</strong> serializar origem, mostrar o acervo no passo de escolha e só executar após o guard de API. Não tentar empréstimo alternativo.</p></article>
+        <article class="card warn-card"><h3>Permissão global mascarada</h3><p><strong>Controle:</strong> perfil base independe de <code>user_library</code>; testes de administrador global sem vínculo e com contexto inválido.</p></article>
+        <article class="card warn-card"><h3>Link direto / storage antigo</h3><p><strong>Controle:</strong> re-hidratar profile no bootstrap autenticado; seleção inválida abre o guard, sem usar valor persistido às cegas.</p></article>
+        <article class="card warn-card"><h3>Histórico de chat legado</h3><p><strong>Controle:</strong> migrar toda conversa com <code>library IS NULL</code> ou referência inválida para o acervo público atual, registrar a contagem afetada e só então ativar a FK.</p></article>
+        <article class="card warn-card"><h3>Quebra de cliente antigo</h3><p><strong>Controle:</strong> monitorar 400/403 por rota, documentar contrato e migrar front/API em sequência curta com ambiente de homologação.</p></article>
+      </div>
+      <div class="slide-number">17 / 18</div>
+    </section>
+
+    <section class="slide">
+      <div class="eyebrow">Conclusão</div>
+      <h2>O caminho não é adicionar mais um seletor: é fazer o acervo ativo virar um contrato de sessão completo.</h2>
+      <div class="grid g2">
+        <article class="card success-card"><h3>O que este plano entrega</h3><ul class="compact"><li>Entrada direta para um vínculo e escolha clara para múltiplos.</li><li>Troca consciente de acervo em qualquer tela de leitor.</li><li>Filtragem uniforme de catálogo, perfil, leitura, empréstimos, compra e chat.</li><li>Servidor como autoridade final do vínculo, eliminando vazamento por parâmetro ou fallback.</li><li>Suite TDD + integração + Playwright que protege o comportamento.</li></ul></article>
+        <article class="card accent-card"><h3>Decisões confirmadas</h3><ul class="compact"><li>Há um único catálogo público; todos os demais exigem autenticação e vínculo.</li><li>Compras pertencem à conta e aparecem globalmente, identificadas pelo acervo onde foram adquiridas.</li><li>Histórico de chat legado com <code>library</code> nulo será associado ao acervo público atual.</li><li>Editora não é uma etapa obrigatória do fluxo do leitor multi-acervo; permanece como contexto administrativo quando aplicável.</li></ul></article>
+      </div>
+      <div class="kpi" style="margin-top:22px"><strong>Próximo passo proposto:</strong> após a validação deste deck, iniciar pelo contrato de API e pelos testes de 0/1/2+ acervos. Isso permite que o front seja implementado sobre uma fronteira de segurança já estável.</div>
+      <p class="footnote">Documento de planejamento. Nenhuma alteração de implementação, migration ou deploy foi realizada nesta etapa.</p>
+      <div class="slide-number">18 / 18</div>
+    </section>
+  </main>
+  <div class="nav" aria-label="Navegação da apresentação"><button id="prev" aria-label="Slide anterior">‹</button><span id="counter">1 / 18</span><button id="next" aria-label="Próximo slide">›</button></div>
+  <script>
+    (() => {
+      const slides = Array.from(document.querySelectorAll('.slide'));
+      const previous = document.getElementById('prev');
+      const next = document.getElementById('next');
+      const counter = document.getElementById('counter');
+      let current = 0;
+      function show(index) {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        slides.forEach((slide, position) => slide.classList.toggle('active', position === current));
+        counter.textContent = `${current + 1} / ${slides.length}`;
+        previous.disabled = current === 0;
+        next.disabled = current === slides.length - 1;
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
+      previous.addEventListener('click', () => show(current - 1));
+      next.addEventListener('click', () => show(current + 1));
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { event.preventDefault(); show(current + 1); }
+        if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); show(current - 1); }
+        if (event.key === 'Home') { event.preventDefault(); show(0); }
+        if (event.key === 'End') { event.preventDefault(); show(slides.length - 1); }
+      });
+      show(0);
+    })();
+  </script>
+</body>
+</html>

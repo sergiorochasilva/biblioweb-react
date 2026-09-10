@@ -94,6 +94,62 @@ a {
     margin-top: 8px;
 }
 
+.library-selection-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.library-selection-card {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 16px;
+    color: var(--text-strong);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.library-selection-card:hover:not(:disabled),
+.library-selection-card:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 14px 28px rgba(27, 120, 214, 0.2);
+    outline: none;
+    transform: translateY(-2px);
+}
+
+.library-selection-card:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.library-selection-card-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(27, 120, 214, 0.12);
+    color: var(--accent);
+    font-size: 20px;
+}
+
+.library-selection-card-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.library-selection-card-copy strong {
+    font-family: "Sora", "Manrope", sans-serif;
+}
+
+.library-selection-card-copy span {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
 .section-title {
     margin: 0;
     font-family: "Sora", "Manrope", sans-serif;
@@ -177,6 +233,12 @@ a {
 
 .state-card .ant-card-body {
     padding: 28px;
+}
+
+@media (max-width: 720px) {
+    .library-selection-card {
+        padding: 14px;
+    }
 }
 
 .book-card {

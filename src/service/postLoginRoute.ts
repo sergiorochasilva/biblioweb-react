@@ -4,6 +4,7 @@ import {
     hasPublisherAdminPermission,
 } from "./permissions";
 import type { Library, ProfileData, Publisher } from "../types";
+import { getEligibleLibraries, sanitizeNextPath } from "./librarySession";
 
 type SessionUpdaters = {
     setProfile: (profile: ProfileData | null) => void;
@@ -11,18 +12,23 @@ type SessionUpdaters = {
     setLibrary: (library: Library | null) => void;
 };
 
+export type PostLoginLanding = {
+    path: string;
+    selectedLibraryId: number | null;
+};
+
 /**
  * Resolve a rota inicial após autenticação, respeitando o contexto do perfil.
  *
  * @param profile Profile carregado logo após o login.
  * @param nextPath Caminho de retorno solicitado na navegação anterior.
- * @returns Rota final sugerida para a sessão.
+ * @returns Destino final e acervo já determinado, quando houver apenas um.
  */
 export function resolvePostLoginRoute(
     profile: ProfileData | null,
     nextPath: string | null
 ): string {
-    const libraries = Array.isArray(profile?.libraries) ? profile?.libraries ?? [] : [];
+    const libraries = getEligibleLibraries(profile);
     const libraryCount = libraries.length;
     if (libraryCount <= 0) {
         if (hasGlobalAdminPermission(profile)) {
@@ -36,11 +42,12 @@ export function resolvePostLoginRoute(
         return "/profile";
     }
 
-    if (nextPath) {
-        return nextPath;
+    const safeNextPath = sanitizeNextPath(nextPath);
+    if (libraryCount === 1) {
+        return safeNextPath || "/";
     }
 
-    return "/selection";
+    return safeNextPath ? `/selection?next=${encodeURIComponent(safeNextPath)}` : "/selection";
 }
 
 /**
@@ -57,7 +64,8 @@ export async function loadProfileAfterLogin(
     const profile = await api.get<ProfileData>("/profile", accessToken);
     updaters.setProfile(profile);
     updaters.setPublisher(null);
-    updaters.setLibrary(null);
+    const libraries = getEligibleLibraries(profile);
+    updaters.setLibrary(libraries.length === 1 ? libraries[0] : null);
     return profile;
 }
 
@@ -73,7 +81,11 @@ export async function resolveLandingAfterLogin(
     accessToken: string,
     updaters: SessionUpdaters,
     nextPath: string | null
-): Promise<string> {
+): Promise<PostLoginLanding> {
     const profile = await loadProfileAfterLogin(accessToken, updaters);
-    return resolvePostLoginRoute(profile, nextPath);
+    const libraries = getEligibleLibraries(profile);
+    return {
+        path: resolvePostLoginRoute(profile, nextPath),
+        selectedLibraryId: libraries.length === 1 ? libraries[0].id : null,
+    };
 }

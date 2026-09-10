@@ -663,6 +663,7 @@ export default function EbookMiniView() {
             }
 
             await lendBook(id, libraryId, accessToken);
+            await loadBook();
             messageApi.success("Certificado do livro baixado.");
         } catch (error) {
             messageApi.error(
@@ -684,6 +685,7 @@ export default function EbookMiniView() {
         registerAccessAndOpen,
         resolvedType,
         token,
+        loadBook,
     ]);
 
     /**

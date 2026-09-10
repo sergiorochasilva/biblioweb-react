@@ -1,195 +1,150 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { App as AntdApp, Button, Form, Select, Spin, Typography } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { BookOutlined } from "@ant-design/icons";
+import { App as AntdApp, Button, Spin, Typography } from "antd";
 import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../contexts/useAuth";
 import { api } from "../service/api";
 import { getErrorMessage } from "../service/errorMessage";
-import { resolvePostLoginRoute } from "../service/postLoginRoute";
-import type { ProfileData } from "../types";
+import { getEligibleLibraries, sanitizeNextPath } from "../service/librarySession";
+import { handlePendingLendActionAfterLogin } from "../service/postLoginAction";
+import type { Library, ProfileData } from "../types";
 
 /**
- * Tela de seleção de editora/biblioteca após autenticação.
+ * Tela de escolha do acervo do leitor após autenticação.
  *
- * @returns Componente de seleção com redirecionamento automático quando há
- * apenas uma opção disponível.
+ * @returns Tela de seleção obrigatória apenas para perfis com mais de um acervo.
  */
 export default function SelectionView() {
     const [profileData, setProfileData] = useState<ProfileData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [form] = Form.useForm();
-
+    const [isContinuing, setIsContinuing] = useState(false);
+    const redirectedRef = useRef(false);
     const navigate = useNavigate();
-    const { getAccessToken, setPublisher, setLibrary, setProfile } = useAuth();
+    const [searchParams] = useSearchParams();
+    const { getAccessToken, setLibrary, setProfile, setPublisher } = useAuth();
     const { message } = AntdApp.useApp();
+    const nextPath = sanitizeNextPath(searchParams.get("next"));
 
-    const hasPublishers = (profileData?.publishers?.length || 0) > 0;
-    const hasLibraries = (profileData?.libraries?.length || 0) > 0;
+    const libraries = useMemo(() => getEligibleLibraries(profileData), [profileData]);
 
-    const showPublisherSelect = (profileData?.publishers?.length || 0) > 1;
-    const showLibrarySelect = (profileData?.libraries?.length || 0) > 1;
-
-    const publisherOptions = useMemo(
-        () =>
-            profileData?.publishers.map((publisher) => ({
-                value: publisher.id,
-                label: publisher.name,
-            })) || [],
-        [profileData]
-    );
-
-    const libraryOptions = useMemo(
-        () =>
-            profileData?.libraries.map((library) => ({
-                value: library.id.toString(),
-                label: library.name,
-            })) || [],
-        [profileData]
-    );
+    /**
+     * Persiste o acervo escolhido e somente então retoma a ação pós-login.
+     *
+     * @param selectedLibrary Acervo confirmado no perfil recém-carregado.
+     * @param accessToken Token válido da sessão.
+     * @returns Promise<void>
+     */
+    const continueWithLibrary = useCallback(async (selectedLibrary: Library, accessToken: string): Promise<void> => {
+        setIsContinuing(true);
+        setLibrary(selectedLibrary);
+        const handledPendingAction = await handlePendingLendActionAfterLogin(
+            accessToken,
+            navigate,
+            (errorMessage) => message.error(errorMessage),
+            selectedLibrary.id
+        );
+        if (!handledPendingAction) {
+            navigate(nextPath || "/", { replace: true });
+        }
+    }, [message, navigate, nextPath, setLibrary]);
 
     useEffect(() => {
         let isActive = true;
 
         /**
-         * Carrega o profile do usuário autenticado e aplica regras de auto seleção.
+         * Carrega os vínculos e auto-seleciona somente o único acervo elegível.
          *
          * @returns Promise<void>
          */
-        const fetchProfile = async (): Promise<void> => {
+        const loadProfile = async (): Promise<void> => {
             const accessToken = await getAccessToken();
             if (!accessToken) {
-                if (isActive) {
-                    setIsLoading(false);
-                    navigate("/login");
-                }
+                navigate(`/login${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`, { replace: true });
                 return;
             }
             try {
                 const data = await api.get<ProfileData>("/profile", accessToken);
                 if (!isActive) return;
-                setProfileData(data);
+                const availableLibraries = getEligibleLibraries(data);
                 setProfile(data);
                 setPublisher(null);
-                setLibrary(null);
-
-                const landingPath = resolvePostLoginRoute(data, null);
-                if (landingPath !== "/selection") {
-                    navigate(landingPath);
+                setProfileData(data);
+                if (availableLibraries.length === 0) {
+                    setLibrary(null);
+                    navigate("/profile", { replace: true });
                     return;
                 }
-
-                const autoPublisher = data.publishers.length === 1 ? data.publishers[0] : null;
-                const autoLibrary = data.libraries.length === 1 ? data.libraries[0] : null;
-                const shouldAutoRedirect = data.publishers.length <= 1 && data.libraries.length <= 1;
-
-                if (autoPublisher) {
-                    form.setFieldsValue({ publisher: autoPublisher.id });
+                if (availableLibraries.length === 1 && !redirectedRef.current) {
+                    redirectedRef.current = true;
+                    await continueWithLibrary(availableLibraries[0], accessToken);
                 }
-                if (autoLibrary) {
-                    form.setFieldsValue({ library: autoLibrary.id.toString() });
-                }
-
-                if (shouldAutoRedirect && autoLibrary) {
-                    if (autoPublisher) setPublisher(autoPublisher);
-                    setLibrary(autoLibrary);
-                    navigate("/");
-                    return;
-                }
-            } catch (err: unknown) {
-                if (isActive) {
-                    message.error(getErrorMessage(err, "Erro ao carregar perfil."));
-                }
+            } catch (error: unknown) {
+                if (isActive) message.error(getErrorMessage(error, "Erro ao carregar seus acervos."));
             } finally {
-                if (isActive) {
-                    setIsLoading(false);
-                }
+                if (isActive) setIsLoading(false);
             }
         };
-
-        fetchProfile();
-
-        return () => {
-            isActive = false;
-        };
-    }, [getAccessToken, navigate, setPublisher, setLibrary, setProfile, form, message]);
+        void loadProfile();
+        return () => { isActive = false; };
+    }, [continueWithLibrary, getAccessToken, message, navigate, nextPath, setLibrary, setProfile, setPublisher]);
 
     /**
-     * Persiste a seleção de ambiente no contexto e segue para a home.
+     * Seleciona o acervo pelo card e retoma o fluxo solicitado após o login.
      *
-     * @param values Valores selecionados no formulário.
-     * @returns void
+     * @param selectedLibrary Acervo acionado pelo leitor.
+     * @returns Promise<void>
      */
-    const handleSubmit = (values: { publisher?: string; library?: string }): void => {
-        if (!profileData) return;
-
-        const selectedPublisher = showPublisherSelect
-            ? profileData.publishers.find((p) => p.id === values.publisher)
-            : profileData.publishers[0];
-        const selectedLibrary = showLibrarySelect
-            ? profileData.libraries.find((l) => l.id.toString() === values.library)
-            : profileData.libraries[0];
-
-        if (!selectedLibrary) {
-            message.error("Selecione uma biblioteca.");
+    const selectLibrary = async (selectedLibrary: Library): Promise<void> => {
+        const accessToken = await getAccessToken();
+        if (!accessToken) {
+            message.error("Sua sessão expirou. Entre novamente para selecionar um acervo.");
+            navigate(`/login${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`, {
+                replace: true,
+            });
             return;
         }
-
-        if (selectedPublisher) {
-            setPublisher(selectedPublisher);
-        } else if (!hasPublishers) {
-            setPublisher(null);
+        try {
+            await continueWithLibrary(selectedLibrary, accessToken);
+        } catch (error: unknown) {
+            message.error(getErrorMessage(error, "Não foi possível concluir a seleção."));
+            setIsContinuing(false);
         }
-
-        setLibrary(selectedLibrary);
-        navigate("/");
     };
 
-    if (isLoading) {
+    if (isLoading) return <div className="auth-page"><Spin size="large" /></div>;
+
+    if (libraries.length === 0) {
         return (
-            <div className="auth-page">
-                <Spin size="large" />
-            </div>
+            <AuthLayout title="Acesso sem acervo" subtitle="Seu usuário ainda não possui um acervo habilitado.">
+                <Typography.Paragraph className="auth-subtitle">Entre em contato com a biblioteca responsável para solicitar seu acesso.</Typography.Paragraph>
+                <Button type="primary" block onClick={() => navigate("/profile", { replace: true })}>Ir para meu perfil</Button>
+            </AuthLayout>
         );
     }
 
     return (
-        <AuthLayout
-            title="Selecione o ambiente"
-            subtitle="Escolha a editora e a biblioteca para continuar"
-        >
-            {!hasLibraries ? (
-                <Typography.Text className="auth-subtitle">
-                    Nenhuma biblioteca disponível para este usuário.
-                </Typography.Text>
-            ) : (
-                <Form form={form} layout="vertical" onFinish={handleSubmit}>
-                    {showPublisherSelect && (
-                        <Form.Item
-                            label="Editora"
-                            name="publisher"
-                            rules={[{ required: true, message: "Selecione uma editora." }]}
-                        >
-                            <Select placeholder="Selecione..." options={publisherOptions} />
-                        </Form.Item>
-                    )}
-
-                    {showLibrarySelect && (
-                        <Form.Item
-                            label="Biblioteca (acervo)"
-                            name="library"
-                            rules={[{ required: true, message: "Selecione uma biblioteca." }]}
-                        >
-                            <Select placeholder="Selecione..." options={libraryOptions} />
-                        </Form.Item>
-                    )}
-
-                    <Form.Item style={{ marginTop: 16 }}>
-                        <Button type="primary" htmlType="submit" block>
-                            Entrar
-                        </Button>
-                    </Form.Item>
-                </Form>
-            )}
+        <AuthLayout title="Qual acervo você quer acessar?" subtitle="Você poderá trocar de acervo pelo menu superior.">
+            <div className="library-selection-grid" role="list" aria-label="Acervos disponíveis">
+                {libraries.map((library) => (
+                    <button
+                        key={library.id}
+                        type="button"
+                        className="library-selection-card glass-panel"
+                        onClick={() => {
+                            void selectLibrary(library);
+                        }}
+                        disabled={isContinuing}
+                        aria-label={`Selecionar acervo ${library.name}`}
+                    >
+                        <BookOutlined className="library-selection-card-icon" aria-hidden="true" />
+                        <span className="library-selection-card-copy">
+                            <strong>{library.name}</strong>
+                            <span>Selecionar este acervo</span>
+                        </span>
+                    </button>
+                ))}
+            </div>
         </AuthLayout>
     );
 }

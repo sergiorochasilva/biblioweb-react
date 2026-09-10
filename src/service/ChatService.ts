@@ -157,6 +157,7 @@ export async function submitChatMessage(
  */
 export async function fetchChatConversationsPage(
     clientKey: string,
+    libraryId: number,
     token?: string,
     limit = 20
 ): Promise<ChatConversationPage> {
@@ -164,6 +165,7 @@ export async function fetchChatConversationsPage(
     if (clientKey) {
         query.set("client_key", clientKey);
     }
+    query.set("library", String(libraryId));
     query.set("limit", String(limit > 0 ? limit : 20));
     const data = await api.get<unknown>(
         `/chat/conversations${query.toString() ? `?${query.toString()}` : ""}`,
@@ -205,9 +207,13 @@ export async function fetchChatConversationsPageByUrl(
  */
 export async function fetchChatConversation(
     conversationId: string,
+    libraryId: number,
     token?: string
 ): Promise<ChatConversationRecord> {
-    return api.get<ChatConversationRecord>(`/chat/conversations/${conversationId}`, token);
+    return api.get<ChatConversationRecord>(
+        `/chat/conversations/${conversationId}?library=${encodeURIComponent(String(libraryId))}`,
+        token
+    );
 }
 
 /**
@@ -222,6 +228,7 @@ export async function fetchChatConversation(
 export function openChatConversationStream(
     conversationId: string,
     clientKey: string,
+    libraryId: number,
     onEvent: (event: ChatSseEvent) => void,
     onError?: () => void
 ): EventSource {
@@ -229,6 +236,7 @@ export function openChatConversationStream(
     if (clientKey) {
         streamUrl.searchParams.set("client_key", clientKey);
     }
+    streamUrl.searchParams.set("library", String(libraryId));
 
     const eventSource = new EventSource(streamUrl.toString());
     let finished = false;

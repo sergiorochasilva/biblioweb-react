@@ -24,4 +24,5 @@ export interface ProfileData {
     recent_reads?: import("../model/Book").Book[];
     loaned_books?: import("../model/Book").Book[];
     purchased_books?: import("../model/Book").Book[];
+    active_library?: number | null;
 }

@@ -22,7 +22,58 @@ function resolveApiHost(): string {
 const API_HOST = resolveApiHost().replace(/\/+$/, "");
 
 export const API_BASE_URL = API_HOST;
+const DEFAULT_API_REQUEST_TIMEOUT_MS = 30_000;
 export type ApiError = Error & { status?: number; body?: unknown };
+
+/**
+ * Resolve o tempo máximo de espera das requisições HTTP à API.
+ *
+ * @returns Tempo máximo de espera, em milissegundos.
+ */
+function resolveApiRequestTimeoutMs(): number {
+    const configuredTimeout = Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS);
+
+    if (Number.isFinite(configuredTimeout) && configuredTimeout > 0) {
+        return Math.trunc(configuredTimeout);
+    }
+
+    return DEFAULT_API_REQUEST_TIMEOUT_MS;
+}
+
+export const API_REQUEST_TIMEOUT_MS = resolveApiRequestTimeoutMs();
+
+/**
+ * Executa uma chamada HTTP e a aborta quando a API não responde no prazo.
+ *
+ * @param input URL ou objeto Request da chamada.
+ * @param init Configuração opcional da requisição.
+ * @returns Resposta HTTP recebida antes de esgotar o prazo.
+ * @throws Error Quando a API não responde dentro do timeout configurado.
+ */
+export async function fetchApiWithTimeout(
+    input: RequestInfo | URL,
+    init?: RequestInit
+): Promise<Response> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = globalThis.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, API_REQUEST_TIMEOUT_MS);
+
+    try {
+        return await fetch(input, { ...init, signal: controller.signal });
+    } catch (error) {
+        if (timedOut) {
+            throw new Error(
+                `A API não respondeu em ${Math.ceil(API_REQUEST_TIMEOUT_MS / 1000)} segundos.`
+            );
+        }
+        throw error;
+    } finally {
+        globalThis.clearTimeout(timeoutId);
+    }
+}
 
 /**
  * Extrai uma mensagem legível de corpos de erro retornados pela API.
@@ -154,7 +205,7 @@ export const api = {
      * @returns Payload tipado da resposta.
      */
     get: async <T>(endpoint: string, token?: string): Promise<T> => {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetchApiWithTimeout(`${API_BASE_URL}${endpoint}`, {
             method: "GET",
             headers: buildHeaders(token),
         });
@@ -171,7 +222,7 @@ export const api = {
      * @returns Payload tipado da resposta.
      */
     post: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetchApiWithTimeout(`${API_BASE_URL}${endpoint}`, {
             method: "POST",
             headers: buildHeaders(token, true),
             body: JSON.stringify(body),
@@ -189,7 +240,7 @@ export const api = {
      * @returns Payload tipado da resposta.
      */
     put: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetchApiWithTimeout(`${API_BASE_URL}${endpoint}`, {
             method: "PUT",
             headers: buildHeaders(token, true),
             body: JSON.stringify(body),
@@ -207,7 +258,7 @@ export const api = {
      * @returns Payload tipado da resposta.
      */
     patch: async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetchApiWithTimeout(`${API_BASE_URL}${endpoint}`, {
             method: "PATCH",
             headers: buildHeaders(token, true),
             body: JSON.stringify(body),
@@ -224,7 +275,7 @@ export const api = {
      * @returns Payload tipado da resposta.
      */
     delete: async <T>(endpoint: string, token?: string): Promise<T> => {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        const response = await fetchApiWithTimeout(`${API_BASE_URL}${endpoint}`, {
             method: "DELETE",
             headers: buildHeaders(token),
         });

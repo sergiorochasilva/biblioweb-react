@@ -17,6 +17,21 @@ Base de memoria incremental para reduzir retrabalho entre agentes e interacoes.
 
 <!-- Adicione entradas novas no topo desta secao. -->
 
+### 2026-09-12 - chamadas HTTP ao backend devem ter prazo centralizado
+- Descoberta:
+  - Um `fetch` sem `AbortController` mantém a tela administrativa em estado de carregamento quando uma dependência síncrona do backend deixa de responder.
+  - Alguns serviços usavam `fetch` diretamente para paginação e download, fora do cliente HTTP principal.
+- Evidencias:
+  - `src/service/api.ts`
+  - `src/service/BookService.ts`
+  - `src/service/ChatService.ts`
+  - `src/service/PublisherAdminService.ts`
+  - `src/service/AdminService.ts`
+- Acao aplicada:
+  - Centralizei o prazo configurável de 30 segundos em `fetchApiWithTimeout` e encaminhei as chamadas HTTP diretas para esse wrapper, mantendo SSE fora desse limite.
+- Impacto esperado:
+  - A interface encerra o carregamento com erro legível se a API não responder, em vez de aguardar indefinidamente.
+
 ### 2026-09-09 - detalhe de empréstimo e carregamento da Home
 - Descoberta:
   - O endpoint unitário de `libraries_books` é o único que recebe o contexto de empréstimo do usuário; a listagem preserva livros com empréstimo ativo, mas não preenche `loan_state`.

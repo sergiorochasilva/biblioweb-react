@@ -80,6 +80,7 @@ Observações:
 - a suíte do browser usa um host diferente de `localhost` para evitar a regra
   especial de `src/service/api.ts`;
 - a URL da API deve vir de `VITE_API_BASE_URL`;
+- `VITE_API_REQUEST_TIMEOUT_MS` limita chamadas HTTP à API (30 segundos por padrão); conexões SSE não usam esse limite;
 - `npm run build` e `npm run lint` continuam sendo as validações rápidas antes
   do e2e.
 - se o Chromium do Playwright ainda não estiver instalado, rode

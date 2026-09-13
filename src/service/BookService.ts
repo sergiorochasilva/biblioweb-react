@@ -1,5 +1,5 @@
 import { Book } from "../model/Book";
-import { api, API_BASE_URL, buildAuthHeaders } from "./api";
+import { api, API_BASE_URL, buildAuthHeaders, fetchApiWithTimeout } from "./api";
 
 export const DEFAULT_PUBLIC_LIBRARY_ID = 1;
 const DEFAULT_BOOK_FIELDS =
@@ -1048,7 +1048,7 @@ export async function registerBookAccessWithType(
  * @returns Promise<void> sem payload; dispara download no navegador.
  */
 export async function lendBook(id: string, libraryId: number, token: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/books-loan`, {
+    const response = await fetchApiWithTimeout(`${API_BASE_URL}/books-loan`, {
         method: "POST",
         headers: buildAuthHeaders(token, true),
         body: JSON.stringify({ book_id: id, library: libraryId }),
@@ -1108,7 +1108,7 @@ export async function downloadPurchasedBook(
     libraryId: number,
     token: string
 ): Promise<void> {
-    const response = await fetch(
+    const response = await fetchApiWithTimeout(
         `${API_BASE_URL}/books-purchase/${encodeURIComponent(id)}/download`,
         {
             method: "POST",

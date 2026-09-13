@@ -1,7 +1,7 @@
 import { Book } from "../model/Book";
 import type { BookLibraryLink, BookLibraryPayload } from "../model/BookLibrary";
 import { normalizeBookLibraryLinks } from "../model/BookLibrary";
-import { api, buildAuthHeaders } from "./api";
+import { api, buildAuthHeaders, fetchApiWithTimeout } from "./api";
 import { validateBookUploadFileSize } from "./bookUpload";
 
 export type PublisherSubject = {
@@ -485,7 +485,7 @@ export async function fetchBooks(
             break;
         }
 
-        const response = await fetch(next, {
+        const response = await fetchApiWithTimeout(next, {
             method: "GET",
             headers: buildAuthHeaders(token),
         });

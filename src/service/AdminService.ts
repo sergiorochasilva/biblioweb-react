@@ -1,7 +1,7 @@
 import { Book } from "../model/Book";
 import type { BookLibraryLink, BookLibraryPayload } from "../model/BookLibrary";
 import { normalizeBookLibraryLinks } from "../model/BookLibrary";
-import { api, ApiError, buildAuthHeaders } from "./api";
+import { api, ApiError, buildAuthHeaders, fetchApiWithTimeout } from "./api";
 import { validateBookUploadFileSize } from "./bookUpload";
 
 export type AdminBook = Omit<Book, "publisher"> & {
@@ -1008,7 +1008,7 @@ export async function fetchBooksPageByNext(
     nextUrl: string,
     libraryId?: string
 ): Promise<PaginatedAdminBooksResponse> {
-    const response = await fetch(nextUrl, {
+    const response = await fetchApiWithTimeout(nextUrl, {
         method: "GET",
         headers: buildAuthHeaders(token),
     });

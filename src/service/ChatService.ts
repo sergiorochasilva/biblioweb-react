@@ -1,4 +1,4 @@
-import { API_BASE_URL, api, buildAuthHeaders } from "./api";
+import { API_BASE_URL, api, buildAuthHeaders, fetchApiWithTimeout } from "./api";
 import type { Book } from "../model/Book";
 
 export type ChatActionType =
@@ -185,7 +185,7 @@ export async function fetchChatConversationsPageByUrl(
     nextUrl: string,
     token?: string
 ): Promise<ChatConversationPage> {
-    const response = await fetch(new URL(nextUrl, API_BASE_URL).toString(), {
+    const response = await fetchApiWithTimeout(new URL(nextUrl, API_BASE_URL).toString(), {
         method: "GET",
         headers: buildAuthHeaders(token),
     });
